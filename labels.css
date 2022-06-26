@@ -1,0 +1,164 @@
+@font-face {
+    font-family: 'Glacial Indifference';
+    src: url('fonts/glacialindifference-regular-webfont.woff2') format('woff2'),
+         url('fonts/glacialindifference-regular-webfont.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Glacial Indifference';
+    src: url('fonts/glacialindifference-bold-webfont.woff2') format('woff2'),
+         url('fonts/glacialindifference-bold-webfont.woff') format('woff');
+    font-weight: bold;
+    font-style: bold;
+}
+
+@media print {
+    * {
+        visibility: hidden;
+    }
+
+    header, footer {
+        height: 0;
+        visibility: hidden;
+        position: relative;
+        display: none;
+    }
+
+    .printable * {
+        visibility: visible;
+    }
+}
+
+@page {
+    size: A4 portrait;
+}
+
+body {
+    font-family: "Glacial Indifference";
+    margin: 0;
+    background-color: #caceaa;
+}
+
+header {
+    margin: 10px;
+    padding: 10px;
+    background: white;
+    box-shadow: 5px 5px grey;
+    position: sticky;
+    top: 0;
+    display: flex;
+}
+
+footer {
+    position: relative;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 1rem;
+    background: white;
+    text-align: center;
+}
+
+#logo {
+    -webkit-user-drag: none;
+    user-select: none;
+    -moz-user-select: none;
+    -webkit-user-select: none;
+    -ms-user-select: none;
+    margin: auto;
+    height: 10vh;
+    width: 35vw;
+}
+
+@media screen and (max-width: 400px) {
+    #logo {
+        display: none;
+    }
+}
+
+#controls {
+    margin: auto;
+}
+
+#controls > div {
+    margin-bottom: 2px;
+}
+
+input {
+    border-radius: 10px;
+}
+
+#labelText {
+    text-align: center;
+    border-radius: 0;
+}
+
+#labelQuantity {
+    width: 6ch;
+}
+
+#print-button {
+    border-radius: 10px;
+    display: block;
+    height: 10vh;
+    width: 3rem;
+    min-width: 15px;
+}
+
+/* (A) LIST STYLES */
+ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+li {
+    break-inside: avoid;
+    margin: 10px auto;
+    padding: auto;
+    border: 2px solid black;
+    background: white;
+    text-align: center;
+}
+
+/* (B) DRAG-AND-DROP HINT */
+.slist li.hint {
+    border: 2px solid #ffc49a;
+    background: #feffb4;
+}
+
+.slist li.active {
+    border: 2px solid #ffa5a5;
+    background: #ffe7e7;
+}
+
+.parent {
+    width: auto;
+    min-width: 50px;
+    height: 50px;
+    min-height: 50px;
+    padding: 15px;
+    background: grey;
+    color: white;
+    display: inline-block;
+}
+
+.text-container {
+    width: 100mm;
+    height: 80px;
+    resize: vertical;
+    border: 2px solid;
+}
+
+.landscape {
+    width: 143mm;
+}
+
+.text {
+    margin: 0;
+    font-weight: bold;
+    font-size: 12px;
+    display: block;
+}
