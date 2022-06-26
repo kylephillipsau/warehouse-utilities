@@ -101,9 +101,6 @@ function updateLabels() {
     resizeText({ elements: document.querySelectorAll('.text'), step: 0.5 })
 }
 
-// Update labels automatically on regular intervals
-setInterval(updateLabels, 500);
-
 window.onbeforeprint = (event) => {
     // Actions to be performed before printing
     // Remove the header
