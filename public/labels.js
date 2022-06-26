@@ -40,6 +40,13 @@ function addItem() {
     updateLabels();
 }
 
+function clickPress(event) {
+    if (event.keyCode == 13) {
+        addItem();
+        document.getElementById("labelText").value = null;
+    }
+}
+
 function slist(target) {
     target.classList.add("slist");
     let items = target.getElementsByTagName("li"), current = null;

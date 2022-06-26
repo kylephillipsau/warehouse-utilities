@@ -21,7 +21,7 @@
     <div id="controls">
       <div>
         <label for="labelText">Label Text</label>
-        <input type="text" id="labelText" name="labelText">
+        <input type="text" id="labelText" name="labelText" onkeypress="clickPress(event)">
       </div>
       <div>
         <label for="labelQuantity">Quantity</label>
@@ -31,12 +31,12 @@
         <input type="button" value="Add Item" onclick="addItem()" />
         <input type="button" value="Update" onclick="updateLabels()" />
       </div>
-      <div>
+      <!-- <div>
         <input type="radio" id="portrait" name="orientation" value="portrait" checked="checked">
         <label for="portrait">Portrait</label>
         <input type="radio" id="landscape" name="orientation" value="landscape">
         <label for="landscape">Landscape</label>
-      </div>
+      </div> -->
     </div>
     <button id="print-button" onclick="window.print()">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
