@@ -32,12 +32,39 @@ function addItem() {
         itemText.innerHTML = x;
         itemText.contentEditable = true;
         item.classList.add('text-container');
-        // item.classList.add('large');
 
         itemText.classList.add('text');
     }
     slist(document.getElementById("labelList"));
     updateLabels();
+}
+
+function toggleMultilineImport() {
+    document.getElementById('multiline-input-container').style.display = "block";;
+    document.getElementById('multiline-input').value = null;
+}
+
+function multilineImport() {
+    let textbox = document.getElementById('multiline-input').value;
+    let multiLabels = textbox.split(/\r?\n/);
+
+    for (let i = 0; i < multiLabels.length; i++) {
+        var item = document.createElement("li");
+        document.getElementById("labelList").appendChild(item);
+        var itemText = document.createElement("span")
+        item.appendChild(itemText)
+        itemText.innerHTML = multiLabels[i];
+        itemText.contentEditable = true;
+        item.classList.add("text-container",);
+        itemText.classList.add('text');
+    }
+    slist(document.getElementById("labelList"));
+    updateLabels();
+    document.getElementById('multiline-input-container').style.display = "none";;
+}
+
+function multilineImportCancel() {
+    document.getElementById('multiline-input-container').style.display = "none";;
 }
 
 function clickPress(event) {

@@ -1,7 +1,7 @@
 @font-face {
     font-family: 'Glacial Indifference';
     src: url('fonts/glacialindifference-regular-webfont.woff2') format('woff2'),
-         url('fonts/glacialindifference-regular-webfont.woff') format('woff');
+        url('fonts/glacialindifference-regular-webfont.woff') format('woff');
     font-weight: normal;
     font-style: normal;
 }
@@ -9,7 +9,7 @@
 @font-face {
     font-family: 'Glacial Indifference';
     src: url('fonts/glacialindifference-bold-webfont.woff2') format('woff2'),
-         url('fonts/glacialindifference-bold-webfont.woff') format('woff');
+        url('fonts/glacialindifference-bold-webfont.woff') format('woff');
     font-weight: bold;
     font-style: bold;
 }
@@ -19,7 +19,8 @@
         visibility: hidden;
     }
 
-    header, footer {
+    header,
+    footer {
         height: 0;
         visibility: hidden;
         position: relative;
@@ -76,13 +77,22 @@ footer {
     #logo {
         display: none;
     }
+
+    header {
+        position: relative;
+    }
 }
 
 #controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     margin: auto;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
-#controls > div {
+#controls>div {
     margin-bottom: 2px;
 }
 
@@ -99,15 +109,46 @@ input {
     width: 6ch;
 }
 
+#orientation-control>div {
+    display: flex;
+    width: max-content;
+}
+
 #print-button {
+    padding: 5px;
     border-radius: 10px;
     display: block;
-    height: 10vh;
+    height: 100%;
     width: 3rem;
     min-width: 15px;
 }
 
-/* (A) LIST STYLES */
+#multiline-input-container {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: none;
+}
+
+#multiline-input-container > div{
+    display: flex;
+}
+
+#multiline-input {
+    font-family: "Glacial Indifference";
+    position: relative;
+    border-radius: 5px;
+}
+
+#multiline-input-submit,
+#multiline-input-cancel {
+    font-size: larger;
+    margin: auto;
+    position: relative;
+    width: 50%;
+}
+
 ul {
     list-style: none;
     padding: 0;
@@ -121,9 +162,9 @@ li {
     border: 2px solid black;
     background: white;
     text-align: center;
+    overflow: scroll;
 }
 
-/* (B) DRAG-AND-DROP HINT */
 .slist li.hint {
     border: 2px solid #ffc49a;
     background: #feffb4;
@@ -148,7 +189,7 @@ li {
 .text-container {
     width: 100mm;
     height: 80px;
-    resize: vertical;
+    /* resize: vertical; */
     border: 2px solid;
 }
 
