@@ -1,5 +1,3 @@
-const isOverflown = ({ clientWidth, clientHeight, scrollWidth, scrollHeight }) => (scrollWidth > clientWidth) || (scrollHeight > clientHeight)
-
 const resizeText = ({ element, elements, minSize = 10, maxSize = 512, step = 1, unit = 'px' }) => {
     (elements || [element]).forEach(el => {
         let i = minSize
@@ -73,6 +71,8 @@ function clickPress(event) {
         document.getElementById("labelText").value = null;
     }
 }
+
+const isOverflown = ({ clientWidth, clientHeight, scrollWidth, scrollHeight }) => (scrollWidth > clientWidth) || (scrollHeight > clientHeight)
 
 function slist(target) {
     target.classList.add("slist");
