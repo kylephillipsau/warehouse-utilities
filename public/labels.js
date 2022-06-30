@@ -53,7 +53,7 @@ function multilineImport() {
         item.appendChild(itemText)
         itemText.innerHTML = multiLabels[i];
         itemText.contentEditable = true;
-        item.classList.add("text-container",);
+        item.classList.add("text-container");
         itemText.classList.add('text');
     }
     slist(document.getElementById("labelList"));
@@ -123,12 +123,48 @@ function slist(target) {
     }
 }
 
+var labelOrientation = "portrait";
+
+var cssPagedMedia = (function () {
+    var style = document.createElement('style');
+    document.head.appendChild(style);
+    return function (rule) {
+        style.innerHTML = rule;
+    };
+}());
+
+cssPagedMedia.size = function (size) {
+    cssPagedMedia('@page {size: ' + size + '}');
+};
+
+function selectOrientation() {
+    var1 = document.getElementById("portrait");
+    var2 = document.getElementById("landscape");
+    console.log(var1.checked)
+    console.log(var2.checked)
+    if (var1.checked === true) {
+        labelOrientation = "portrait";
+        cssPagedMedia.size("portrait");
+    }
+    else if (var2.checked === true) {
+        labelOrientation = "landscape";
+        cssPagedMedia.size("landscape");
+    }
+    updateLabels();
+}
+
 function updateLabels() {
     // If label is empty, delete label
-    var labelsList = document.querySelectorAll(".text");
+    var labelsListText = document.querySelectorAll(".text");
+    var labelsList = document.querySelectorAll(".text-container");
     for (let i = 0; i < labelsList.length; i++) {
-        if (labelsList[i].innerHTML.length == 0) {
-            labelsList[i].parentElement.remove();
+        if (labelsListText[i].innerHTML.length == 0) {
+            labelsListText[i].parentElement.remove();
+        }
+        if (labelOrientation == "landscape") {
+            labelsList[i].classList.add("landscape");
+        } else if (labelsList[i].classList.contains("landscape")) {
+            labelsList[i].classList.remove("landscape");
         }
     }
     // Resize label text

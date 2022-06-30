@@ -32,10 +32,6 @@
     }
 }
 
-@page {
-    size: A4 portrait;
-}
-
 body {
     font-family: "Glacial Indifference";
     margin: 0;

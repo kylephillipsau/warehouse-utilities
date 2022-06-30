@@ -34,12 +34,12 @@
       </div>
       <div id="orientation-control">
         <div>
-          <input type="radio" id="portrait" name="orientation" value="portrait" checked="checked">
+          <input type="radio" id="portrait" name="orientation" value="portrait" checked="checked" onclick="selectOrientation()">
           <label for="portrait">Portrait</label>
         </div>
         <div>
-          <input type="radio" id="landscape" name="orientation" value="landscape" disabled>
-          <label for="landscape" style="color:grey">Landscape</label>
+          <input type="radio" id="landscape" name="orientation" value="landscape" onclick="selectOrientation()">
+          <label for="landscape">Landscape</label>
         </div>
       </div>
       <button id="print-button" onclick="window.print()">
