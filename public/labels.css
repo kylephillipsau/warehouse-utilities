@@ -22,9 +22,11 @@
     header,
     footer {
         height: 0;
+        margin: 0 !important;
+        padding: 0 !important;
         visibility: hidden;
         position: relative;
-        display: none;
+        display: none !important;
     }
 
     .printable * {
@@ -35,17 +37,19 @@
 body {
     font-family: "Glacial Indifference";
     margin: 0;
-    background-color: #caceaa;
+    background-color: #84A98C;
 }
 
 header {
     margin: 10px;
     padding: 10px;
-    background: white;
-    box-shadow: 5px 5px grey;
     position: sticky;
     top: 0;
     display: flex;
+    background: #EBEBEB;
+    box-shadow: 5px 5px #CAD2C5;
+    border-radius: 10px;
+    /* https://coolors.co/59c3c3-52489c-ebebeb-cad2c5-84a98c */
 }
 
 footer {
@@ -58,29 +62,40 @@ footer {
     text-align: center;
 }
 
-#logo {
-    -webkit-user-drag: none;
-    user-select: none;
-    -moz-user-select: none;
-    -webkit-user-select: none;
-    -ms-user-select: none;
-    margin: auto;
-    height: 10vh;
-    width: 35vw;
+h1 {
+    text-align: center;
+    color: black;
+    margin: 0 auto;
+}
+
+@media screen and (max-width: 700px) {
+    #header {
+        flex-direction: column;
+    }
 }
 
 @media screen and (max-width: 400px) {
-    #logo {
-        display: none;
-    }
-
     header {
         position: relative;
     }
 }
 
+#details-panel {
+    margin: auto;
+    width: auto;
+}
+
+#subtitle {
+    width: 100%;
+    display: inline-flex;
+    gap: 10px;
+    justify-content: space-evenly;
+    text-align: center;
+    flex-wrap: wrap;
+}
+
 #controls {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     margin: auto;
@@ -90,15 +105,32 @@ footer {
 
 #controls>div {
     margin-bottom: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 input {
     border-radius: 10px;
 }
 
-#labelText {
+.label-text-container {
+    width: fit-content;
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.label-text-container input {
     text-align: center;
     border-radius: 0;
+}
+
+.label-text>div {
+    overflow: hidden;
+    display: flex;
+    align-content: space-around;
 }
 
 #labelQuantity {
@@ -127,7 +159,7 @@ input {
     display: none;
 }
 
-#multiline-input-container > div{
+#multiline-input-container>div {
     display: flex;
 }
 
@@ -161,14 +193,29 @@ li {
     /* overflow: scroll; */
 }
 
-.slist li.hint {
+.text-container:focus-within {
+    margin: 0 auto;
+    height: fit-content;
+    background-color: #feffb4;
+}
+
+.text:focus {
+    font-size: 5rem !important;
+}
+
+.draggableLabels li.hint {
     border: 2px solid #ffc49a;
     background: #feffb4;
 }
 
-.slist li.active {
+.draggableLabels li.active {
     border: 2px solid #ffa5a5;
     background: #ffe7e7;
+}
+
+.deleteMode:hover {
+    background: #ffa5a5;
+    border: 2px solid #FF0000;
 }
 
 .parent {
@@ -184,13 +231,14 @@ li {
 
 .text-container {
     width: 100mm;
-    height: 80px;
+    height: 22mm;
     /* resize: vertical; */
     border: 2px solid;
 }
 
 .landscape {
     width: 143mm;
+    height: 48mm;
 }
 
 .text {

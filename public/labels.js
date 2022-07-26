@@ -1,3 +1,5 @@
+// Text size maximisation
+
 const resizeText = ({ element, elements, minSize = 10, maxSize = 512, step = 1, unit = 'px' }) => {
     (elements || [element]).forEach(el => {
         let i = minSize
@@ -12,70 +14,11 @@ const resizeText = ({ element, elements, minSize = 10, maxSize = 512, step = 1, 
     })
 }
 
-function addItem() {
-    var x = document.getElementById("labelText").value;
-    var y = document.getElementById("labelQuantity").value;
-
-    if (y.length == 0) {
-        var y = 1;
-    } else if (y > 100) {
-        var y = 100;
-    }
-
-    for (let i = 0; i < y; i++) {
-        var item = document.createElement("li");
-        document.getElementById("labelList").appendChild(item);
-        var itemText = document.createElement("span")
-        item.appendChild(itemText)
-        itemText.innerHTML = x;
-        itemText.contentEditable = true;
-        item.classList.add('text-container');
-
-        itemText.classList.add('text');
-    }
-    slist(document.getElementById("labelList"));
-    updateLabels();
-}
-
-function toggleMultilineImport() {
-    document.getElementById('multiline-input-container').style.display = "block";;
-    document.getElementById('multiline-input').value = null;
-}
-
-function multilineImport() {
-    let textbox = document.getElementById('multiline-input').value;
-    let multiLabels = textbox.split(/\r?\n/);
-
-    for (let i = 0; i < multiLabels.length; i++) {
-        var item = document.createElement("li");
-        document.getElementById("labelList").appendChild(item);
-        var itemText = document.createElement("span")
-        item.appendChild(itemText)
-        itemText.innerHTML = multiLabels[i];
-        itemText.contentEditable = true;
-        item.classList.add("text-container");
-        itemText.classList.add('text');
-    }
-    slist(document.getElementById("labelList"));
-    updateLabels();
-    document.getElementById('multiline-input-container').style.display = "none";;
-}
-
-function multilineImportCancel() {
-    document.getElementById('multiline-input-container').style.display = "none";;
-}
-
-function clickPress(event) {
-    if (event.keyCode == 13) {
-        addItem();
-        document.getElementById("labelText").value = null;
-    }
-}
-
 const isOverflown = ({ clientWidth, clientHeight, scrollWidth, scrollHeight }) => (scrollWidth > clientWidth) || (scrollHeight > clientHeight)
 
-function slist(target) {
-    target.classList.add("slist");
+// Label movement
+function dragLabels(target) {
+    target.classList.add("draggableLabels");
     let items = target.getElementsByTagName("li"), current = null;
 
     for (let i of items) {
@@ -123,6 +66,79 @@ function slist(target) {
     }
 }
 
+function addItem(text, quantity) {
+    if (!quantity) { // If quantity unspecified, Sets quantity to 1
+        var quantity = 1;
+    } else if (quantity > 100) { // If quantity greater than 100, cap at 100
+        var quantity = 100;
+        document.getElementById("labelQuantity").value = 100;
+    }
+
+    for (let i = 0; i < quantity; i++) {
+        var item = document.createElement("li");
+        document.getElementById("labelList").appendChild(item);
+        var itemText = document.createElement("span")
+        item.appendChild(itemText)
+        itemText.innerHTML = text;
+        item.classList.add('text-container');
+
+        itemText.classList.add('text');
+    }
+    document.getElementById("labelText").value = null;
+    // document.getElementById("subText").value = null;
+    document.getElementById("labelQuantity").value = null;
+    document.getElementById("labelText").focus();
+    updateLabels();
+}
+
+function enterPress(event) {
+    if (event.keyCode == 13) {
+        addItem(document.getElementById('labelText').value, document.getElementById('labelQuantity').value);
+    }
+}
+
+// Multiline Input Menu
+
+function toggleMultilineImport() {
+    document.getElementById('multiline-input-container').style.display = "block";;
+    document.getElementById('multiline-input').value = null;
+}
+
+function multilineImport() {
+    let textbox = document.getElementById('multiline-input').value;
+    let multiLabels = textbox.split(/\r?\n/);
+
+    for (let i = 0; i < multiLabels.length; i++) {
+        addItem(multiLabels[i], 1);
+    }
+
+    document.getElementById('multiline-input-container').style.display = "none";
+}
+
+function multilineImportCancel() {
+    document.getElementById('multiline-input-container').style.display = "none";;
+}
+
+// Mode selector
+
+var mode = null
+
+function toggleMode() {
+    var1 = document.getElementById("editMode");
+    var2 = document.getElementById("moveMode");
+    var3 = document.getElementById("deleteMode");
+    if (var1.checked === true) {
+        mode = "edit"
+    } else if (var2.checked === true) {
+        mode = "move"
+    } else if (var3.checked === true) {
+        mode = "delete"
+    }
+    updateLabels();
+}
+
+// Page Orientation Changer
+
 var labelOrientation = "portrait";
 
 var cssPagedMedia = (function () {
@@ -140,8 +156,6 @@ cssPagedMedia.size = function (size) {
 function selectOrientation() {
     var1 = document.getElementById("portrait");
     var2 = document.getElementById("landscape");
-    console.log(var1.checked)
-    console.log(var2.checked)
     if (var1.checked === true) {
         labelOrientation = "portrait";
         cssPagedMedia.size("portrait");
@@ -157,25 +171,46 @@ function updateLabels() {
     // If label is empty, delete label
     var labelsListText = document.querySelectorAll(".text");
     var labelsList = document.querySelectorAll(".text-container");
+    // Resize label text
+    resizeText({ elements: document.querySelectorAll('.text'), step: 0.5 })
     for (let i = 0; i < labelsList.length; i++) {
         if (labelsListText[i].innerHTML.length == 0) {
             labelsListText[i].parentElement.remove();
         }
+
         if (labelOrientation == "landscape") {
             labelsList[i].classList.add("landscape");
         } else if (labelsList[i].classList.contains("landscape")) {
             labelsList[i].classList.remove("landscape");
         }
+
+        if (mode == "edit") { // Text Edit Mode
+            labelsListText[i].contentEditable = true;
+        } else {
+            labelsListText[i].contentEditable = false;
+        }
+
+        if (mode == "move") { // Label Rearranging Mode
+            dragLabels(document.getElementById("labelList"));
+        } else {
+            document.getElementById("labelList").classList.remove("draggableLabels");
+            labelsList[i].draggable = false;
+        }
+
+        if (mode == "delete") { // Click labels to delete mode
+            labelsList[i].setAttribute("onclick","this.remove();");
+            labelsList[i].classList.add("deleteMode");
+        } else {
+            labelsList[i].removeAttribute("onclick");
+            labelsList[i].classList.remove("deleteMode");
+        }
     }
-    // Resize label text
     resizeText({ elements: document.querySelectorAll('.text'), step: 0.5 })
 }
 
+// Printing Functions
+
 window.onbeforeprint = (event) => {
-    // Actions to be performed before printing
-    // Remove the header
-    var header = document.getElementById('header');
-    header.style.display = "none";
     // Update labels
     updateLabels()
 };

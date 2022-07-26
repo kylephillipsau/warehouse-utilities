@@ -5,36 +5,69 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>B2C Labels</title>
+  <title>Kyle's Label Maker</title>
   <link rel="stylesheet" href="labels.css" />
   <script src="labels.js"></script>
   <link rel="icon" type="image/x-icon" href="favicon.ico">
-  <link rel="preload" href="fonts/glacialindifference-bold-webfont.woff" as="font" type="font/woff" crossorigin="anonymous">
-  <link rel="preload" href="fonts/glacialindifference-regular-webfont.woff" as="font" type="font/woff" crossorigin="anonymous">
-  <link rel="preload" href="fonts/glacialindifference-bold-webfont.woff2" as="font" type="font/woff2" crossorigin="anonymous">
-  <link rel="preload" href="fonts/glacialindifference-regular-webfont.woff2" as="font" type="font/woff2" crossorigin="anonymous">
+  <!-- <link rel="preload" href="fonts/glacialindifference-bold-webfont.woff" as="font" type="font/woff"
+    crossorigin="anonymous">
+  <link rel="preload" href="fonts/glacialindifference-regular-webfont.woff" as="font" type="font/woff"
+    crossorigin="anonymous">
+  <link rel="preload" href="fonts/glacialindifference-bold-webfont.woff2" as="font" type="font/woff2"
+    crossorigin="anonymous">
+  <link rel="preload" href="fonts/glacialindifference-regular-webfont.woff2" as="font" type="font/woff2"
+    crossorigin="anonymous"> -->
 </head>
 
 <body>
   <header id="header">
-    <img id="logo" src="B2C-Logo.svg" alt="B2C Furniture">
+    <div id="details-panel">
+      <h1 id="heading">Kyle's Label Maker</h1>
+      <div id="subtitle">
+        <span id="version">Version v1.1.0</span>
+        <a id="source" href="https://gitlab.com/KyStyle/warehouse-utilities/-/tree/main">Source Code</a>
+      </div>
+    </div>
     <div id="controls">
-      <div>
-        <label for="labelText">Label Text</label>
-        <input type="text" id="labelText" name="labelText" onkeypress="clickPress(event)">
+      <div class="label-text-container">
+        <div>
+          <label for="labeText">Label Text</label>
+          <input type="text" id="labelText" name="labelText" onkeypress="enterPress(event)"><br>
+        </div>
+        <!-- <div>
+          <label for="suburbText">Suburb Text</label>
+          <input type="text" id="suburbText" name="suburbText" onkeypress="enterPress(event)">
+        </div> -->
+        <div>
+          <label for="labelQuantity">Quantity</label>
+          <input type="number" id="labelQuantity" name="labelQuantity" placeholder="1" max="100"
+            onkeypress="enterPress(event)">
+        </div>
       </div>
       <div>
-        <label for="labelQuantity">Quantity</label>
-        <input type="number" id="labelQuantity" name="labelQuantity" placeholder="1" max="100">
-      </div>
-      <div>
-        <input type="button" value="Add Item" onclick="addItem()" />
+        <input type="button" value="Add Item"
+          onclick="addItem(document.getElementById('labelText').value, document.getElementById('labelQuantity').value)" />
         <input type="button" value="Update" onclick="updateLabels()" />
         <input type="button" id="inputMultiple" value="Import List" onclick="toggleMultilineImport()">
       </div>
+      <div>
+        <div>
+          <input type="radio" id="editMode" name="mode" value="edit" onclick="toggleMode()">
+          <label for="editMode">Edit</label>
+        </div>
+        <div>
+          <input type="radio" id="moveMode" name="mode" value="move" onclick="toggleMode()">
+          <label for="moveMode">Move</label>
+        </div>
+        <div>
+          <input type="radio" id="deleteMode" name="mode" value="delete" onclick="toggleMode()">
+          <label for="deleteMode">Delete</label>
+        </div>
+      </div>
       <div id="orientation-control">
         <div>
-          <input type="radio" id="portrait" name="orientation" value="portrait" checked="checked" onclick="selectOrientation()">
+          <input type="radio" id="portrait" name="orientation" value="portrait" checked="checked"
+            onclick="selectOrientation()">
           <label for="portrait">Portrait</label>
         </div>
         <div>
