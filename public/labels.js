@@ -164,10 +164,10 @@ function selectOrientation() {
         labelOrientation = "landscape";
         cssPagedMedia.size("landscape");
     }
-    updateLabels();
 }
 
 function updateLabels() {
+    selectOrientation();
     // If label is empty, delete label
     var labelsListText = document.querySelectorAll(".text");
     var labelsList = document.querySelectorAll(".text-container");
