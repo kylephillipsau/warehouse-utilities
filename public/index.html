@@ -6,14 +6,128 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Warehouse Utilities</title>
-    <link rel="stylesheet" href="labels.css">
+    <style>
+        @font-face {
+            font-family: 'Glacial Indifference';
+            src: url('fonts/glacialindifference-regular-webfont.woff2') format('woff2'),
+                url('fonts/glacialindifference-regular-webfont.woff') format('woff');
+            font-weight: normal;
+            font-style: normal;
+        }
+
+        @font-face {
+            font-family: 'Glacial Indifference';
+            src: url('fonts/glacialindifference-bold-webfont.woff2') format('woff2'),
+                url('fonts/glacialindifference-bold-webfont.woff') format('woff');
+            font-weight: bold;
+            font-style: normal;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Glacial Indifference', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #84A98C;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            padding: 2rem 1rem;
+        }
+
+        h1 {
+            text-align: center;
+            color: #2D3A2E;
+            margin: 0 0 2rem 0;
+            font-size: clamp(1.5rem, 5vw, 2.5rem);
+        }
+
+        .utilities-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .utility-card {
+            background: white;
+            border: 3px solid #2D3A2E;
+            border-radius: 8px;
+            padding: 1.5rem;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .utility-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .utility-card a {
+            text-decoration: none;
+            color: #52489C;
+            font-weight: bold;
+            font-size: 1.25rem;
+            display: block;
+            text-align: center;
+        }
+
+        .utility-card a:hover {
+            color: #3d3574;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 1rem 0.75rem;
+            }
+
+            .utility-card {
+                padding: 1rem;
+            }
+        }
+
+        footer {
+            margin-top: auto;
+            padding: 1rem;
+            text-align: center;
+            color: #2D3A2E;
+            font-size: 0.875rem;
+        }
+
+        footer a {
+            color: #52489C;
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 
 <body>
-    <h1>Kyle's Warehouse Utilities</h1>
-    <ul>
-        <li class="text-container"><a class="text" href="labels.html">Label Maker</a></li>
-    </ul>
+    <div class="container">
+        <h1>Kyle's Warehouse Utilities</h1>
+        <ul class="utilities-grid">
+            <li class="utility-card">
+                <a href="labels.html">Label Maker</a>
+            </li>
+        </ul>
+    </div>
+    <footer>
+        Made by <a href="https://kyle.au">Kyle Phillips</a>
+    </footer>
 </body>
 
 </html>
