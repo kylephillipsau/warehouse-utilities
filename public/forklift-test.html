@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forklift Licence Practice Test</title>
+  <meta name="description"
+    content="Free forklift licence (LF class) practice test covering stability, load charts, pre-operational checks, safe operation and hazards.">
+  <link rel="stylesheet" href="forklift-test.css" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <script src="forklift-questions.js"></script>
+  <script src="forklift-test.js"></script>
+</head>
+
+<body>
+  <header id="site-header">
+    <h1>Forklift Licence Practice Test</h1>
+    <p class="tagline">Study for the LF (forklift truck) High Risk Work Licence</p>
+  </header>
+
+  <main class="container">
+
+    <!-- START SCREEN -->
+    <section id="screen-start" class="card">
+      <h2>Get started</h2>
+      <p>
+        Test your knowledge of forklift theory: stability and load rating,
+        pre-operational checks, safe operation, hazards, fuels and batteries,
+        communication and shutdown.
+      </p>
+
+      <fieldset>
+        <legend>Choose a mode</legend>
+        <label class="radio">
+          <input type="radio" name="mode" value="practice" checked>
+          <span>
+            <strong>Practice</strong> — every question, instant feedback and an
+            explanation after each answer.
+          </span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="mode" value="exam">
+          <span>
+            <strong>Exam simulation</strong> — 20 random questions, 20-minute
+            timer, 80% to pass. Feedback at the end.
+          </span>
+        </label>
+      </fieldset>
+
+      <div class="field">
+        <label for="categorySelect">Topic</label>
+        <select id="categorySelect"></select>
+      </div>
+
+      <button id="startBtn" class="btn primary">Start</button>
+
+      <p class="disclaimer">
+        Study material only, based on the Star Training &amp; Assessing LF
+        Forklift Study Guide (V6.0). This is not the official assessment and
+        does not replace accredited training with a Registered Training
+        Organisation. The real assessment is closed-book and worded
+        differently. Always follow your workplace procedures and current
+        WHS/OHS law. Powerline distances shown are the Victorian figures from
+        the guide.
+      </p>
+    </section>
+
+    <!-- QUIZ SCREEN -->
+    <section id="screen-quiz" class="card" style="display:none">
+      <div class="quiz-top">
+        <span id="progressText" class="progress-text"></span>
+        <span id="timer" class="timer"></span>
+      </div>
+      <div class="progress-track"><div id="progressBar" class="progress-fill"></div></div>
+
+      <p id="questionCategory" class="q-category"></p>
+      <p id="questionText" class="q-text"></p>
+
+      <ul id="options" class="options"></ul>
+
+      <div id="explanation" class="explanation" style="display:none"></div>
+
+      <div id="flash" class="flash" style="display:none"></div>
+
+      <div class="quiz-nav">
+        <button id="prevBtn" class="btn">Back</button>
+        <button id="skipBtn" class="btn ghost">Skip</button>
+        <button id="nextBtn" class="btn primary">Next</button>
+      </div>
+      <button id="quitBtn" class="btn link">Quit to start</button>
+    </section>
+
+    <!-- RESULTS SCREEN -->
+    <section id="screen-results" class="card" style="display:none">
+      <h2>Results</h2>
+      <p id="verdict" class="verdict"></p>
+      <p id="scoreLine" class="score-line"></p>
+      <p id="verdictNote" class="verdict-note"></p>
+
+      <div class="results-actions">
+        <button id="retryBtn" class="btn primary">Try again (same settings)</button>
+        <button id="restartBtn" class="btn">Change settings</button>
+      </div>
+
+      <h3>Review</h3>
+      <div id="review" class="review"></div>
+    </section>
+
+  </main>
+
+  <footer id="site-footer">
+    <a href="index.html">&larr; Warehouse Utilities</a>
+    <span>Made by <a href="https://kyle.au">Kyle Phillips</a></span>
+  </footer>
+</body>
+
+</html>
