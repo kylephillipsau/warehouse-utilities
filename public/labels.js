@@ -219,3 +219,23 @@ window.onafterprint = (event) => {
     // Display the header after printing has finished
     header.style.display = "flex";
 };
+
+// Toolbar drops a shadow once labels scroll beneath it
+window.addEventListener("scroll", () => {
+    document.getElementById("header").classList.toggle("scrolled", window.scrollY > 0);
+});
+
+// Re-fit label text live while it is being edited, so the size never jumps
+document.addEventListener("input", (event) => {
+    if (event.target.classList && event.target.classList.contains("text")) {
+        resizeText({ element: event.target, step: 0.5 });
+    }
+});
+
+// Clean up emptied labels once editing moves elsewhere (updateLabels also
+// runs before printing, so print output never includes empty labels)
+document.addEventListener("focusout", (event) => {
+    if (event.target.classList && event.target.classList.contains("text")) {
+        updateLabels();
+    }
+});
