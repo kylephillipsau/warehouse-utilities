@@ -71,13 +71,24 @@
     </div>
   </header>
 
-  <div id="multiline-input-container">
-    <textarea id="multiline-input" rows="20" cols="60" name="text" placeholder="Paste or enter text"></textarea>
-    <div>
-      <input id="multiline-input-submit" class="btn btn-primary" type="button" value="Import labels" onclick="multilineImport()">
-      <input id="multiline-input-cancel" class="btn" type="button" value="Cancel" onclick="multilineImportCancel()">
+  <dialog id="import-dialog">
+    <div id="import-dialog-body">
+      <span class="group-label">Import list</span>
+      <p id="import-hint">Paste or type below, one label per line, or drop in a text file.</p>
+      <textarea id="multiline-input" name="text" placeholder="AISLE 4&#10;RETURNS BAY&#10;DISPATCH"
+        oninput="updateImportCount()"></textarea>
+      <div id="file-drop" onclick="document.getElementById('import-file').click()">
+        Drag a text file here, or <span id="file-browse">browse</span>
+      </div>
+      <input type="file" id="import-file" accept=".txt,.csv,text/plain"
+        onchange="readImportFile(this.files[0]); this.value = '';" hidden>
+      <div id="import-actions">
+        <button type="button" class="btn" id="multiline-input-cancel" onclick="multilineImportCancel()">Cancel</button>
+        <button type="button" class="btn btn-primary" id="multiline-input-submit"
+          onclick="multilineImport()">Import labels</button>
+      </div>
     </div>
-  </div>
+  </dialog>
 
   <main id="labels-section">
     <ul id="labelList" class="printable"></ul>

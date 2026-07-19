@@ -125,27 +125,98 @@ function enterPress(event) {
     }
 }
 
-// Multiline Input Menu
+// Import dialog
+
+var IMPORT_HINT_DEFAULT = "Paste or type below, one label per line, or drop in a text file.";
 
 function toggleMultilineImport() {
-    document.getElementById('multiline-input-container').style.display = "block";;
-    document.getElementById('multiline-input').value = null;
+    document.getElementById("multiline-input").value = "";
+    document.getElementById("import-hint").textContent = IMPORT_HINT_DEFAULT;
+    updateImportCount();
+    document.getElementById("import-dialog").showModal();
+    document.getElementById("multiline-input").focus();
+}
+
+function importLines() {
+    return document.getElementById("multiline-input").value
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+}
+
+// The submit button doubles as a live preview of how many labels will land
+function updateImportCount() {
+    const count = importLines().length;
+    const submit = document.getElementById("multiline-input-submit");
+    submit.textContent = count === 0 ? "Import labels"
+        : count === 1 ? "Import 1 label"
+        : "Import " + count + " labels";
+    submit.disabled = count === 0;
 }
 
 function multilineImport() {
-    let textbox = document.getElementById('multiline-input').value;
-    let multiLabels = textbox.split(/\r?\n/);
-
-    for (let i = 0; i < multiLabels.length; i++) {
-        addItem(multiLabels[i], 1);
-    }
-
-    document.getElementById('multiline-input-container').style.display = "none";
+    const list = document.getElementById("labelList");
+    importLines().forEach(line => list.appendChild(createLabel(line)));
+    updateLabels();
+    document.getElementById("import-dialog").close();
 }
 
 function multilineImportCancel() {
-    document.getElementById('multiline-input-container').style.display = "none";;
+    document.getElementById("import-dialog").close();
 }
+
+// File import - reads into the textarea for review rather than importing
+// directly, appending if lines are already present
+function readImportFile(file) {
+    if (!file) { return; }
+    const looksLikeText = (file.type && file.type.startsWith("text/")) ||
+        (!file.type && /\.(txt|csv)$/i.test(file.name)) || /\.(txt|csv)$/i.test(file.name);
+    if (!looksLikeText) {
+        document.getElementById("import-hint").textContent =
+            "That file doesn't look like plain text. Use a .txt or .csv file.";
+        return;
+    }
+    file.text().then((text) => {
+        const box = document.getElementById("multiline-input");
+        const existing = box.value.trim();
+        box.value = existing ? existing + "\n" + text.trim() : text.trim();
+        document.getElementById("import-hint").textContent = IMPORT_HINT_DEFAULT;
+        updateImportCount();
+        box.focus();
+    });
+}
+
+// Drag & drop a text file anywhere on the page; preventDefault on dragover
+// also stops the browser navigating away (and losing the labels) on a
+// stray drop outside the dialog
+document.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    const drop = document.getElementById("file-drop");
+    if (drop) { drop.classList.add("dragover"); }
+});
+
+document.addEventListener("dragleave", (event) => {
+    if (!event.relatedTarget) {
+        const drop = document.getElementById("file-drop");
+        if (drop) { drop.classList.remove("dragover"); }
+    }
+});
+
+document.addEventListener("drop", (event) => {
+    event.preventDefault();
+    const drop = document.getElementById("file-drop");
+    if (drop) { drop.classList.remove("dragover"); }
+    const file = event.dataTransfer && event.dataTransfer.files[0];
+    if (!file) { return; }
+    if (!document.getElementById("import-dialog").open) { toggleMultilineImport(); }
+    readImportFile(file);
+});
+
+// Clicking the dimmed backdrop closes the dialog (such clicks target the
+// dialog element itself rather than its contents)
+document.addEventListener("click", (event) => {
+    if (event.target.id === "import-dialog") { event.target.close(); }
+});
 
 // Page Orientation Changer
 

@@ -35,7 +35,8 @@
 
     /* Screen-only management chrome must never reach paper */
     .label-tools,
-    #undo-toast {
+    #undo-toast,
+    #import-dialog {
         display: none !important;
     }
 
@@ -61,11 +62,11 @@ body {
     background-color: var(--sage);
 }
 
-/* The new ink text colour is scoped to the chrome (header + import modal) so
+/* The new ink text colour is scoped to the chrome (header + import dialog) so
    the labels themselves keep their original black text and borders, on screen
    and in print. */
 header,
-#multiline-input-container {
+#import-dialog {
     color: var(--ink);
 }
 
@@ -328,37 +329,78 @@ input[type="number"] {
     }
 }
 
-#multiline-input-container {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: none;
-    z-index: 20;
+#import-dialog {
+    width: min(34rem, calc(100vw - 2rem));
+    padding: 0;
     background: var(--paper);
+    color: var(--ink);
     border: 3px solid var(--ink);
     border-radius: 10px;
-    padding: 1rem;
-    box-shadow: 0 8px 24px rgba(45, 58, 46, 0.35);
+    box-shadow: 0 12px 32px rgba(45, 58, 46, 0.4);
 }
 
-#multiline-input-container>div {
+#import-dialog::backdrop {
+    background: rgba(45, 58, 46, 0.55);
+}
+
+#import-dialog-body {
     display: flex;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1.25rem;
+}
+
+#import-hint {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
 }
 
 #multiline-input {
     font-family: "Glacial Indifference", sans-serif;
-    max-width: 80vw;
+    font-size: 0.95rem;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 12rem;
+    resize: vertical;
     border: 2px solid var(--ink);
     border-radius: 6px;
-    padding: 0.5rem;
+    padding: 0.5rem 0.6rem;
 }
 
-#multiline-input-submit,
-#multiline-input-cancel {
-    width: 50%;
+#file-drop {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.65rem;
+    font-size: 0.85rem;
+    border: 2px dashed rgba(45, 58, 46, 0.45);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+#file-drop.dragover {
+    border-color: var(--purple);
+    background: rgba(82, 72, 156, 0.08);
+}
+
+#file-browse {
+    color: var(--purple);
+    font-weight: bold;
+    text-decoration: underline;
+}
+
+#import-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.btn:disabled {
+    opacity: 0.45;
+    pointer-events: none;
 }
 
 ul {
