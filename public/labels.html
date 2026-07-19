@@ -43,6 +43,26 @@
         </div>
       </div>
       <div class="control-group">
+        <span class="group-label">Label size</span>
+        <div class="group-row">
+          <select id="label-size" aria-label="Label size preset" onchange="labelSizeChanged()">
+            <option value="standard">Standard (100 &times; 22 mm)</option>
+            <option value="address">Address (89 &times; 28 mm)</option>
+            <option value="large-address">Large address (89 &times; 36 mm)</option>
+            <option value="shipping">Shipping (100 &times; 150 mm)</option>
+            <option value="custom">Custom&hellip;</option>
+          </select>
+          <span id="custom-size" hidden>
+            <input type="number" id="custom-width" min="10" max="500" step="0.5"
+              aria-label="Label width in millimetres" oninput="labelSizeChanged()">
+            &times;
+            <input type="number" id="custom-height" min="10" max="500" step="0.5"
+              aria-label="Label height in millimetres" oninput="labelSizeChanged()">
+            mm
+          </span>
+        </div>
+      </div>
+      <div class="control-group">
         <span class="group-label">Page</span>
         <div class="segmented">
           <input type="radio" id="portrait" name="orientation" value="portrait" onclick="updateLabels()">

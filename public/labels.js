@@ -218,6 +218,86 @@ document.addEventListener("click", (event) => {
     if (event.target.id === "import-dialog") { event.target.close(); }
 });
 
+// Label size presets - "standard" leaves the stylesheet defaults untouched
+// (100 x 22 mm, widening to 143 mm in landscape) so the built-in size can
+// never drift; every other size fixes the width for both orientations
+
+var LABEL_SIZE_PRESETS = {
+    "address": { width: 89, height: 28 },
+    "large-address": { width: 89, height: 36 },
+    "shipping": { width: 100, height: 150 },
+};
+
+var LABEL_SIZE_STORAGE_KEY = "labelMakerSize";
+
+function clampMm(value, fallback) {
+    const n = parseFloat(value);
+    return isNaN(n) ? fallback : Math.min(500, Math.max(10, n));
+}
+
+function applyLabelSize() {
+    const preset = document.getElementById("label-size").value;
+    document.getElementById("custom-size").hidden = preset !== "custom";
+
+    let size = LABEL_SIZE_PRESETS[preset] || null;
+    if (preset === "custom") {
+        size = {
+            width: clampMm(document.getElementById("custom-width").value, 100),
+            height: clampMm(document.getElementById("custom-height").value, 22),
+        };
+    }
+
+    const root = document.documentElement.style;
+    if (size) {
+        root.setProperty("--label-w", size.width + "mm");
+        root.setProperty("--label-w-landscape", size.width + "mm");
+        root.setProperty("--label-h", size.height + "mm");
+    } else {
+        root.removeProperty("--label-w");
+        root.removeProperty("--label-w-landscape");
+        root.removeProperty("--label-h");
+    }
+    updateLabels();
+}
+
+function labelSizeChanged() {
+    // First switch to custom starts from the standard size rather than blank
+    if (document.getElementById("label-size").value === "custom") {
+        const w = document.getElementById("custom-width");
+        const h = document.getElementById("custom-height");
+        if (w.value === "") { w.value = 100; }
+        if (h.value === "") { h.value = 22; }
+    }
+    applyLabelSize();
+    saveLabelSize();
+}
+
+function saveLabelSize() {
+    try {
+        localStorage.setItem(LABEL_SIZE_STORAGE_KEY, JSON.stringify({
+            preset: document.getElementById("label-size").value,
+            width: document.getElementById("custom-width").value,
+            height: document.getElementById("custom-height").value,
+        }));
+    } catch (e) { /* storage unavailable (private mode etc.) - size just won't persist */ }
+}
+
+function restoreLabelSize() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(LABEL_SIZE_STORAGE_KEY));
+        if (!saved) { return; }
+        const select = document.getElementById("label-size");
+        if ([...select.options].some(o => o.value === saved.preset)) {
+            select.value = saved.preset;
+        }
+        if (saved.width) { document.getElementById("custom-width").value = saved.width; }
+        if (saved.height) { document.getElementById("custom-height").value = saved.height; }
+        applyLabelSize();
+    } catch (e) { /* corrupt saved value - fall back to the default size */ }
+}
+
+window.addEventListener("DOMContentLoaded", restoreLabelSize);
+
 // Page Orientation Changer
 
 var labelOrientation = "portrait";

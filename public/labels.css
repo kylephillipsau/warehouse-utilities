@@ -180,7 +180,8 @@ footer {
 }
 
 input[type="text"],
-input[type="number"] {
+input[type="number"],
+select {
     font-family: inherit;
     font-size: 0.95rem;
     color: var(--ink);
@@ -188,6 +189,22 @@ input[type="number"] {
     background: white;
     border: 2px solid var(--ink);
     border-radius: 6px;
+}
+
+#custom-size {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+}
+
+#custom-size[hidden] {
+    display: none;
+}
+
+#custom-width,
+#custom-height {
+    width: 5ch;
 }
 
 #labelQuantity {
@@ -534,15 +551,17 @@ li.text-container:focus-within .label-tools {
     display: inline-block;
 }
 
+/* Fallback values are the original built-in size; presets and custom sizes
+   set these variables from JS and the default stays byte-identical */
 .text-container {
-    width: 100mm;
-    height: 22mm;
+    width: var(--label-w, 100mm);
+    height: var(--label-h, 22mm);
     /* resize: vertical; */
     border: 2px solid;
 }
 
 .landscape {
-    width: 143mm;
+    width: var(--label-w-landscape, 143mm);
 }
 
 .text {
