@@ -32,6 +32,17 @@
     .printable * {
         visibility: visible;
     }
+
+    /* Screen-only management chrome must never reach paper */
+    .label-tools,
+    #undo-toast {
+        display: none !important;
+    }
+
+    /* A label focused for editing at print time keeps its plain look */
+    .text-container {
+        background: white !important;
+    }
 }
 
 :root {
@@ -245,24 +256,25 @@ input[type="number"] {
     color: var(--paper);
 }
 
-#deleteMode:checked+label {
-    background: var(--orange);
-}
-
 .segmented input:focus-visible+label {
     outline: 3px solid var(--purple);
     outline-offset: -3px;
 }
 
+#export-button,
 #print-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    margin-left: auto;
     padding: 0.45rem 1rem;
 }
 
+#export-button {
+    margin-left: auto;
+}
+
+#export-button svg,
 #print-button svg {
     width: 1.1em;
     height: 1.1em;
@@ -309,6 +321,7 @@ input[type="number"] {
         padding-top: 0.75rem;
     }
 
+    #export-button,
     #print-button {
         margin-left: 0;
         justify-content: center;
@@ -376,19 +389,96 @@ li {
     outline: none;
 }
 
-.draggableLabels li.hint {
-    border: 2px solid #ffc49a;
-    background: #feffb4;
+li.text-container {
+    position: relative;
 }
 
-.draggableLabels li.active {
-    border: 2px solid #ffa5a5;
-    background: #ffe7e7;
+li.dragging {
+    opacity: 0.75;
+    outline: 3px dashed var(--purple);
+    outline-offset: 2px;
 }
 
-.deleteMode:hover {
-    background: #ffa5a5;
-    border: 2px solid #FF0000;
+/* Hover/focus strip for per-label actions; absolutely positioned inside the
+   label box so it never affects layout or the text-fitting measurements */
+.label-tools {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+}
+
+li.text-container:hover .label-tools,
+li.text-container:focus-within .label-tools {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.label-tools button {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 1;
+    color: var(--ink);
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.label-tools button:hover {
+    background: var(--amber);
+}
+
+.tool-drag {
+    cursor: grab;
+    touch-action: none;
+}
+
+#undo-toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.25rem;
+    transform: translateX(-50%) translateY(0.5rem);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 0.6rem 0.75rem 0.6rem 1rem;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(45, 58, 46, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 30;
+}
+
+#undo-toast.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateX(-50%);
+}
+
+#undo-toast .btn {
+    padding: 0.25rem 0.7rem;
+    background: transparent;
+    color: var(--amber);
+    border-color: var(--amber);
+}
+
+#undo-toast .btn:hover {
+    background: rgba(232, 194, 74, 0.15);
 }
 
 .parent {

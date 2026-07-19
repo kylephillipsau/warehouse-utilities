@@ -16,54 +16,48 @@ const resizeText = ({ element, elements, minSize = 10, maxSize = 512, step = 1, 
 
 const isOverflown = ({ clientWidth, clientHeight, scrollWidth, scrollHeight }) => (scrollWidth > clientWidth) || (scrollHeight > clientHeight)
 
-// Label movement
-function dragLabels(target) {
-    target.classList.add("draggableLabels");
-    let items = target.getElementsByTagName("li"), current = null;
+// Label movement - drag a label by its handle to reorder, mouse or touch
+function startLabelDrag(li, startEvent) {
+    startEvent.preventDefault();
+    const list = document.getElementById("labelList");
+    li.classList.add("dragging");
 
-    for (let i of items) {
-        i.draggable = true;
+    const move = (ev) => {
+        const target = [...list.children].filter(el => el !== li)
+            .find(el => ev.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2);
+        if (target) { list.insertBefore(li, target); } else { list.appendChild(li); }
+    };
+    const stop = () => {
+        li.classList.remove("dragging");
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", stop);
+        document.removeEventListener("pointercancel", stop);
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", stop);
+    document.addEventListener("pointercancel", stop);
+}
 
-        i.ondragstart = (ev) => {
-            current = i;
-            for (let it of items) {
-                if (it != current) { it.classList.add("hint"); }
-            }
-        };
+function createLabel(text) {
+    var item = document.createElement("li");
+    item.classList.add('text-container');
 
-        i.ondragenter = (ev) => {
-            if (i != current) { i.classList.add("active"); }
-        };
+    var itemText = document.createElement("span");
+    itemText.classList.add('text');
+    itemText.contentEditable = true;
+    itemText.innerHTML = text;
+    item.appendChild(itemText);
 
-        i.ondragleave = () => {
-            i.classList.remove("active");
-        };
-
-        i.ondragend = () => {
-            for (let it of items) {
-                it.classList.remove("hint");
-                it.classList.remove("active");
-            }
-        };
-
-        i.ondragover = (evt) => { evt.preventDefault(); };
-
-        i.ondrop = (evt) => {
-            evt.preventDefault();
-            if (i != current) {
-                let currentpos = 0, droppedpos = 0;
-                for (let it = 0; it < items.length; it++) {
-                    if (current == items[it]) { currentpos = it; }
-                    if (i == items[it]) { droppedpos = it; }
-                }
-                if (currentpos < droppedpos) {
-                    i.parentNode.insertBefore(current, i.nextSibling);
-                } else {
-                    i.parentNode.insertBefore(current, i);
-                }
-            }
-        };
-    }
+    // Screen-only management strip; hidden by the print stylesheet and
+    // positioned inside the label box so text fitting is unaffected
+    var tools = document.createElement("div");
+    tools.className = "label-tools";
+    tools.innerHTML =
+        '<button type="button" class="tool-drag" title="Drag to reorder" aria-label="Drag to reorder">&#10495;</button>' +
+        '<button type="button" class="tool-duplicate" title="Duplicate label" aria-label="Duplicate label">&#10697;</button>' +
+        '<button type="button" class="tool-delete" title="Delete label" aria-label="Delete label">&times;</button>';
+    item.appendChild(tools);
+    return item;
 }
 
 function addItem(text, quantity) {
@@ -75,20 +69,54 @@ function addItem(text, quantity) {
     }
 
     for (let i = 0; i < quantity; i++) {
-        var item = document.createElement("li");
-        document.getElementById("labelList").appendChild(item);
-        var itemText = document.createElement("span")
-        item.appendChild(itemText)
-        itemText.innerHTML = text;
-        item.classList.add('text-container');
-
-        itemText.classList.add('text');
+        document.getElementById("labelList").appendChild(createLabel(text));
     }
     document.getElementById("labelText").value = null;
     // document.getElementById("subText").value = null;
     document.getElementById("labelQuantity").value = null;
     document.getElementById("labelText").focus();
     updateLabels();
+}
+
+function duplicateLabel(li) {
+    li.after(createLabel(li.querySelector(".text").innerHTML));
+    updateLabels();
+}
+
+// Deleting is immediate but undoable via a transient toast
+var deletedLabels = [];
+var undoToastTimer = null;
+
+function deleteLabel(li) {
+    deletedLabels.push({ node: li, next: li.nextElementSibling });
+    li.remove();
+    document.getElementById("undo-toast").classList.add("visible");
+    clearTimeout(undoToastTimer);
+    undoToastTimer = setTimeout(hideUndoToast, 6000);
+}
+
+function hideUndoToast() {
+    document.getElementById("undo-toast").classList.remove("visible");
+    deletedLabels = [];
+}
+
+function undoDelete() {
+    const last = deletedLabels.pop();
+    if (last) {
+        const list = document.getElementById("labelList");
+        if (last.next && last.next.parentElement === list) {
+            list.insertBefore(last.node, last.next);
+        } else {
+            list.appendChild(last.node);
+        }
+        updateLabels();
+    }
+    if (deletedLabels.length === 0) {
+        hideUndoToast();
+    } else {
+        clearTimeout(undoToastTimer);
+        undoToastTimer = setTimeout(hideUndoToast, 6000);
+    }
 }
 
 function enterPress(event) {
@@ -117,24 +145,6 @@ function multilineImport() {
 
 function multilineImportCancel() {
     document.getElementById('multiline-input-container').style.display = "none";;
-}
-
-// Mode selector
-
-var mode = null
-
-function toggleMode() {
-    var1 = document.getElementById("editMode");
-    var2 = document.getElementById("moveMode");
-    var3 = document.getElementById("deleteMode");
-    if (var1.checked === true) {
-        mode = "edit"
-    } else if (var2.checked === true) {
-        mode = "move"
-    } else if (var3.checked === true) {
-        mode = "delete"
-    }
-    updateLabels();
 }
 
 // Page Orientation Changer
@@ -184,28 +194,21 @@ function updateLabels() {
             labelsList[i].classList.remove("landscape");
         }
 
-        if (mode == "edit") { // Text Edit Mode
-            labelsListText[i].contentEditable = true;
-        } else {
-            labelsListText[i].contentEditable = false;
-        }
-
-        if (mode == "move") { // Label Rearranging Mode
-            dragLabels(document.getElementById("labelList"));
-        } else {
-            document.getElementById("labelList").classList.remove("draggableLabels");
-            labelsList[i].draggable = false;
-        }
-
-        if (mode == "delete") { // Click labels to delete mode
-            labelsList[i].setAttribute("onclick","this.remove();");
-            labelsList[i].classList.add("deleteMode");
-        } else {
-            labelsList[i].removeAttribute("onclick");
-            labelsList[i].classList.remove("deleteMode");
-        }
+        labelsListText[i].contentEditable = true;
     }
     resizeText({ elements: document.querySelectorAll('.text'), step: 0.5 })
+}
+
+// Export the current labels as a plain text file, one label per line,
+// matching the Import list format so a file can round-trip back in
+function exportList() {
+    const lines = [...document.querySelectorAll("#labelList .text")].map(t => t.textContent);
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "labels.txt";
+    link.click();
+    URL.revokeObjectURL(link.href);
 }
 
 // Printing Functions
@@ -236,6 +239,44 @@ document.addEventListener("input", (event) => {
 // runs before printing, so print output never includes empty labels)
 document.addEventListener("focusout", (event) => {
     if (event.target.classList && event.target.classList.contains("text")) {
+        if (event.target.textContent.trim().length === 0) {
+            event.target.innerHTML = ""; // normalise leftover <br> so removal triggers
+        }
         updateLabels();
+    }
+});
+
+// Per-label tool strip, handled by delegation so duplicated labels work too
+document.addEventListener("click", (event) => {
+    const button = event.target.closest ? event.target.closest(".label-tools button") : null;
+    if (!button) { return; }
+    const li = button.closest("li.text-container");
+    if (button.classList.contains("tool-delete")) {
+        deleteLabel(li);
+    } else if (button.classList.contains("tool-duplicate")) {
+        duplicateLabel(li);
+    }
+});
+
+document.addEventListener("pointerdown", (event) => {
+    const handle = event.target.closest ? event.target.closest(".tool-drag") : null;
+    if (handle) {
+        startLabelDrag(handle.closest("li.text-container"), event);
+    }
+});
+
+// Keyboard reordering on the drag handle
+document.addEventListener("keydown", (event) => {
+    const handle = event.target.classList && event.target.classList.contains("tool-drag") ? event.target : null;
+    if (!handle) { return; }
+    const li = handle.closest("li.text-container");
+    if (event.key === "ArrowUp" && li.previousElementSibling) {
+        li.previousElementSibling.before(li);
+        handle.focus();
+        event.preventDefault();
+    } else if (event.key === "ArrowDown" && li.nextElementSibling) {
+        li.nextElementSibling.after(li);
+        handle.focus();
+        event.preventDefault();
     }
 });
