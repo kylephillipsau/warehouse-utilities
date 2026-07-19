@@ -5,10 +5,10 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Label Maker V2</title>
+  <title>Kyle's Label Maker</title>
   <link rel="stylesheet" href="labels.css" />
   <script src="labels.js"></script>
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/x-icon" href="../favicon.ico">
   <!-- <link rel="preload" href="fonts/glacialindifference-bold-webfont.woff" as="font" type="font/woff"
     crossorigin="anonymous">
   <link rel="preload" href="fonts/glacialindifference-regular-webfont.woff" as="font" type="font/woff"
@@ -22,54 +22,64 @@
 <body>
   <header id="header">
     <div id="details-panel">
-      <h1 id="heading">Label Maker V2</h1>
+      <h1 id="heading">Kyle's Label Maker</h1>
       <div id="subtitle">
-        <a id="home" href="index.html">Home</a>
-        <a id="source" href="https://github.com/kylephillipsau/warehouse-utilities">Source</a>
-        <a id="old-version" href="old/labels.html">v1</a>
+        <span id="version">Version v1.1.1</span>
+        <a id="source" href="https://gitlab.com/kylephillips/warehouse-utilities/">Source Code</a>
       </div>
     </div>
     <div id="controls">
-      <div class="control-group">
-        <span class="group-label">New label</span>
-        <div class="group-row">
-          <input type="text" id="labelText" name="labelText" placeholder="Label text" aria-label="Label text"
+      <div class="label-text-container">
+        <div>
+          <label for="labeText">Label Text</label>
+          <input type="text" id="labelText" name="labelText" onkeypress="enterPress(event)"><br>
+        </div>
+        <!-- <div>
+          <label for="suburbText">Suburb Text</label>
+          <input type="text" id="suburbText" name="suburbText" onkeypress="enterPress(event)">
+        </div> -->
+        <div>
+          <label for="labelQuantity">Quantity</label>
+          <input type="number" id="labelQuantity" name="labelQuantity" placeholder="1" min="1" max="100"
             onkeypress="enterPress(event)">
-          <input type="number" id="labelQuantity" name="labelQuantity" placeholder="Qty" aria-label="Quantity" min="1"
-            max="100" onkeypress="enterPress(event)">
-          <input type="button" class="btn btn-primary" value="Add"
-            onclick="addItem(document.getElementById('labelText').value, document.getElementById('labelQuantity').value)" />
-          <input type="button" class="btn" id="inputMultiple" value="Import list" onclick="toggleMultilineImport()">
         </div>
       </div>
-      <div class="control-group">
-        <span class="group-label">Mode</span>
-        <div class="segmented">
+      <div>
+        <input type="button" value="Add Item"
+          onclick="addItem(document.getElementById('labelText').value, document.getElementById('labelQuantity').value)" />
+        <input type="button" value="Update" onclick="updateLabels()" />
+        <input type="button" id="inputMultiple" value="Import List" onclick="toggleMultilineImport()">
+      </div>
+      <div>
+        <div>
           <input type="radio" id="editMode" name="mode" value="edit" onclick="toggleMode()">
           <label for="editMode">Edit</label>
+        </div>
+        <div>
           <input type="radio" id="moveMode" name="mode" value="move" onclick="toggleMode()">
           <label for="moveMode">Move</label>
+        </div>
+        <div>
           <input type="radio" id="deleteMode" name="mode" value="delete" onclick="toggleMode()">
           <label for="deleteMode">Delete</label>
         </div>
       </div>
-      <div class="control-group">
-        <span class="group-label">Page</span>
-        <div class="segmented">
+      <div id="orientation-control">
+        <div>
           <input type="radio" id="portrait" name="orientation" value="portrait" onclick="updateLabels()">
           <label for="portrait">Portrait</label>
-          <input type="radio" id="landscape" name="orientation" value="landscape" checked="checked"
-            onclick="updateLabels()">
+        </div>
+        <div>
+          <input type="radio" id="landscape" name="orientation" value="landscape" checked="checked" onclick="updateLabels()">
           <label for="landscape">Landscape</label>
         </div>
       </div>
-      <button id="print-button" class="btn" onclick="window.print()">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
+      <button id="print-button" onclick="window.print()">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
           <!--! Font Awesome Pro 6.1.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2022 Fonticons, Inc. -->
           <path
             d="M448 192H64C28.65 192 0 220.7 0 256v96c0 17.67 14.33 32 32 32h32v96c0 17.67 14.33 32 32 32h320c17.67 0 32-14.33 32-32v-96h32c17.67 0 32-14.33 32-32V256C512 220.7 483.3 192 448 192zM384 448H128v-96h256V448zM432 296c-13.25 0-24-10.75-24-24c0-13.27 10.75-24 24-24s24 10.73 24 24C456 285.3 445.3 296 432 296zM128 64h229.5L384 90.51V160h64V77.25c0-8.484-3.375-16.62-9.375-22.62l-45.25-45.25C387.4 3.375 379.2 0 370.8 0H96C78.34 0 64 14.33 64 32v128h64V64z" />
         </svg>
-        Print
       </button>
     </div>
   </header>
@@ -77,8 +87,8 @@
   <div id="multiline-input-container">
     <textarea id="multiline-input" rows="20" cols="60" name="text" placeholder="Paste or enter text"></textarea>
     <div>
-      <input id="multiline-input-submit" class="btn btn-primary" type="button" value="Import labels" onclick="multilineImport()">
-      <input id="multiline-input-cancel" class="btn" type="button" value="Cancel" onclick="multilineImportCancel()">
+      <input id="multiline-input-submit" type="button" value="Import Labels" onclick="multilineImport()">
+      <input id="multiline-input-cancel" type="button" value="Cancel" onclick="multilineImportCancel()">
     </div>
   </div>
 

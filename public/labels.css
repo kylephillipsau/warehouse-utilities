@@ -111,13 +111,26 @@ footer {
 
 #subtitle {
     display: flex;
-    gap: 0.75rem;
-    font-size: 0.75rem;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.7rem;
 }
 
 #subtitle a {
     color: var(--purple);
     font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    text-decoration: none;
+}
+
+#subtitle a:hover {
+    text-decoration: underline;
+}
+
+#subtitle a+a {
+    border-left: 1px solid rgba(45, 58, 46, 0.25);
+    padding-left: 0.5rem;
 }
 
 #controls {
