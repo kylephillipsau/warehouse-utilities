@@ -250,12 +250,16 @@ function applyLabelSize() {
     const root = document.documentElement.style;
     if (size) {
         root.setProperty("--label-w", size.width + "mm");
-        root.setProperty("--label-w-landscape", size.width + "mm");
         root.setProperty("--label-h", size.height + "mm");
+        // Landscape rotates a preset/custom label 90 degrees; only the
+        // built-in standard size keeps its legacy widen-to-143mm behaviour
+        root.setProperty("--label-w-landscape", size.height + "mm");
+        root.setProperty("--label-h-landscape", size.width + "mm");
     } else {
         root.removeProperty("--label-w");
-        root.removeProperty("--label-w-landscape");
         root.removeProperty("--label-h");
+        root.removeProperty("--label-w-landscape");
+        root.removeProperty("--label-h-landscape");
     }
     updateLabels();
 }

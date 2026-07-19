@@ -562,6 +562,7 @@ li.text-container:focus-within .label-tools {
 
 .landscape {
     width: var(--label-w-landscape, 143mm);
+    height: var(--label-h-landscape, var(--label-h, 22mm));
 }
 
 .text {
