@@ -29,6 +29,20 @@ export function savePage(page) {
     catch (e) { /* storage unavailable */ }
 }
 
+const DIVISIONS_KEY = 'labelMakerDivisions';
+
+export function loadDivisions() {
+    try {
+        const v = parseInt(localStorage.getItem(DIVISIONS_KEY), 10);
+        return isNaN(v) ? null : v;
+    } catch (e) { return null; }
+}
+
+export function saveDivisions(n) {
+    try { localStorage.setItem(DIVISIONS_KEY, String(n)); }
+    catch (e) { /* storage unavailable */ }
+}
+
 export function loadPresets() {
     try {
         const v = JSON.parse(localStorage.getItem(PRESETS_KEY));

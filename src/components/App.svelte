@@ -11,7 +11,7 @@
 
     // Push the resolved page + label sizes into root CSS vars and persist them
     $effect(() => {
-        applySize(store.page, store.size, store.orientation);
+        applySize(store.page, store.divisions, store.orientation);
         persistSize();
     });
 

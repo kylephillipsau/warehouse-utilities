@@ -2,8 +2,8 @@
 // mini toolbars, the Adjust dialog, the preset library, import/export — reads
 // and writes this one reactive store, so there is no manual cross-surface sync.
 import { normalizeAdjust } from './adjust.js';
-import { loadPresets, savePresets, loadSize, saveSize, loadPage, savePage, newId } from './persistence.js';
-import { DEFAULT_LABEL, DEFAULT_PAGE } from './size.js';
+import { loadPresets, savePresets, loadPage, savePage, loadDivisions, saveDivisions, newId } from './persistence.js';
+import { DEFAULT_PAGE, DEFAULT_DIVISIONS, clampDivisions } from './size.js';
 
 function initialSpec(saved, fallback) {
     return {
@@ -17,8 +17,8 @@ function initialSpec(saved, fallback) {
 export const store = $state({
     labels: [],
     presets: loadPresets(),
-    size: initialSpec(loadSize(), DEFAULT_LABEL),   // label / segment size
     page: initialSpec(loadPage(), DEFAULT_PAGE),    // physical media / page size
+    divisions: loadDivisions() ? clampDivisions(loadDivisions()) : DEFAULT_DIVISIONS,
     orientation: 'landscape',
 });
 
@@ -117,8 +117,8 @@ export function moveLabel(id, toIndex) {
 // ---- Size & orientation ----
 
 export function persistSize() {
-    saveSize({ preset: store.size.preset, width: store.size.width, height: store.size.height, unit: store.size.unit });
     savePage({ preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit });
+    saveDivisions(store.divisions);
 }
 
 // ---- Preset library ----

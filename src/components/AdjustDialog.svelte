@@ -79,13 +79,14 @@
     function onDialogClick(event) { if (event.target === dlg) { closeAdjust(); } }
 </script>
 
-<dialog id="adjust-dialog" bind:this={dlg} use:dialogSync={open} onclose={closeAdjust} onclick={onDialogClick}>
-    <div id="adjust-dialog-body">
+<dialog id="adjust-dialog" class="dialog dialog-wide" bind:this={dlg} use:dialogSync={open} onclose={closeAdjust} onclick={onDialogClick}>
+    <div class="flex flex-col gap-[0.85rem] p-5">
         <span class="group-label">Edit image</span>
 
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
             id="adjust-preview"
+            class="adjust-preview"
             bind:this={previewEl}
             aria-label="Image preview — drag to reposition, double-click to recentre"
             style="width:{previewW}px;height:{previewH}px"
@@ -93,14 +94,14 @@
             ondblclick={recenter}
         >
             {#if label}
-                <div class="text-container adjust-sample" style={adjustStyle(working)}>
+                <div class="text-container" style={adjustStyle(working)}>
                     <LabelCanvas image={label.image} text={label.text} adjust={working} />
                 </div>
             {/if}
         </div>
-        <p id="adjust-hint">Drag the image to reposition. Double-click to recentre.</p>
+        <p id="adjust-hint" class="m-0 text-[0.85rem] leading-[1.4] min-h-[1.2em]">Drag the image to reposition. Double-click to recentre.</p>
 
-        <div class="adjust-controls">
+        <div class="flex flex-wrap gap-x-5 gap-y-3">
             <div class="control-group">
                 <span class="group-label">Scale</span>
                 <div class="segmented">
@@ -112,12 +113,14 @@
             </div>
             <div class="control-group">
                 <span class="group-label">Position</span>
-                <div id="adj-align-grid">
+                <div id="adj-align-grid" class="grid grid-cols-3 gap-[3px] w-fit">
                     {#each ALIGN_CELLS as a}
                         <button
                             type="button"
-                            class="adj-align"
-                            class:active={working.posX === a.x && working.posY === a.y}
+                            class="w-[22px] h-[22px] p-0 border-2 rounded-[4px] cursor-pointer
+                                   {working.posX === a.x && working.posY === a.y
+                                       ? 'bg-purple border-purple'
+                                       : 'bg-paper border-ink hover:bg-ink/[0.08]'}"
                             data-x={a.x}
                             data-y={a.y}
                             aria-label={`Align ${a.x} ${a.y}`}
@@ -126,17 +129,17 @@
                     {/each}
                 </div>
             </div>
-            <div class="control-group" id="adj-zoom-group">
-                <span class="group-label">Size <span class="zoom-readout">{Math.round(working.zoom * 100)}%</span></span>
-                <input type="range" id="adj-zoom" min={ZOOM_MIN * 100} max={ZOOM_MAX * 100} step="1" value={Math.round(working.zoom * 100)} oninput={setZoom} aria-label="Image size" />
+            <div class="control-group flex-[1_1_12rem]" id="adj-zoom-group">
+                <span class="group-label">Size <span class="font-normal text-ink/60">{Math.round(working.zoom * 100)}%</span></span>
+                <input type="range" id="adj-zoom" class="w-48 max-w-full accent-purple" min={ZOOM_MIN * 100} max={ZOOM_MAX * 100} step="1" value={Math.round(working.zoom * 100)} oninput={setZoom} aria-label="Image size" />
             </div>
         </div>
 
-        <div id="adjust-actions">
+        <div class="flex flex-wrap items-center gap-2">
             <button type="button" class="btn" id="adj-replace" onclick={replace}>Replace image&hellip;</button>
             <button type="button" class="btn" id="adj-remove" onclick={remove}>Remove image</button>
             <button type="button" class="btn" id="adj-reset" onclick={reset}>Reset</button>
-            <span class="adjust-actions-spacer"></span>
+            <span class="flex-1"></span>
             <button type="button" class="btn" id="adj-cancel" onclick={closeAdjust}>Cancel</button>
             <button type="button" class="btn btn-primary" id="adj-apply" onclick={done}>Done</button>
         </div>

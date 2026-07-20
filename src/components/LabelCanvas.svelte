@@ -25,8 +25,8 @@
     // Re-fit trigger; the box also resizes on size/orientation change (handled
     // by the ResizeObserver inside the fitText action)
     const fitKey = $derived(
-        `${text}|${store.size.preset}|${store.size.width}|${store.size.height}|` +
-        `${store.orientation}|${hasImage ? 1 : 0}`
+        `${text}|${store.page.preset}|${store.page.width}|${store.page.height}|` +
+        `${store.divisions}|${store.orientation}|${hasImage ? 1 : 0}`
     );
 </script>
 
@@ -62,7 +62,13 @@
     {:else}
         <div class="label-empty">
             <span class="text label-empty-text" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Type a label"></span>
-            <button type="button" class="label-add-image" onclick={onAddImage}>&#43; Add image</button>
+            <button
+                type="button"
+                class="label-add-image font-bold text-[0.8rem] text-ink bg-paper border-2 border-dashed
+                       border-ink/50 rounded-md px-[0.7rem] py-[0.3rem] cursor-pointer
+                       hover:border-purple hover:text-purple"
+                onclick={onAddImage}
+            >&#43; Add image</button>
         </div>
     {/if}
 </div>

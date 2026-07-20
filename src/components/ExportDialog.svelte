@@ -32,21 +32,21 @@
     }
 </script>
 
-<dialog id="export-dialog" bind:this={dlg} use:dialogSync={ui.exportOpen} onclose={() => { ui.exportOpen = false; }} onclick={onDialogClick}>
-    <div id="export-dialog-body">
+<dialog id="export-dialog" class="dialog" bind:this={dlg} use:dialogSync={ui.exportOpen} onclose={() => { ui.exportOpen = false; }} onclick={onDialogClick}>
+    <div class="flex flex-col gap-3 p-5">
         <span class="group-label">Save labels</span>
-        <p id="export-hint">
+        <p class="m-0 text-[0.9rem] leading-[1.4]">
             {#if hasImages}
                 Your labels include images - save a label file to keep them. Plain text saves the words only.
             {:else}
                 Save a label file to keep images later, or plain text for a simple list.
             {/if}
         </p>
-        <div id="export-actions">
-            <button type="button" class="btn" class:btn-primary={hasImages} id="export-json" onclick={exportJson}>Label file (.json)</button>
-            <button type="button" class="btn" class:btn-primary={!hasImages} id="export-text" onclick={exportText}>Plain text (.txt)</button>
+        <div class="flex flex-wrap gap-2">
+            <button type="button" class="btn flex-[1_1_12rem]" class:btn-primary={hasImages} id="export-json" onclick={exportJson}>Label file (.json)</button>
+            <button type="button" class="btn flex-[1_1_12rem]" class:btn-primary={!hasImages} id="export-text" onclick={exportText}>Plain text (.txt)</button>
         </div>
-        <div id="export-close-row">
+        <div class="flex justify-end">
             <button type="button" class="btn" onclick={() => { ui.exportOpen = false; }}>Cancel</button>
         </div>
     </div>

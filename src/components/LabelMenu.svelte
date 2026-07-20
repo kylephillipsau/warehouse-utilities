@@ -20,10 +20,10 @@
     });
 </script>
 
-<div class="label-menu" bind:this={menuEl}>
+<div class="relative" bind:this={menuEl}>
     <button
         type="button"
-        class="label-tool label-menu-btn"
+        class="label-tool"
         title="More actions"
         aria-label="More actions"
         aria-haspopup="menu"
@@ -31,9 +31,21 @@
         onclick={() => (open = !open)}
     >&#8943;</button>
     {#if open}
-        <div class="label-menu-list" role="menu">
+        <div
+            class="absolute top-[calc(100%+4px)] right-0 z-20 min-w-[10rem] flex flex-col
+                   bg-paper border-2 border-ink rounded-md overflow-hidden"
+            style="box-shadow: 0 6px 18px rgba(45, 58, 46, 0.35)"
+            role="menu"
+        >
             {#each items as item}
-                <button type="button" class="label-menu-item" class:danger={item.danger} role="menuitem" onclick={() => choose(item)}>{item.label}</button>
+                <button
+                    type="button"
+                    class="text-left px-[0.7rem] py-[0.45rem] font-bold text-[0.85rem] bg-paper
+                           border-0 cursor-pointer whitespace-nowrap hover:bg-ink/[0.08]
+                           {item.danger ? 'text-orange' : 'text-ink'}"
+                    role="menuitem"
+                    onclick={() => choose(item)}
+                >{item.label}</button>
             {/each}
         </div>
     {/if}

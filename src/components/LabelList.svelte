@@ -1,12 +1,10 @@
 <script>
     import { store } from '../lib/store.svelte.js';
-    import { orientedPage, resolveLabel, tiling } from '../lib/size.js';
+    import { tiling } from '../lib/size.js';
     import Label from './Label.svelte';
 
-    // How many label segments tile onto one media page
-    const perPage = $derived(
-        tiling(orientedPage(store.page, store.orientation), resolveLabel(store.size)).perPage
-    );
+    // The page divides into N labels; that's how many fit per media page
+    const perPage = $derived(tiling(store.divisions).perPage);
 
     // Flow the labels across as many media pages as needed (at least one page so
     // the media is always visible on screen).

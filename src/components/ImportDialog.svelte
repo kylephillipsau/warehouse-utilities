@@ -91,16 +91,29 @@
 
 <svelte:window ondragover={onWindowDragOver} ondragleave={onWindowDragLeave} ondrop={onWindowDrop} />
 
-<dialog id="import-dialog" bind:this={dlg} use:dialogSync={ui.importOpen} onclose={() => { ui.importOpen = false; reset(); }} onclick={onDialogClick}>
-    <div id="import-dialog-body">
+<dialog id="import-dialog" class="dialog" bind:this={dlg} use:dialogSync={ui.importOpen} onclose={() => { ui.importOpen = false; reset(); }} onclick={onDialogClick}>
+    <div class="flex flex-col gap-3 p-5">
         <span class="group-label">Import list</span>
-        <p id="import-hint">{hint}</p>
-        <textarea id="multiline-input" placeholder={"AISLE 4\nRETURNS BAY\nDISPATCH"} bind:value></textarea>
-        <button type="button" id="file-drop" class:dragover onclick={() => fileInput.click()}>
-            Drag a text file here, or <span id="file-browse">browse</span>
+        <p class="m-0 text-[0.9rem] leading-[1.4]">{hint}</p>
+        <textarea
+            id="multiline-input"
+            class="font-sans text-[0.95rem] text-ink bg-white w-full box-border min-h-[12rem]
+                   resize-y border-2 border-ink rounded-md px-[0.6rem] py-2"
+            placeholder={"AISLE 4\nRETURNS BAY\nDISPATCH"}
+            bind:value
+        ></textarea>
+        <button
+            type="button"
+            id="file-drop"
+            class="flex items-center justify-center gap-[0.3rem] w-full box-border p-[0.65rem]
+                   text-[0.85rem] text-ink cursor-pointer transition-colors border-2 border-dashed rounded-md
+                   {dragover ? 'border-purple bg-purple/[0.08]' : 'border-ink/45 bg-transparent'}"
+            onclick={() => fileInput.click()}
+        >
+            Drag a text file here, or <span class="text-purple font-bold underline">browse</span>
         </button>
         <input type="file" id="import-file" bind:this={fileInput} accept=".txt,.csv,.json,text/plain,application/json" onchange={onFilePick} hidden />
-        <div id="import-actions">
+        <div class="flex justify-end gap-2">
             <button type="button" class="btn" onclick={() => { ui.importOpen = false; }}>Cancel</button>
             <button type="button" class="btn btn-primary" disabled={lines.length === 0} onclick={submit}>{submitLabel}</button>
         </div>

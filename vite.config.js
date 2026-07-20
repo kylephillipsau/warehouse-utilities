@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
+import tailwindcss from '@tailwindcss/vite';
 
 // The label maker is a Svelte SPA whose source lives in `src/`. Hand-authored
 // static pages (index, forklift, fonts, img, …) live in `static/` and are
@@ -12,7 +13,7 @@ export default defineConfig({
   // /labels/). A relative base breaks on clean/trailing-slash URLs.
   base: '/',
   publicDir: '../static',
-  plugins: [svelte()],
+  plugins: [tailwindcss(), svelte()],
   build: {
     outDir: '../public',
     emptyOutDir: true,

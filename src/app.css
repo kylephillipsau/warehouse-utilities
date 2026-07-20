@@ -1,0 +1,415 @@
+@import "tailwindcss";
+
+/* Brand tokens exposed as Tailwind theme values, so utilities like bg-ink,
+   text-paper, border-ink, bg-purple etc. use the label maker's palette. */
+@theme {
+    --font-sans: "Glacial Indifference", sans-serif;
+
+    --color-sage: #84A98C;
+    --color-ink: #2D3A2E;
+    --color-paper: #FDFCF8;
+    --color-purple: #52489C;
+    --color-purple-deep: #443B85;
+    --color-orange: #C75B24;
+    --color-amber: #E8C24A;
+}
+
+/* Fonts live in static/fonts -> served at /fonts. Absolute paths so the bundled
+   CSS resolves them regardless of where Vite emits the stylesheet. */
+@font-face {
+    font-family: 'Glacial Indifference';
+    src: url('/fonts/glacialindifference-regular-webfont.woff2') format('woff2'),
+        url('/fonts/glacialindifference-regular-webfont.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Glacial Indifference';
+    src: url('/fonts/glacialindifference-bold-webfont.woff2') format('woff2'),
+        url('/fonts/glacialindifference-bold-webfont.woff') format('woff');
+    font-weight: bold;
+    font-style: normal;
+}
+
+body {
+    @apply font-sans m-0 bg-sage;
+}
+
+/* Shared design-system primitives, composed from Tailwind utilities + the brand
+   theme. Kept as component classes (the idiomatic Tailwind pattern for repeated
+   elements like buttons, fields, dialogs) so markup stays readable. */
+@layer components {
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 font-bold text-[0.9rem]
+            text-ink bg-paper border-2 border-ink rounded-md px-[0.9rem] py-[0.4rem] cursor-pointer;
+    }
+    .btn:hover {
+        @apply bg-ink/[0.08];
+    }
+    .btn-primary {
+        @apply bg-purple border-purple text-paper;
+    }
+    .btn-primary:hover {
+        @apply bg-purple-deep border-purple-deep;
+    }
+    .btn:disabled {
+        @apply opacity-45 pointer-events-none;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+        @apply font-sans text-[0.95rem] text-ink bg-white border-2 border-ink rounded-md px-[0.6rem] py-[0.4rem];
+    }
+
+    .group-label {
+        @apply text-[0.7rem] font-bold tracking-[0.12em] uppercase text-orange;
+    }
+
+    .group-row {
+        @apply flex items-center flex-wrap gap-2;
+    }
+
+    /* Stacked field group, shared by the setup popover and the image editor */
+    .control-group {
+        @apply flex flex-col gap-[0.35rem];
+    }
+
+    .segmented {
+        @apply relative inline-flex w-fit bg-paper border-2 border-ink rounded-md overflow-hidden;
+    }
+    .segmented input {
+        @apply absolute opacity-0 pointer-events-none;
+    }
+    .segmented label {
+        @apply text-[0.9rem] font-bold px-[0.8rem] py-[0.4rem] cursor-pointer;
+    }
+    .segmented label:not(:last-child) {
+        @apply border-r-2 border-ink;
+    }
+    .segmented label:hover {
+        @apply bg-ink/[0.08];
+    }
+    .segmented input:checked + label {
+        @apply bg-purple text-paper;
+    }
+    .segmented input:focus-visible + label {
+        outline: 3px solid var(--color-purple);
+        outline-offset: -3px;
+    }
+
+    /* Modal dialogs (import / export / adjust / presets). The chrome (padding,
+       flow) is done with utilities in markup; this owns the shell + backdrop,
+       which utilities can't reach (::backdrop). */
+    .dialog {
+        @apply w-[min(34rem,calc(100vw-2rem))] p-0 bg-paper text-ink
+            border-[3px] border-ink rounded-[10px];
+        box-shadow: 0 12px 32px rgba(45, 58, 46, 0.4);
+    }
+    .dialog-wide {
+        @apply w-[min(40rem,calc(100vw-2rem))];
+    }
+    .dialog::backdrop {
+        background: rgba(45, 58, 46, 0.55);
+    }
+
+    /* Per-label hover action buttons (drag / edit / ⋯), fixed square so they
+       never affect the label's layout or text-fitting. */
+    .label-tool {
+        @apply w-[26px] h-[26px] inline-flex items-center justify-center p-0
+            font-bold text-[14px] leading-none text-ink bg-paper
+            border-2 border-ink rounded-[5px] cursor-pointer;
+    }
+    .label-tool:hover {
+        @apply bg-amber;
+    }
+
+    /* Image editor preview: checkerboard backing + grab cursor (raw because the
+       repeating-conic-gradient has no utility equivalent). */
+    .adjust-preview {
+        @apply self-center border-2 border-ink rounded-md overflow-hidden;
+        background:
+            repeating-conic-gradient(rgba(45, 58, 46, 0.10) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+        touch-action: none;
+        cursor: grab;
+    }
+    .adjust-preview:active {
+        cursor: grabbing;
+    }
+    /* The preview reuses the label markup, but the sample fills the preview box
+       instead of the fixed mm label size; the grab cursor shows over the image. */
+    .adjust-preview .text-container {
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
+        border: 0 !important;
+        background: transparent;
+    }
+    .adjust-preview .label-image {
+        cursor: inherit;
+    }
+
+    /* Preset thumbnail checkerboard backing */
+    .preset-thumb {
+        background:
+            repeating-conic-gradient(rgba(45, 58, 46, 0.10) 0% 25%, transparent 0% 50%) 50% / 12px 12px;
+    }
+}
+
+/* Match the app's original focus ring using the brand colour */
+:focus-visible {
+    outline: 3px solid var(--color-purple);
+    outline-offset: 1px;
+}
+
+/* ---------------------------------------------------------------------------
+   Label rendering + print. These are variable-driven layout and print-exact
+   rules (mm sizing, dynamic @page, tiling, image crop via custom properties) —
+   plain CSS is the right tool here, not utilities.
+   --------------------------------------------------------------------------- */
+
+ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+li {
+    break-inside: avoid;
+    margin: 0;
+    padding: 0;
+    border: 2px solid black;
+    background: white;
+    text-align: center;
+}
+
+/* One label segment. box-sizing keeps its footprint exactly --label-w/h (border
+   included), so segments tile the media page precisely and the border doubles
+   as the cut guide between them. Fallbacks are the original built-in size. */
+.text-container {
+    box-sizing: border-box;
+    width: var(--label-w, 100mm);
+    height: var(--label-h, 22mm);
+    border: 2px solid;
+    margin: 0;
+    position: relative;
+}
+
+/* Keep the box at its true print size while editing so live text fitting
+   measures against the real label; the highlight alone signals edit focus. */
+.text-container:focus-within {
+    background-color: #feffb4;
+}
+
+.text:focus,
+.text:focus-visible {
+    outline: none;
+}
+
+li.dragging {
+    opacity: 0.75;
+    outline: 3px dashed var(--color-purple);
+    outline-offset: 2px;
+}
+
+/* Highlight a label as a drop target while an image is dragged over it */
+li.text-container.drag-over {
+    outline: 3px dashed var(--color-purple);
+    outline-offset: 2px;
+}
+
+/* The screen work area. A media page = one physical label; its size is the real
+   stock size and the label segments tile onto it (cols x rows) to be cut apart
+   after printing. */
+#labels-section {
+    padding: 16px;
+    overflow: auto;
+}
+
+.print-page {
+    display: grid;
+    grid-template-columns: repeat(var(--tile-cols, 1), var(--label-w, 100mm));
+    grid-auto-rows: var(--label-h, 22mm);
+    justify-content: start;
+    align-content: start;
+    width: var(--page-w, 210mm);
+    height: var(--page-h, 297mm);
+    box-sizing: border-box;
+    background: white;
+    margin: 0 auto 16px;
+    box-shadow: 0 2px 10px rgba(45, 58, 46, 0.25);
+    overflow: hidden;
+}
+
+.text {
+    margin: 0;
+    font-weight: bold;
+    font-size: 12px;
+    display: block;
+}
+
+/* Content rendering. An image always fills the whole label; the crop within
+   that frame comes from CSS custom properties (--fit/--posx/--posy/--zoom) the
+   Edit-image editor writes. A text-only label fills with auto-fitted text; an
+   image label may carry a caption in a readable band. */
+.label-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.label-image-frame {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: transparent;
+}
+
+.label-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: var(--fit, contain);
+    object-position: var(--posx, 50%) var(--posy, 50%);
+    transform: scale(var(--zoom, 1));
+    transform-origin: center;
+}
+
+.label-image.editable {
+    cursor: pointer;
+}
+
+/* Text-only label: text fills the whole box and auto-fits */
+.label-text-area {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+/* Caption band overlaid on an image; fixed proportion so the caption text has a
+   box to auto-fit into. Readable backing forced to print. */
+.label-caption {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 30%;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 1mm;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.82);
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+/* Empty-label placeholder: type text, or add an image */
+.label-empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    padding: 2mm;
+    box-sizing: border-box;
+}
+
+.label-empty-text {
+    min-width: 2ch;
+}
+
+.text[data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: rgba(45, 58, 46, 0.45);
+    font-weight: normal;
+}
+
+/* Hover/focus strip for per-label actions; absolutely positioned inside the
+   label box so it never affects layout or text-fitting. */
+.label-tools {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+    z-index: 6;
+}
+
+li.text-container:hover .label-tools,
+li.text-container:focus-within .label-tools {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.tool-drag {
+    cursor: grab;
+    touch-action: none;
+}
+
+@media print {
+    * {
+        visibility: hidden;
+    }
+
+    header,
+    footer {
+        height: 0;
+        margin: 0 !important;
+        padding: 0 !important;
+        visibility: hidden;
+        position: relative;
+        display: none !important;
+    }
+
+    .printable * {
+        visibility: visible;
+    }
+
+    /* Screen-only management chrome must never reach paper */
+    .label-tools,
+    .label-add-image,
+    #print-tip,
+    #undo-toast,
+    .dialog {
+        display: none !important;
+    }
+
+    /* Never print the empty-label placeholder hint */
+    .text[data-placeholder]:empty::before {
+        content: none !important;
+    }
+
+    /* A label focused for editing at print time keeps its plain look */
+    .text-container {
+        background: white !important;
+    }
+
+    /* Each media page prints as its own page, exactly the label size (the @page
+       rule is injected from JS with the real dimensions + margin:0), so a label
+       printer maps it 1:1. */
+    #labels-section {
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    .print-page {
+        margin: 0 !important;
+        box-shadow: none !important;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .print-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
+    }
+}
