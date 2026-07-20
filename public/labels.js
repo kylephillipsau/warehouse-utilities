@@ -38,13 +38,37 @@ function startLabelDrag(li, startEvent) {
     document.addEventListener("pointercancel", stop);
 }
 
+// How an image sits in its label. Kept as metadata (not baked into the pixels)
+// so it stays re-editable; posX/posY are object-position percentages that the
+// alignment buttons and drag-to-pan both drive; zoom is a scale() multiplier.
+var DEFAULT_ADJUST = { layout: "beside", side: "left", fit: "contain", posX: 50, posY: 50, zoom: 1 };
+
+function normalizeAdjust(a) {
+    a = a || {};
+    const clampPct = (v, d) => {
+        const n = parseFloat(v);
+        return isNaN(n) ? d : Math.min(100, Math.max(0, n));
+    };
+    const zoom = parseFloat(a.zoom);
+    return {
+        layout: a.layout === "fill" ? "fill" : "beside",
+        side: a.side === "right" ? "right" : "left",
+        fit: a.fit === "cover" ? "cover" : "contain",
+        posX: clampPct(a.posX, 50),
+        posY: clampPct(a.posY, 50),
+        zoom: isNaN(zoom) ? 1 : Math.min(4, Math.max(1, zoom)),
+    };
+}
+
 // A label can hold an optional image, the auto-fitting text, or both. The text
 // lives inside .label-text-area (a flex child) so resizeText fits it to the
 // space left beside the image; with no image the text area fills the whole box
-// and behaves exactly as before. imageSrc, when given, is a data URI.
-function createLabel(text, imageSrc) {
+// and behaves exactly as before. imageSrc, when given, is a data URI; adjust is
+// the placement metadata (see DEFAULT_ADJUST).
+function createLabel(text, imageSrc, adjust) {
     var item = document.createElement("li");
     item.classList.add('text-container');
+    item.__labelAdjust = normalizeAdjust(adjust);
 
     var content = document.createElement("div");
     content.className = "label-content";
@@ -70,44 +94,78 @@ function createLabel(text, imageSrc) {
     tools.className = "label-tools";
     tools.innerHTML =
         '<button type="button" class="tool-drag" title="Drag to reorder" aria-label="Drag to reorder">&#10495;</button>' +
-        '<button type="button" class="tool-image" title="Add or replace image" aria-label="Add or replace image">&#128247;</button>' +
+        '<button type="button" class="tool-image" title="Add, replace or adjust image" aria-label="Add, replace or adjust image">&#128247;</button>' +
+        '<button type="button" class="tool-preset" title="Save as preset" aria-label="Save as preset">&#9733;</button>' +
         '<button type="button" class="tool-duplicate" title="Duplicate label" aria-label="Duplicate label">&#10697;</button>' +
         '<button type="button" class="tool-delete" title="Delete label" aria-label="Delete label">&times;</button>';
     item.appendChild(tools);
+    applyLabelAdjust(item);
     return item;
 }
 
-// Attach (or replace) a label's image. Given a data URI, sets the <img>; the
-// remove overlay is screen-only. Refits the text once the image has laid out.
+// Write adjust state onto an element as layout/side classes + CSS custom
+// properties the stylesheet reads for object-fit/position/scale. Shared by real
+// labels (applyLabelAdjust) and the dialog's live preview so they render alike.
+function writeAdjust(el, adj, hasImage) {
+    el.classList.remove("layout-beside", "layout-fill", "side-right");
+    // Every label gets a layout class so the text area fills the box; "fill"
+    // is only honoured when there's actually an image to fill with.
+    const layout = (hasImage && adj.layout === "fill") ? "fill" : "beside";
+    el.classList.add(layout === "fill" ? "layout-fill" : "layout-beside");
+    if (hasImage && layout === "beside" && adj.side === "right") { el.classList.add("side-right"); }
+    el.style.setProperty("--fit", adj.fit);
+    el.style.setProperty("--posx", adj.posX + "%");
+    el.style.setProperty("--posy", adj.posY + "%");
+    el.style.setProperty("--zoom", adj.zoom);
+}
+
+// Push a label's adjust metadata into the DOM. Only meaningful when the label
+// has an image; text-only labels keep defaults.
+function applyLabelAdjust(li) {
+    const adj = li.__labelAdjust = normalizeAdjust(li.__labelAdjust);
+    writeAdjust(li, adj, !!li.querySelector(".label-image"));
+}
+
+// Attach (or replace) a label's image. The <img> lives in a .label-image-frame
+// that clips it, so fit/zoom/pan can crop within the label. The remove overlay
+// is a screen-only sibling of .label-content. Refits text once the image lays
+// out, then re-applies the placement metadata.
 function setLabelImage(li, src) {
     const content = li.querySelector(".label-content");
-    let img = content.querySelector(".label-image");
-    if (!img) {
-        img = document.createElement("img");
+    let frame = content.querySelector(".label-image-frame");
+    if (!frame) {
+        frame = document.createElement("div");
+        frame.className = "label-image-frame";
+        const img = document.createElement("img");
         img.className = "label-image";
         img.alt = "";
         img.addEventListener("load", () => {
             resizeText({ element: li.querySelector(".text"), step: 0.5 });
         });
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.className = "label-image-remove";
-        remove.title = "Remove image";
-        remove.setAttribute("aria-label", "Remove image");
-        remove.innerHTML = "&times;";
-        // Image first so it sits before the text area in the flex row
-        content.insertBefore(img, content.firstChild);
-        content.insertBefore(remove, img.nextSibling);
+        frame.appendChild(img);
+        // Frame first so beside-layout puts the image before the text area
+        content.insertBefore(frame, content.firstChild);
+
+        if (!li.querySelector(".label-image-remove")) {
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "label-image-remove";
+            remove.title = "Remove image";
+            remove.setAttribute("aria-label", "Remove image");
+            remove.innerHTML = "&times;";
+            li.insertBefore(remove, content.nextSibling);
+        }
     }
-    img.src = src;
+    frame.querySelector(".label-image").src = src;
+    applyLabelAdjust(li);
 }
 
 function removeLabelImage(li) {
-    const content = li.querySelector(".label-content");
-    const img = content.querySelector(".label-image");
-    const remove = content.querySelector(".label-image-remove");
-    if (img) { img.remove(); }
+    const frame = li.querySelector(".label-image-frame");
+    const remove = li.querySelector(".label-image-remove");
+    if (frame) { frame.remove(); }
     if (remove) { remove.remove(); }
+    applyLabelAdjust(li);
     updateLabels();
 }
 
@@ -169,8 +227,314 @@ function applyPickedImage(file) {
     fileToLabelImage(file).then((src) => {
         setLabelImage(li, src);
         updateLabels();
+        // If the label had no image, offer the adjust editor straight away
+        openAdjustDialog(li);
     }).catch(() => { /* not an image - ignore */ });
 }
+
+// ---------------------------------------------------------------------------
+// Image adjust dialog - crop/scale/position an image within its label.
+// Edits a working copy; Apply commits to the label, Cancel discards.
+// ---------------------------------------------------------------------------
+
+var adjustTargetLabel = null;
+var adjustWorking = null;
+
+function openAdjustDialog(li) {
+    const img = li && li.querySelector(".label-image");
+    if (!img) { return; }
+    adjustTargetLabel = li;
+    adjustWorking = normalizeAdjust(li.__labelAdjust);
+
+    const preview = document.getElementById("adjust-preview");
+    // Size the preview to the label's aspect ratio (fall back to 100x22 mm)
+    const rect = li.getBoundingClientRect();
+    const aspect = rect.width && rect.height ? rect.width / rect.height : 100 / 22;
+    const maxW = 340, maxH = 240;
+    let w = maxW, h = w / aspect;
+    if (h > maxH) { h = maxH; w = h * aspect; }
+    preview.style.width = Math.round(w) + "px";
+    preview.style.height = Math.round(h) + "px";
+    preview.querySelector(".adjust-sample .label-image").src = img.src;
+    preview.querySelector(".adjust-sample .text").textContent =
+        li.querySelector(".text").textContent;
+
+    document.getElementById("adjust-hint").textContent =
+        "Drag the image to reposition. Fit shows all of it; Fill crops to the label.";
+    syncAdjustControls();
+    renderAdjustPreview();
+    document.getElementById("adjust-dialog").showModal();
+}
+
+// Reflect adjustWorking into the control widgets
+function syncAdjustControls() {
+    const a = adjustWorking;
+    document.getElementById("adj-layout-beside").checked = a.layout === "beside";
+    document.getElementById("adj-layout-fill").checked = a.layout === "fill";
+    document.getElementById("adj-side-left").checked = a.side === "left";
+    document.getElementById("adj-side-right").checked = a.side === "right";
+    document.getElementById("adj-fit-contain").checked = a.fit === "contain";
+    document.getElementById("adj-fit-cover").checked = a.fit === "cover";
+    document.getElementById("adj-zoom").value = Math.round(a.zoom * 100);
+    document.getElementById("adj-side-group").hidden = a.layout !== "beside";
+    document.querySelectorAll(".adj-align").forEach((btn) => {
+        const active = parseFloat(btn.dataset.x) === a.posX && parseFloat(btn.dataset.y) === a.posY;
+        btn.classList.toggle("active", active);
+    });
+}
+
+function renderAdjustPreview() {
+    const sample = document.querySelector("#adjust-preview .adjust-sample");
+    if (sample) { writeAdjust(sample, adjustWorking, true); }
+}
+
+function initAdjustDialog() {
+    const dlg = document.getElementById("adjust-dialog");
+    if (!dlg) { return; }
+
+    dlg.addEventListener("change", (event) => {
+        const id = event.target.id;
+        if (id === "adj-layout-beside" || id === "adj-layout-fill") {
+            adjustWorking.layout = document.getElementById("adj-layout-fill").checked ? "fill" : "beside";
+            document.getElementById("adj-side-group").hidden = adjustWorking.layout !== "beside";
+        } else if (id === "adj-side-left" || id === "adj-side-right") {
+            adjustWorking.side = document.getElementById("adj-side-right").checked ? "right" : "left";
+        } else if (id === "adj-fit-contain" || id === "adj-fit-cover") {
+            adjustWorking.fit = document.getElementById("adj-fit-cover").checked ? "cover" : "contain";
+        }
+        renderAdjustPreview();
+    });
+
+    document.getElementById("adj-zoom").addEventListener("input", (event) => {
+        adjustWorking.zoom = normalizeAdjust({ ...adjustWorking, zoom: event.target.value / 100 }).zoom;
+        renderAdjustPreview();
+    });
+
+    document.querySelectorAll(".adj-align").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            adjustWorking.posX = parseFloat(btn.dataset.x);
+            adjustWorking.posY = parseFloat(btn.dataset.y);
+            syncAdjustControls();
+            renderAdjustPreview();
+        });
+    });
+
+    // Drag on the preview to pan (moves the image, so nudges object-position the
+    // opposite way). Percentages are relative to the preview size.
+    const preview = document.getElementById("adjust-preview");
+    preview.addEventListener("pointerdown", (event) => {
+        if (adjustWorking.zoom <= 1 && adjustWorking.fit === "contain") { /* still allow */ }
+        event.preventDefault();
+        const rect = preview.getBoundingClientRect();
+        const startX = event.clientX, startY = event.clientY;
+        const baseX = adjustWorking.posX, baseY = adjustWorking.posY;
+        preview.setPointerCapture(event.pointerId);
+        const move = (ev) => {
+            const dx = (ev.clientX - startX) / rect.width * 100;
+            const dy = (ev.clientY - startY) / rect.height * 100;
+            adjustWorking.posX = Math.min(100, Math.max(0, baseX - dx));
+            adjustWorking.posY = Math.min(100, Math.max(0, baseY - dy));
+            syncAdjustControls();
+            renderAdjustPreview();
+        };
+        const up = (ev) => {
+            preview.releasePointerCapture(event.pointerId);
+            preview.removeEventListener("pointermove", move);
+            preview.removeEventListener("pointerup", up);
+        };
+        preview.addEventListener("pointermove", move);
+        preview.addEventListener("pointerup", up);
+    });
+
+    document.getElementById("adj-apply").addEventListener("click", () => {
+        if (adjustTargetLabel) {
+            adjustTargetLabel.__labelAdjust = normalizeAdjust(adjustWorking);
+            applyLabelAdjust(adjustTargetLabel);
+            updateLabels();
+        }
+        dlg.close();
+    });
+    document.getElementById("adj-cancel").addEventListener("click", () => dlg.close());
+    document.getElementById("adj-reset").addEventListener("click", () => {
+        adjustWorking = normalizeAdjust(DEFAULT_ADJUST);
+        syncAdjustControls();
+        renderAdjustPreview();
+    });
+
+    document.getElementById("adj-remove").addEventListener("click", () => {
+        if (adjustTargetLabel) { removeLabelImage(adjustTargetLabel); }
+        dlg.close();
+    });
+
+    // Replace the image in place, keeping the dialog open
+    document.getElementById("adj-replace").addEventListener("click", () => {
+        document.getElementById("adjust-replace-file").click();
+    });
+    document.getElementById("adjust-replace-file").addEventListener("change", function () {
+        const file = this.files[0];
+        this.value = "";
+        if (!file || !adjustTargetLabel) { return; }
+        fileToLabelImage(file).then((src) => {
+            setLabelImage(adjustTargetLabel, src);
+            document.querySelector("#adjust-preview .adjust-sample .label-image").src = src;
+        }).catch(() => { /* not an image - ignore */ });
+    });
+
+    document.getElementById("adj-save-preset").addEventListener("click", () => {
+        if (!adjustTargetLabel) { return; }
+        // Commit the working adjust first so the preset captures it
+        adjustTargetLabel.__labelAdjust = normalizeAdjust(adjustWorking);
+        applyLabelAdjust(adjustTargetLabel);
+        const name = savePresetFromLabel(adjustTargetLabel);
+        if (name) {
+            document.getElementById("adjust-hint").textContent = "Saved preset “" + name + "”.";
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Preset label library - named labels (text + image + adjust) in localStorage,
+// also carried inside exported .json so they move between devices.
+// ---------------------------------------------------------------------------
+
+var PRESETS_STORAGE_KEY = "labelMakerPresets";
+
+function loadPresets() {
+    try {
+        const v = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY));
+        return Array.isArray(v) ? v : [];
+    } catch (e) { return []; }
+}
+
+function savePresets(list) {
+    try { localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(list)); }
+    catch (e) { /* storage unavailable (private mode etc.) */ }
+}
+
+function newPresetId() {
+    if (window.crypto && crypto.randomUUID) { return crypto.randomUUID(); }
+    return "p" + Date.now() + "-" + Math.floor(Math.random() * 1e6);
+}
+
+// Save a label as a named preset. Returns the chosen name, or null if cancelled.
+function savePresetFromLabel(li, openLibrary) {
+    const text = li.querySelector(".text").textContent.trim();
+    const suggested = text || "Label preset";
+    const name = window.prompt("Name this preset:", suggested);
+    if (name === null) { return null; }
+    const img = li.querySelector(".label-image");
+    const presets = loadPresets();
+    presets.push({
+        id: newPresetId(),
+        name: name.trim() || suggested,
+        text: li.querySelector(".text").textContent,
+        image: img ? img.src : null,
+        adjust: normalizeAdjust(li.__labelAdjust),
+    });
+    savePresets(presets);
+    if (openLibrary) { openPresetsDialog(); }
+    return name.trim() || suggested;
+}
+
+function openPresetsDialog() {
+    renderPresets();
+    document.getElementById("presets-dialog").showModal();
+}
+
+function renderPresets() {
+    const list = document.getElementById("presets-list");
+    const presets = loadPresets();
+    const empty = document.getElementById("presets-empty");
+    empty.hidden = presets.length > 0;
+    list.innerHTML = "";
+    presets.forEach((preset) => {
+        const row = document.createElement("div");
+        row.className = "preset-row";
+        row.dataset.id = preset.id;
+
+        const thumb = document.createElement("div");
+        thumb.className = "preset-thumb";
+        if (preset.image) {
+            const im = document.createElement("img");
+            im.src = preset.image;
+            im.alt = "";
+            thumb.appendChild(im);
+        } else {
+            thumb.classList.add("preset-thumb-text");
+            thumb.textContent = "Aa";
+        }
+
+        const name = document.createElement("span");
+        name.className = "preset-name";
+        name.textContent = preset.name;
+
+        const actions = document.createElement("div");
+        actions.className = "preset-actions";
+        actions.innerHTML =
+            '<button type="button" class="btn btn-primary preset-insert">Insert</button>' +
+            '<button type="button" class="btn preset-rename">Rename</button>' +
+            '<button type="button" class="btn preset-delete">Delete</button>';
+
+        row.appendChild(thumb);
+        row.appendChild(name);
+        row.appendChild(actions);
+        list.appendChild(row);
+    });
+}
+
+function insertPreset(id) {
+    const preset = loadPresets().find((p) => String(p.id) === String(id));
+    if (!preset) { return; }
+    const label = createLabel(preset.text || "", preset.image || null, preset.adjust);
+    document.getElementById("labelList").appendChild(label);
+    updateLabels();
+}
+
+function renamePreset(id) {
+    const presets = loadPresets();
+    const preset = presets.find((p) => String(p.id) === String(id));
+    if (!preset) { return; }
+    const name = window.prompt("Rename preset:", preset.name);
+    if (name === null) { return; }
+    preset.name = name.trim() || preset.name;
+    savePresets(presets);
+    renderPresets();
+}
+
+function deletePreset(id) {
+    const presets = loadPresets().filter((p) => String(p.id) !== String(id));
+    savePresets(presets);
+    renderPresets();
+}
+
+// Merge presets from an imported file into the library (dedupe by id)
+function mergePresets(incoming) {
+    if (!Array.isArray(incoming)) { return; }
+    const existing = loadPresets();
+    const seen = new Set(existing.map((p) => String(p.id)));
+    incoming.forEach((p) => {
+        if (p && !seen.has(String(p.id))) { existing.push(p); seen.add(String(p.id)); }
+    });
+    savePresets(existing);
+}
+
+function initPresetsDialog() {
+    const list = document.getElementById("presets-list");
+    if (!list) { return; }
+    list.addEventListener("click", (event) => {
+        const row = event.target.closest(".preset-row");
+        if (!row) { return; }
+        const id = row.dataset.id;
+        if (event.target.closest(".preset-insert")) { insertPreset(id); }
+        else if (event.target.closest(".preset-rename")) { renamePreset(id); }
+        else if (event.target.closest(".preset-delete")) { deletePreset(id); }
+    });
+    const close = document.getElementById("presets-close");
+    if (close) { close.addEventListener("click", () => document.getElementById("presets-dialog").close()); }
+}
+
+window.addEventListener("DOMContentLoaded", initAdjustDialog);
+window.addEventListener("DOMContentLoaded", initPresetsDialog);
 
 function addItem(text, quantity) {
     if (!quantity) { // If quantity unspecified, Sets quantity to 1
@@ -192,7 +556,7 @@ function addItem(text, quantity) {
 
 function duplicateLabel(li) {
     const img = li.querySelector(".label-image");
-    li.after(createLabel(li.querySelector(".text").innerHTML, img ? img.src : null));
+    li.after(createLabel(li.querySelector(".text").innerHTML, img ? img.src : null, li.__labelAdjust));
     updateLabels();
 }
 
@@ -347,7 +711,8 @@ document.addEventListener("drop", (event) => {
 // Clicking the dimmed backdrop closes the dialog (such clicks target the
 // dialog element itself rather than its contents)
 document.addEventListener("click", (event) => {
-    if (event.target.id === "import-dialog" || event.target.id === "export-dialog") {
+    if (event.target.id === "import-dialog" || event.target.id === "export-dialog" ||
+        event.target.id === "adjust-dialog" || event.target.id === "presets-dialog") {
         event.target.close();
     }
 });
@@ -495,7 +860,7 @@ function updateLabels() {
 // embedded as base64 data URIs, so a set of labels saves and restores whole.
 
 var LABEL_FILE_FORMAT = "warehouse-utilities-labels";
-var LABEL_FILE_VERSION = 1;
+var LABEL_FILE_VERSION = 2;
 
 function labelsHaveImages() {
     return !!document.querySelector("#labelList .label-image");
@@ -531,6 +896,7 @@ function serializeLabels() {
             // textContent (not innerHTML) keeps the file to plain data
             text: li.querySelector(".text").textContent,
             image: img ? img.src : null,
+            adjust: normalizeAdjust(li.__labelAdjust),
         };
     });
     return {
@@ -543,6 +909,7 @@ function serializeLabels() {
         },
         orientation: document.getElementById("landscape").checked ? "landscape" : "portrait",
         labels,
+        presets: loadPresets(),
     };
 }
 
@@ -578,12 +945,14 @@ function openLabelFile(data) {
     }
     list.innerHTML = "";
     data.labels.forEach((entry) => {
-        const label = createLabel("", entry && entry.image ? entry.image : null);
+        const label = createLabel("", entry && entry.image ? entry.image : null, entry && entry.adjust);
         if (entry && typeof entry.text === "string") {
             label.querySelector(".text").textContent = entry.text;
         }
         list.appendChild(label);
     });
+    // Presets travel with the file; merge them into the local library
+    if (data.presets) { mergePresets(data.presets); }
     restoreImportedSize(data.size);
     if (data.orientation === "portrait" || data.orientation === "landscape") {
         document.getElementById(data.orientation).checked = true;
@@ -649,6 +1018,12 @@ document.addEventListener("click", (event) => {
         removeLabelImage(removeBtn.closest("li.text-container"));
         return;
     }
+    // Clicking the image itself opens the adjust editor
+    const clickedImage = event.target.closest(".label-image");
+    if (clickedImage) {
+        openAdjustDialog(clickedImage.closest("li.text-container"));
+        return;
+    }
     const button = event.target.closest(".label-tools button");
     if (!button) { return; }
     const li = button.closest("li.text-container");
@@ -656,10 +1031,16 @@ document.addEventListener("click", (event) => {
         deleteLabel(li);
     } else if (button.classList.contains("tool-duplicate")) {
         duplicateLabel(li);
+    } else if (button.classList.contains("tool-preset")) {
+        savePresetFromLabel(li, true);
     } else if (button.classList.contains("tool-image")) {
-        // Route the shared hidden picker back to this label
-        pendingImageLabel = li;
-        document.getElementById("label-image-file").click();
+        // With an image, open the adjust editor; without one, pick a file
+        if (li.querySelector(".label-image")) {
+            openAdjustDialog(li);
+        } else {
+            pendingImageLabel = li;
+            document.getElementById("label-image-file").click();
+        }
     }
 });
 

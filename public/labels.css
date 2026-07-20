@@ -38,7 +38,9 @@
     .label-image-remove,
     #undo-toast,
     #import-dialog,
-    #export-dialog {
+    #export-dialog,
+    #adjust-dialog,
+    #presets-dialog {
         display: none !important;
     }
 
@@ -281,6 +283,7 @@ select {
     outline-offset: -3px;
 }
 
+#presets-button,
 #export-button,
 #print-button {
     display: inline-flex;
@@ -290,10 +293,11 @@ select {
     padding: 0.45rem 1rem;
 }
 
-#export-button {
+#presets-button {
     margin-left: auto;
 }
 
+#presets-button svg,
 #export-button svg,
 #print-button svg {
     width: 1.1em;
@@ -349,7 +353,9 @@ select {
 }
 
 #import-dialog,
-#export-dialog {
+#export-dialog,
+#adjust-dialog,
+#presets-dialog {
     width: min(34rem, calc(100vw - 2rem));
     padding: 0;
     background: var(--paper);
@@ -359,8 +365,15 @@ select {
     box-shadow: 0 12px 32px rgba(45, 58, 46, 0.4);
 }
 
+#adjust-dialog,
+#presets-dialog {
+    width: min(40rem, calc(100vw - 2rem));
+}
+
 #import-dialog::backdrop,
-#export-dialog::backdrop {
+#export-dialog::backdrop,
+#adjust-dialog::backdrop,
+#presets-dialog::backdrop {
     background: rgba(45, 58, 46, 0.55);
 }
 
@@ -388,6 +401,188 @@ select {
 }
 
 #export-close-row {
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Adjust image dialog */
+#adjust-dialog-body,
+#presets-dialog-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1.25rem;
+}
+
+#adjust-preview {
+    align-self: center;
+    background:
+        repeating-conic-gradient(rgba(45, 58, 46, 0.10) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+}
+
+#adjust-preview:active {
+    cursor: grabbing;
+}
+
+/* The preview reuses the label markup + layout classes, but fills its own box
+   rather than the fixed mm label size */
+#adjust-preview .adjust-sample {
+    width: 100% !important;
+    height: 100% !important;
+    margin: 0 !important;
+    border: 0 !important;
+    background: transparent;
+}
+
+#adjust-preview .label-image {
+    cursor: inherit;
+}
+
+#adjust-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    min-height: 1.2em;
+}
+
+.adjust-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+}
+
+.adjust-controls .control-group + .control-group {
+    border-left: none;
+    padding-left: 0;
+}
+
+#adj-align-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    width: fit-content;
+}
+
+.adj-align {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.adj-align:hover {
+    background: rgba(45, 58, 46, 0.08);
+}
+
+.adj-align.active {
+    background: var(--purple);
+    border-color: var(--purple);
+}
+
+#adj-zoom {
+    width: 12rem;
+    max-width: 100%;
+    accent-color: var(--purple);
+}
+
+#adj-zoom-group {
+    flex: 1 1 12rem;
+}
+
+#adj-side-group[hidden] {
+    display: none;
+}
+
+#adjust-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.adjust-actions-spacer {
+    flex: 1 1 auto;
+}
+
+/* Presets dialog */
+#presets-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.presets-hint {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.preset-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem;
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    background: white;
+}
+
+.preset-thumb {
+    flex: 0 0 auto;
+    width: 56px;
+    height: 40px;
+    border: 1px solid rgba(45, 58, 46, 0.35);
+    border-radius: 4px;
+    overflow: hidden;
+    background:
+        repeating-conic-gradient(rgba(45, 58, 46, 0.10) 0% 25%, transparent 0% 50%) 50% / 12px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.preset-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.preset-thumb-text {
+    font-weight: bold;
+    color: var(--ink);
+}
+
+.preset-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preset-actions {
+    display: flex;
+    gap: 0.35rem;
+    flex: 0 0 auto;
+}
+
+.preset-actions .btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.85rem;
+}
+
+#presets-close-row {
     display: flex;
     justify-content: flex-end;
 }
@@ -604,32 +799,89 @@ li.text-container:focus-within .label-tools {
     display: block;
 }
 
-/* Image + text layout. The image sits to the left; the text auto-fits the
-   remaining space because resizeText measures .label-text-area (the flex
-   child), not the whole label. With no image the text area fills the box, so
-   text-only labels render exactly as before. */
+/* Image + text layout. The image lives in a clipping .label-image-frame; the
+   <img> fills it and its fit / object-position / scale come from CSS custom
+   properties (--fit/--posx/--posy/--zoom) that the Adjust editor writes. Two
+   layouts: "beside" (image in a side column, text auto-fits the rest) and
+   "fill" (image covers the label, text overlaid on top). resizeText measures
+   .label-text-area, so text always fits whichever region it occupies. */
 .label-content {
-    display: flex;
-    align-items: stretch;
-    gap: 2mm;
     width: 100%;
     height: 100%;
     box-sizing: border-box;
 }
 
-.label-text-area {
+.label-image-frame {
+    overflow: hidden;
+    background: transparent;
+}
+
+.label-image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: var(--fit, contain);
+    object-position: var(--posx, 50%) var(--posy, 50%);
+    transform: scale(var(--zoom, 1));
+    transform-origin: center;
+    cursor: pointer;
+}
+
+/* Beside: image in a fixed side column, text fills the remainder */
+.layout-beside .label-content {
+    display: flex;
+    align-items: stretch;
+    gap: 2mm;
+}
+
+.layout-beside .label-image-frame {
+    flex: 0 0 45%;
+}
+
+.layout-beside .label-text-area {
     flex: 1 1 0;
     min-width: 0;
     overflow: hidden;
 }
 
-.label-image {
-    flex: 0 0 auto;
-    height: 100%;
-    width: auto;
-    max-width: 60%;
-    object-fit: contain;
-    align-self: center;
+.layout-beside.side-right .label-image-frame {
+    order: 2;
+}
+
+/* Fill: image covers the whole label, text overlaid and centred */
+.layout-fill .label-content {
+    position: relative;
+}
+
+.layout-fill .label-image-frame {
+    position: absolute;
+    inset: 0;
+}
+
+.layout-fill .label-text-area {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Let clicks on empty areas fall through to the image (to open Adjust);
+       the text itself stays interactive for editing */
+    pointer-events: none;
+}
+
+.layout-fill .text {
+    pointer-events: auto;
+}
+
+/* Readability backing so overlaid text stays legible over any image; forced to
+   print so the halo survives paper output */
+.layout-fill .text {
+    padding: 0 0.15em;
+    background: rgba(255, 255, 255, 0.72);
+    box-decoration-break: clone;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
 }
 
 /* Screen-only × to drop the image, mirroring the tool strip's reveal-on-hover */
