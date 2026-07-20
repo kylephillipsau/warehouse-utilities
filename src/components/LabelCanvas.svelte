@@ -28,7 +28,7 @@
     // by the ResizeObserver inside the fitText action)
     const fitKey = $derived(
         `${text}|${store.page.preset}|${store.page.width}|${store.page.height}|` +
-        `${store.divisions}|${store.orientation}|${hasImage ? 1 : 0}`
+        `${store.divisions}|${store.orientation}|${store.margin}|${store.gap}|${hasImage ? 1 : 0}`
     );
 </script>
 

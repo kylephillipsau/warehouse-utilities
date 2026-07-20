@@ -6,7 +6,12 @@ import { resizeText } from '../lib/textfit.js';
 // ResizeObserver on the parent. Replaces the old imperative updateLabels loop.
 export function fitText(node) {
     const fit = () => resizeText({ element: node, step: 0.5 });
-    const schedule = () => requestAnimationFrame(fit);
+    // Coalesce bursts of resize/observe callbacks into a single fit per frame.
+    let raf = 0;
+    const schedule = () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(fit);
+    };
 
     let ro;
     const parent = node.parentNode;
@@ -18,6 +23,6 @@ export function fitText(node) {
 
     return {
         update() { schedule(); },
-        destroy() { if (ro) { ro.disconnect(); } },
+        destroy() { cancelAnimationFrame(raf); if (ro) { ro.disconnect(); } },
     };
 }

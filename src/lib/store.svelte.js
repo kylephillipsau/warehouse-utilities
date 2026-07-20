@@ -2,25 +2,43 @@
 // mini toolbars, the Adjust dialog, the preset library, import/export — reads
 // and writes this one reactive store, so there is no manual cross-surface sync.
 import { normalizeAdjust } from './adjust.js';
-import { loadPresets, savePresets, loadPage, savePage, loadDivisions, saveDivisions, newId } from './persistence.js';
+import { newId } from './persistence.js';
 import { DEFAULT_PAGE, DEFAULT_DIVISIONS, clampDivisions } from './size.js';
-
-function initialSpec(saved, fallback) {
-    return {
-        preset: saved && saved.preset ? saved.preset : fallback.preset,
-        width: saved && saved.width ? saved.width : '',
-        height: saved && saved.height ? saved.height : '',
-        unit: saved && saved.unit ? saved.unit : 'mm',
-    };
-}
 
 export const store = $state({
     labels: [],
-    presets: loadPresets(),
-    page: initialSpec(loadPage(), DEFAULT_PAGE),    // physical media / page size
-    divisions: loadDivisions() ? clampDivisions(loadDivisions()) : DEFAULT_DIVISIONS,
+    presets: [],
+    page: { preset: DEFAULT_PAGE.preset, width: '', height: '', unit: 'mm' },  // physical media / page size
+    divisions: DEFAULT_DIVISIONS,
     orientation: 'landscape',
+    margin: 0,   // page edge margin (mm) around the tiled labels
+    gap: 0,      // gap (mm) between stacked label segments
 });
+
+// Populate the store from persisted state (see persistence.loadAll). Applied
+// once after mount; anything absent keeps its default.
+export function hydrateStore(data) {
+    if (!data) { return; }
+    if (Array.isArray(data.labels)) {
+        store.labels = data.labels.map((l) => ({
+            id: (l && l.id) || newId(),
+            text: l && typeof l.text === 'string' ? l.text : '',
+            image: l && l.image ? l.image : null,
+            adjust: normalizeAdjust(l && l.adjust),
+        }));
+    }
+    if (Array.isArray(data.presets)) { store.presets = data.presets; }
+    if (data.page && typeof data.page === 'object') {
+        if (data.page.preset) { store.page.preset = data.page.preset; }
+        store.page.width = data.page.width != null ? data.page.width : '';
+        store.page.height = data.page.height != null ? data.page.height : '';
+        store.page.unit = data.page.unit || 'mm';
+    }
+    if (data.divisions != null) { store.divisions = clampDivisions(data.divisions); }
+    if (data.orientation === 'portrait' || data.orientation === 'landscape') { store.orientation = data.orientation; }
+    if (typeof data.margin === 'number' && data.margin >= 0) { store.margin = data.margin; }
+    if (typeof data.gap === 'number' && data.gap >= 0) { store.gap = data.gap; }
+}
 
 // A transient stack of deleted labels for the undo toast
 export const undo = $state({ items: [] });
@@ -65,12 +83,22 @@ export function deleteLabel(id) {
 export function undoDelete() {
     const last = undo.items.pop();
     if (!last) { return; }
+    if (last.batch) { store.labels = [...last.batch, ...store.labels]; return; }
     const at = Math.min(last.index, store.labels.length);
     store.labels.splice(at, 0, last.label);
 }
 
 export function clearUndo() {
     undo.items = [];
+}
+
+// Clear the whole sheet in one deliberate action; recoverable via the undo toast
+// (the cleared set is pushed as a single batch entry).
+export function clearAllLabels() {
+    if (store.labels.length === 0) { return; }
+    const cleared = store.labels;
+    store.labels = [];
+    undo.items.push({ batch: cleared });
 }
 
 // Prune a label that has become empty (no text, no image) - mirrors the old
@@ -114,18 +142,9 @@ export function moveLabel(id, toIndex) {
     store.labels.splice(clamped, 0, l);
 }
 
-// ---- Size & orientation ----
-
-export function persistSize() {
-    savePage({ preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit });
-    saveDivisions(store.divisions);
-}
-
 // ---- Preset library ----
-
-function persistPresets() {
-    savePresets(store.presets);
-}
+// (persistence is reactive — see App.svelte — so mutations no longer save
+// explicitly; every change to the store is autosaved to IndexedDB.)
 
 export function savePresetFromLabel(id, name) {
     const l = store.labels[indexOf(id)];
@@ -139,7 +158,6 @@ export function savePresetFromLabel(id, name) {
         image: l.image,
         adjust: normalizeAdjust(l.adjust),
     });
-    persistPresets();
     return presetId;
 }
 
@@ -161,12 +179,10 @@ export function renamePreset(presetId, name) {
     const p = store.presets.find((x) => String(x.id) === String(presetId));
     if (!p) { return; }
     p.name = (name || '').trim() || p.name;
-    persistPresets();
 }
 
 export function deletePreset(presetId) {
     store.presets = store.presets.filter((x) => String(x.id) !== String(presetId));
-    persistPresets();
 }
 
 export function mergePresets(incoming) {
@@ -175,7 +191,6 @@ export function mergePresets(incoming) {
     incoming.forEach((p) => {
         if (p && !seen.has(String(p.id))) { store.presets.push(p); seen.add(String(p.id)); }
     });
-    persistPresets();
 }
 
 export function labelsHaveImages() {

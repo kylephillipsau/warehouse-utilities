@@ -1,58 +1,66 @@
-// localStorage helpers. Keys match the pre-Svelte app so existing users keep
-// their saved label size and preset library across the migration.
+// Persistence for the label maker, backed by IndexedDB so it can hold labels +
+// presets that embed base64 images (well beyond localStorage's ~5 MB quota).
+// Legacy localStorage keys from the pre-IndexedDB app are migrated once.
+import { idbAvailable, idbGet, idbSet } from './idb.js';
 
-const SIZE_KEY = 'labelMakerSize';
-const PAGE_KEY = 'labelMakerPage';
-const PRESETS_KEY = 'labelMakerPresets';
+const KEYS = ['labels', 'presets', 'page', 'divisions', 'orientation', 'margin', 'gap'];
 
-export function loadSize() {
+// --- legacy localStorage (read-only, for one-time migration) ---
+const LS_PAGE = 'labelMakerPage';
+const LS_PRESETS = 'labelMakerPresets';
+const LS_DIVISIONS = 'labelMakerDivisions';
+
+function readLegacy() {
+    const out = {};
     try {
-        const saved = JSON.parse(localStorage.getItem(SIZE_KEY));
-        return saved && typeof saved === 'object' ? saved : null;
-    } catch (e) { return null; }
-}
-
-export function saveSize(size) {
-    try { localStorage.setItem(SIZE_KEY, JSON.stringify(size)); }
-    catch (e) { /* storage unavailable (private mode etc.) */ }
-}
-
-export function loadPage() {
+        const page = JSON.parse(localStorage.getItem(LS_PAGE));
+        if (page && typeof page === 'object') { out.page = page; }
+    } catch (e) { /* ignore */ }
     try {
-        const saved = JSON.parse(localStorage.getItem(PAGE_KEY));
-        return saved && typeof saved === 'object' ? saved : null;
-    } catch (e) { return null; }
-}
-
-export function savePage(page) {
-    try { localStorage.setItem(PAGE_KEY, JSON.stringify(page)); }
-    catch (e) { /* storage unavailable */ }
-}
-
-const DIVISIONS_KEY = 'labelMakerDivisions';
-
-export function loadDivisions() {
+        const presets = JSON.parse(localStorage.getItem(LS_PRESETS));
+        if (Array.isArray(presets)) { out.presets = presets; }
+    } catch (e) { /* ignore */ }
     try {
-        const v = parseInt(localStorage.getItem(DIVISIONS_KEY), 10);
-        return isNaN(v) ? null : v;
-    } catch (e) { return null; }
+        const d = parseInt(localStorage.getItem(LS_DIVISIONS), 10);
+        if (!isNaN(d)) { out.divisions = d; }
+    } catch (e) { /* ignore */ }
+    return out;
 }
 
-export function saveDivisions(n) {
-    try { localStorage.setItem(DIVISIONS_KEY, String(n)); }
-    catch (e) { /* storage unavailable */ }
-}
-
-export function loadPresets() {
+// Load the whole persisted state. Returns an object with any of the KEYS that
+// were stored (missing keys are simply absent, so callers keep their defaults).
+export async function loadAll() {
+    if (!idbAvailable()) { return readLegacy(); }
+    let values;
     try {
-        const v = JSON.parse(localStorage.getItem(PRESETS_KEY));
-        return Array.isArray(v) ? v : [];
-    } catch (e) { return []; }
+        values = await Promise.all(KEYS.map((k) => idbGet(k)));
+    } catch (e) {
+        return readLegacy();
+    }
+    const state = {};
+    KEYS.forEach((k, i) => { if (values[i] !== undefined) { state[k] = values[i]; } });
+
+    // First run on IndexedDB: seed settings/presets from the old localStorage app
+    if (state.presets === undefined && state.page === undefined && state.divisions === undefined) {
+        const legacy = readLegacy();
+        Object.assign(state, legacy);
+        // persist the migrated values so this only happens once
+        Object.entries(legacy).forEach(([k, v]) => { idbSet(k, v).catch(() => {}); });
+    }
+    return state;
 }
 
-export function savePresets(list) {
-    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(list)); }
-    catch (e) { /* storage unavailable */ }
+// Persist the given state fields. Returns { ok, error }; never throws.
+export async function persistState(state) {
+    if (!idbAvailable()) { return { ok: false, error: 'no-storage' }; }
+    try {
+        await Promise.all(
+            KEYS.filter((k) => k in state).map((k) => idbSet(k, state[k])),
+        );
+        return { ok: true, error: null };
+    } catch (e) {
+        return { ok: false, error: e && e.name === 'QuotaExceededError' ? 'quota' : 'write-failed' };
+    }
 }
 
 export function newId() {

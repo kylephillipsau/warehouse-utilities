@@ -2,6 +2,12 @@
     import { undo, undoDelete, clearUndo } from '../lib/store.svelte.js';
 
     const visible = $derived(undo.items.length > 0);
+    const last = $derived(undo.items[undo.items.length - 1]);
+    const message = $derived(
+        last && last.batch
+            ? `${last.batch.length} label${last.batch.length === 1 ? '' : 's'} cleared`
+            : 'Label deleted'
+    );
 
     let timer;
     $effect(() => {
@@ -26,7 +32,7 @@
     aria-hidden={!visible}
     inert={!visible ? true : undefined}
 >
-    <span>Label deleted</span>
+    <span>{message}</span>
     <button
         id="undo-button"
         class="btn !bg-transparent !text-amber !border-amber hover:!bg-amber/15 px-[0.7rem] py-1"

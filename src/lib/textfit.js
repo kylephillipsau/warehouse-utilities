@@ -1,18 +1,27 @@
 // Grow an element's font size to the largest that still fits its parent box.
-// Ported verbatim from the original label maker so the fitting behaviour is
-// unchanged; used by the fitText Svelte action.
+// Uses a binary search over the size range (O(log n) reflows) — the fit is
+// monotonic (a larger font never fits a box a smaller one overflowed), so this
+// matches the old linear scan's result in ~10 measurements instead of hundreds.
 export const resizeText = ({ element, elements, minSize = 10, maxSize = 512, step = 1, unit = 'px' }) => {
     (elements || [element]).forEach((el) => {
         if (!el) { return; }
-        let i = minSize;
-        let overflow = false;
         const parent = el.parentNode;
-        while (!overflow && i < maxSize) {
-            el.style.fontSize = `${i}${unit}`;
-            overflow = isOverflown(parent);
-            if (!overflow) i += step;
+        if (!parent) { return; }
+
+        // If even the minimum overflows, use the minimum.
+        el.style.fontSize = `${minSize}${unit}`;
+        if (isOverflown(parent)) { return; }
+
+        let lo = minSize;   // known to fit
+        let hi = maxSize;   // may or may not fit
+        let best = minSize;
+        while (hi - lo > step) {
+            const mid = (lo + hi) / 2;
+            el.style.fontSize = `${mid}${unit}`;
+            if (isOverflown(parent)) { hi = mid; }
+            else { best = mid; lo = mid; }
         }
-        el.style.fontSize = `${i - step}${unit}`;
+        el.style.fontSize = `${best}${unit}`;
     });
 };
 

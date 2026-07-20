@@ -38,6 +38,14 @@ export function clampDivisions(n) {
     return Math.min(MAX_DIVISIONS, Math.max(1, v));
 }
 
+// Margin (page edge) / gap (between labels), in mm, clamped to a sane range.
+export const MAX_SPACING = 50;
+export function clampSpacing(v) {
+    const n = parseFloat(v);
+    if (isNaN(n) || n < 0) { return 0; }
+    return round(Math.min(MAX_SPACING, n));
+}
+
 export function resolvePage(page) {
     if (page.preset === 'custom') {
         return { width: clampMm(page.width, page.unit, 101.6), height: clampMm(page.height, page.unit, 152.4) };
@@ -52,11 +60,16 @@ export function orientedPage(page, orientation) {
     return orientation === 'landscape' ? { width: p.height, height: p.width } : p;
 }
 
-// A label fills the (oriented) page width; its height is the page height / N.
-export function resolveLabel(page, divisions, orientation) {
+// A label fills the (oriented) page width inside the page margin; its height is
+// the remaining height (after margins + the gaps between labels) divided by N.
+export function resolveLabel(page, divisions, orientation, margin = 0, gap = 0) {
     const p = orientedPage(page, orientation);
     const n = clampDivisions(divisions);
-    return { width: round(p.width), height: round(p.height / n) };
+    const m = clampSpacing(margin);
+    const g = clampSpacing(gap);
+    const availW = Math.max(1, p.width - 2 * m);
+    const availH = Math.max(1, p.height - 2 * m - (n - 1) * g);
+    return { width: round(availW), height: round(Math.max(1, availH / n)) };
 }
 
 // The page divides into N stacked labels (one column).
@@ -66,9 +79,9 @@ export function tiling(divisions) {
 }
 
 // Push resolved dimensions into root CSS custom properties.
-export function applySize(page, divisions, orientation) {
+export function applySize(page, divisions, orientation, margin = 0, gap = 0) {
     const p = orientedPage(page, orientation);
-    const label = resolveLabel(page, divisions, orientation);
+    const label = resolveLabel(page, divisions, orientation, margin, gap);
     const n = clampDivisions(divisions);
     const root = document.documentElement.style;
     root.setProperty('--page-w', p.width + 'mm');
@@ -77,4 +90,6 @@ export function applySize(page, divisions, orientation) {
     root.setProperty('--label-h', label.height + 'mm');
     root.setProperty('--tile-cols', '1');
     root.setProperty('--tile-rows', String(n));
+    root.setProperty('--page-margin', clampSpacing(margin) + 'mm');
+    root.setProperty('--gap', clampSpacing(gap) + 'mm');
 }

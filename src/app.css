@@ -304,14 +304,16 @@ li.text-container.drag-over {
     display: grid;
     grid-template-columns: repeat(var(--tile-cols, 1), var(--label-w, 100mm));
     grid-auto-rows: var(--label-h, 22mm);
-    justify-content: start;
+    gap: var(--gap, 0);
+    justify-content: center;
     align-content: start;
+    padding: var(--page-margin, 0);
     width: var(--page-w, 210mm);
     height: var(--page-h, 297mm);
     box-sizing: border-box;
     background: white;
     margin: 0 auto 16px;
-    box-shadow: 0 2px 10px rgba(45, 58, 46, 0.25);
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--color-ink) 25%, transparent);
     overflow: hidden;
 }
 

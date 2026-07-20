@@ -2,7 +2,7 @@
 // embedded as base64 data URIs, plus per-label adjust, size, orientation, and
 // the preset library so presets travel between devices. Still opens v1 files.
 import { normalizeAdjust } from './adjust.js';
-import { clampDivisions } from './size.js';
+import { clampDivisions, clampSpacing } from './size.js';
 import { store, makeLabel, mergePresets } from './store.svelte.js';
 
 export const LABEL_FILE_FORMAT = 'warehouse-utilities-labels';
@@ -15,6 +15,8 @@ export function serializeLabels() {
         page: { preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit },
         divisions: store.divisions,
         orientation: store.orientation,
+        margin: store.margin,
+        gap: store.gap,
         labels: store.labels.map((l) => ({
             text: l.text,
             image: l.image || null,
@@ -52,6 +54,8 @@ export function openLabelFile(data, { confirmReplace } = {}) {
     if (data.orientation === 'portrait' || data.orientation === 'landscape') {
         store.orientation = data.orientation;
     }
+    if (data.margin != null) { store.margin = clampSpacing(data.margin); }
+    if (data.gap != null) { store.gap = clampSpacing(data.gap); }
     return { ok: true, error: null };
 }
 
