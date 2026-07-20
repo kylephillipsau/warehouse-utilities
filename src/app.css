@@ -56,6 +56,13 @@ body {
     .btn:disabled {
         @apply opacity-45 pointer-events-none;
     }
+    /* A toggle button that stays visibly "on" while its panel is open */
+    .btn-active {
+        @apply bg-purple/[0.14] border-purple text-purple;
+    }
+    .btn-active:hover {
+        @apply bg-purple/[0.2];
+    }
 
     input[type="text"],
     input[type="number"],
@@ -105,6 +112,9 @@ body {
     .dialog {
         @apply w-[min(34rem,calc(100vw-2rem))] p-0 bg-paper text-ink
             border-[3px] border-ink rounded-[10px];
+        /* Re-centre the native modal — Tailwind's reset zeroes the dialog margin
+           that <dialog>.showModal() relies on to centre in the viewport. */
+        margin: auto;
         box-shadow: 0 12px 32px rgba(45, 58, 46, 0.4);
     }
     .dialog-wide {
