@@ -10,7 +10,10 @@ export function resizable(node, params) {
     const onPointerDown = (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const content = node.closest('.label-content');
+        // The handle is a sibling of .label-content within .text-container;
+        // measure against the content box so split maps to the image column.
+        const container = node.closest('.text-container');
+        const content = container && container.querySelector('.label-content');
         if (!content) { return; }
         const rect = content.getBoundingClientRect();
         node.setPointerCapture(event.pointerId);

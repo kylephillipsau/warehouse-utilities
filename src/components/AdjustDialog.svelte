@@ -1,15 +1,10 @@
 <script>
     import { ui, closeAdjust, openPresets } from '../lib/ui.svelte.js';
     import { store, setAdjust, setImage, removeImage, savePresetFromLabel } from '../lib/store.svelte.js';
-    import { DEFAULT_ADJUST, normalizeAdjust, adjustStyle } from '../lib/adjust.js';
+    import { DEFAULT_ADJUST, normalizeAdjust, adjustStyle, effectiveLayout, isSideRight, ALIGN_CELLS } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { dialogSync } from '../actions/dialogSync.js';
-
-    const ALIGN = [
-        { x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 },
-        { x: 0, y: 50 }, { x: 50, y: 50 }, { x: 100, y: 50 },
-        { x: 0, y: 100 }, { x: 50, y: 100 }, { x: 100, y: 100 },
-    ];
+    import LabelCanvas from './LabelCanvas.svelte';
 
     let dlg;
     let replaceInput;
@@ -22,8 +17,9 @@
 
     const label = $derived(store.labels.find((l) => l.id === ui.adjustTargetId));
     const open = $derived(ui.adjustTargetId != null);
-    const layout = $derived(working.layout === 'fill' ? 'fill' : 'beside');
-    const sideRight = $derived(layout === 'beside' && working.side === 'right');
+    // The preview always has an image (the editor only opens with one)
+    const layout = $derived(effectiveLayout(working, true));
+    const sideRight = $derived(isSideRight(working, true));
 
     // Initialise the working copy + preview size whenever a new label is opened
     $effect(() => {
@@ -118,10 +114,7 @@
                     class:side-right={sideRight}
                     style={adjustStyle(working)}
                 >
-                    <div class="label-content">
-                        <div class="label-image-frame"><img class="label-image" src={label.image} alt="" /></div>
-                        <div class="label-text-area"><span class="text">{label.text}</span></div>
-                    </div>
+                    <LabelCanvas image={label.image} text={label.text} adjust={working} />
                 </div>
             {/if}
         </div>
@@ -160,7 +153,7 @@
             <div class="control-group">
                 <span class="group-label">Align</span>
                 <div id="adj-align-grid">
-                    {#each ALIGN as a}
+                    {#each ALIGN_CELLS as a}
                         <button
                             type="button"
                             class="adj-align"

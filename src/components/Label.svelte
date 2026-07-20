@@ -1,26 +1,19 @@
 <script>
     import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, patchAdjust, moveLabel } from '../lib/store.svelte.js';
-    import { adjustStyle } from '../lib/adjust.js';
+    import { adjustStyle, effectiveLayout, isSideRight } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { openAdjust, openPresets } from '../lib/ui.svelte.js';
-    import { fitText } from '../actions/fitText.js';
     import { draggable } from '../actions/draggable.js';
-    import { panImage } from '../actions/panImage.js';
     import { resizable } from '../actions/resizable.js';
+    import LabelCanvas from './LabelCanvas.svelte';
 
     let { label } = $props();
 
     let fileInput;
 
     const hasImage = $derived(!!label.image);
-    const layout = $derived(hasImage && label.adjust.layout === 'fill' ? 'fill' : 'beside');
-    const sideRight = $derived(hasImage && layout === 'beside' && label.adjust.side === 'right');
-
-    // Anything that changes the fit box; the fitText action re-fits on change
-    const fitKey = $derived(
-        `${label.text}|${store.size.preset}|${store.size.width}|${store.size.height}|` +
-        `${store.orientation}|${hasImage ? 1 : 0}|${label.adjust.split}|${layout}`
-    );
+    const layout = $derived(effectiveLayout(label.adjust, hasImage));
+    const sideRight = $derived(isSideRight(label.adjust, hasImage));
 
     function onImageTool() {
         if (label.image) { openAdjust(label.id); }
@@ -44,9 +37,9 @@
         openPresets();
     }
 
-    function toggleFit() {
-        patchAdjust(label.id, { fit: label.adjust.fit === 'cover' ? 'contain' : 'cover' });
-    }
+    const toggleFit = () => patchAdjust(label.id, { fit: label.adjust.fit === 'cover' ? 'contain' : 'cover' });
+    const toggleLayout = () => patchAdjust(label.id, { layout: label.adjust.layout === 'fill' ? 'beside' : 'fill' });
+    const toggleSide = () => patchAdjust(label.id, { side: label.adjust.side === 'right' ? 'left' : 'right' });
 
     // Keyboard reordering on the drag handle (parity with the original)
     function onDragKey(event) {
@@ -70,24 +63,18 @@
     style={adjustStyle(label.adjust)}
     data-id={label.id}
 >
-    <div class="label-content">
-        {#if label.image}
-            <div class="label-image-frame">
-                <img
-                    class="label-image"
-                    src={label.image}
-                    alt=""
-                    use:panImage={{ id: label.id, getAdjust: () => label.adjust, onClick: () => openAdjust(label.id) }}
-                />
-            </div>
-        {/if}
-        <div class="label-text-area">
-            <span class="text" contenteditable="true" bind:textContent={label.text} use:fitText={fitKey}></span>
-        </div>
-        {#if label.image && layout === 'beside'}
-            <div class="label-resize-handle" use:resizable={{ id: label.id, getSide: () => label.adjust.side }}></div>
-        {/if}
-    </div>
+    <LabelCanvas
+        editable
+        id={label.id}
+        image={label.image}
+        bind:text={label.text}
+        adjust={label.adjust}
+        onImageClick={() => openAdjust(label.id)}
+    />
+
+    {#if label.image && layout === 'beside'}
+        <div class="label-resize-handle" use:resizable={{ id: label.id, getSide: () => label.adjust.side }}></div>
+    {/if}
 
     {#if label.image}
         <button type="button" class="label-image-remove" title="Remove image" aria-label="Remove image" onclick={() => removeImage(label.id)}>&times;</button>
@@ -98,6 +85,10 @@
         <button type="button" class="tool-image" title="Add, replace or adjust image" aria-label="Add, replace or adjust image" onclick={onImageTool}>&#128247;</button>
         {#if label.image}
             <button type="button" class="tool-fit" title="Toggle fit / fill" aria-label="Toggle fit or fill" onclick={toggleFit}>&#9635;</button>
+            <button type="button" class="tool-layout" title="Toggle beside / fill layout" aria-label="Toggle beside or fill layout" onclick={toggleLayout}>&#9707;</button>
+            {#if layout === 'beside'}
+                <button type="button" class="tool-side" title="Swap image side" aria-label="Swap image side" onclick={toggleSide}>&#8646;</button>
+            {/if}
         {/if}
         <button type="button" class="tool-preset" title="Save as preset" aria-label="Save as preset" onclick={onSavePreset}>&#9733;</button>
         <button type="button" class="tool-duplicate" title="Duplicate label" aria-label="Duplicate label" onclick={() => duplicateLabel(label.id)}>&#10697;</button>
