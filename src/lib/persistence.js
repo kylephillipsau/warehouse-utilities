@@ -2,6 +2,7 @@
 // their saved label size and preset library across the migration.
 
 const SIZE_KEY = 'labelMakerSize';
+const PAGE_KEY = 'labelMakerPage';
 const PRESETS_KEY = 'labelMakerPresets';
 
 export function loadSize() {
@@ -14,6 +15,18 @@ export function loadSize() {
 export function saveSize(size) {
     try { localStorage.setItem(SIZE_KEY, JSON.stringify(size)); }
     catch (e) { /* storage unavailable (private mode etc.) */ }
+}
+
+export function loadPage() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(PAGE_KEY));
+        return saved && typeof saved === 'object' ? saved : null;
+    } catch (e) { return null; }
+}
+
+export function savePage(page) {
+    try { localStorage.setItem(PAGE_KEY, JSON.stringify(page)); }
+    catch (e) { /* storage unavailable */ }
 }
 
 export function loadPresets() {

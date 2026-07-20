@@ -9,7 +9,8 @@ export function draggable(node, params) {
     const onPointerDown = (startEvent) => {
         startEvent.preventDefault();
         const li = node.closest('.text-container');
-        const list = li && li.parentElement;
+        // Reorder across the whole sheet (segments span multiple media pages)
+        const list = li && li.closest('#labelList');
         if (!list) { return; }
         li.classList.add('dragging');
 

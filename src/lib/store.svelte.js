@@ -2,21 +2,23 @@
 // mini toolbars, the Adjust dialog, the preset library, import/export — reads
 // and writes this one reactive store, so there is no manual cross-surface sync.
 import { normalizeAdjust } from './adjust.js';
-import { loadPresets, savePresets, loadSize, saveSize, newId } from './persistence.js';
+import { loadPresets, savePresets, loadSize, saveSize, loadPage, savePage, newId } from './persistence.js';
+import { DEFAULT_LABEL, DEFAULT_PAGE } from './size.js';
 
-function initialSize() {
-    const saved = loadSize();
+function initialSpec(saved, fallback) {
     return {
-        preset: saved && saved.preset ? saved.preset : 'standard',
+        preset: saved && saved.preset ? saved.preset : fallback.preset,
         width: saved && saved.width ? saved.width : '',
         height: saved && saved.height ? saved.height : '',
+        unit: saved && saved.unit ? saved.unit : 'mm',
     };
 }
 
 export const store = $state({
     labels: [],
     presets: loadPresets(),
-    size: initialSize(),
+    size: initialSpec(loadSize(), DEFAULT_LABEL),   // label / segment size
+    page: initialSpec(loadPage(), DEFAULT_PAGE),    // physical media / page size
     orientation: 'landscape',
 });
 
@@ -115,7 +117,8 @@ export function moveLabel(id, toIndex) {
 // ---- Size & orientation ----
 
 export function persistSize() {
-    saveSize({ preset: store.size.preset, width: store.size.width, height: store.size.height });
+    saveSize({ preset: store.size.preset, width: store.size.width, height: store.size.height, unit: store.size.unit });
+    savePage({ preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit });
 }
 
 // ---- Preset library ----

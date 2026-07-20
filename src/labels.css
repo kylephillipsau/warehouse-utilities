@@ -38,6 +38,7 @@
     /* Screen-only management chrome must never reach paper */
     .label-tools,
     .label-add-image,
+    #print-tip,
     #undo-toast,
     #import-dialog,
     #export-dialog,
@@ -54,6 +55,26 @@
     /* A label focused for editing at print time keeps its plain look */
     .text-container {
         background: white !important;
+    }
+
+    /* Each media page prints as its own page, exactly the label size (the
+       @page rule is injected from JS with the real dimensions + margin:0), so a
+       label printer maps it 1:1. */
+    #labels-section {
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    .print-page {
+        margin: 0 !important;
+        box-shadow: none !important;
+        break-after: page;
+        page-break-after: always;
+    }
+
+    .print-page:last-child {
+        break-after: auto;
+        page-break-after: auto;
     }
 }
 
@@ -202,20 +223,51 @@ select {
     border-radius: 6px;
 }
 
-#custom-size {
+.custom-size {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
     font-size: 0.85rem;
 }
 
-#custom-size[hidden] {
-    display: none;
+#custom-width,
+#custom-height,
+#page-width,
+#page-height {
+    width: 6ch;
 }
 
-#custom-width,
-#custom-height {
-    width: 5ch;
+.unit-select {
+    font-family: inherit;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.4rem;
+}
+
+.up-readout {
+    font-weight: normal;
+    color: var(--purple);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+/* Dismissable print-setup note under the toolbar */
+#print-tip {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.6rem 1.25rem;
+    background: var(--amber);
+    color: var(--ink);
+    font-size: 0.85rem;
+    line-height: 1.4;
+    border-bottom: 2px solid var(--ink);
+}
+
+#print-tip .btn {
+    margin-left: auto;
+    padding: 0.3rem 0.8rem;
+    white-space: nowrap;
 }
 
 #labelQuantity {
@@ -672,12 +724,11 @@ ul {
 
 li {
     break-inside: avoid;
-    margin: 10px auto;
-    padding: auto;
+    margin: 0;
+    padding: 0;
     border: 2px solid black;
     background: white;
     text-align: center;
-    /* overflow: scroll; */
 }
 
 /* Keep the box at its true print size while editing so live text fitting
@@ -840,16 +891,37 @@ li.text-container:focus-within .label-tools {
 
 /* Fallback values are the original built-in size; presets and custom sizes
    set these variables from JS and the default stays byte-identical */
+/* One label segment. box-sizing keeps its footprint exactly --label-w/h
+   (border included), so segments tile the media page precisely and the border
+   doubles as the cut guide between them. */
 .text-container {
+    box-sizing: border-box;
     width: var(--label-w, 100mm);
     height: var(--label-h, 22mm);
-    /* resize: vertical; */
     border: 2px solid;
+    margin: 0;
 }
 
-.landscape {
-    width: var(--label-w-landscape, 143mm);
-    height: var(--label-h-landscape, var(--label-h, 22mm));
+/* A media page = one physical label. Its size is the real stock size, and the
+   label segments tile onto it (cols x rows) to be cut apart after printing. */
+#labels-section {
+    padding: 16px;
+    overflow: auto;
+}
+
+.print-page {
+    display: grid;
+    grid-template-columns: repeat(var(--tile-cols, 1), var(--label-w, 100mm));
+    grid-auto-rows: var(--label-h, 22mm);
+    justify-content: start;
+    align-content: start;
+    width: var(--page-w, 210mm);
+    height: var(--page-h, 297mm);
+    box-sizing: border-box;
+    background: white;
+    margin: 0 auto 16px;
+    box-shadow: 0 2px 10px rgba(45, 58, 46, 0.25);
+    overflow: hidden;
 }
 
 .text {

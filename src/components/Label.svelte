@@ -88,7 +88,6 @@
 <li
     bind:this={li}
     class="text-container"
-    class:landscape={store.orientation === 'landscape'}
     class:drag-over={dragOver}
     style={adjustStyle(label.adjust)}
     data-id={label.id}

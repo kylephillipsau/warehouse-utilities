@@ -11,7 +11,8 @@ export function serializeLabels() {
     return {
         format: LABEL_FILE_FORMAT,
         version: LABEL_FILE_VERSION,
-        size: { preset: store.size.preset, width: store.size.width, height: store.size.height },
+        size: { preset: store.size.preset, width: store.size.width, height: store.size.height, unit: store.size.unit },
+        page: { preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit },
         orientation: store.orientation,
         labels: store.labels.map((l) => ({
             text: l.text,
@@ -44,6 +45,13 @@ export function openLabelFile(data, { confirmReplace } = {}) {
         if (data.size.preset) { store.size.preset = data.size.preset; }
         if (data.size.width) { store.size.width = data.size.width; }
         if (data.size.height) { store.size.height = data.size.height; }
+        if (data.size.unit) { store.size.unit = data.size.unit; }
+    }
+    if (data.page) {
+        if (data.page.preset) { store.page.preset = data.page.preset; }
+        if (data.page.width) { store.page.width = data.page.width; }
+        if (data.page.height) { store.page.height = data.page.height; }
+        if (data.page.unit) { store.page.unit = data.page.unit; }
     }
     if (data.orientation === 'portrait' || data.orientation === 'landscape') {
         store.orientation = data.orientation;

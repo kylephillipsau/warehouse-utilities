@@ -1,6 +1,6 @@
 <script>
     import { store, persistSize } from '../lib/store.svelte.js';
-    import { applySize } from '../lib/size.js';
+    import { applySize, orientedPage } from '../lib/size.js';
     import Toolbar from './Toolbar.svelte';
     import LabelList from './LabelList.svelte';
     import UndoToast from './UndoToast.svelte';
@@ -9,20 +9,22 @@
     import AdjustDialog from './AdjustDialog.svelte';
     import PresetsDialog from './PresetsDialog.svelte';
 
-    // Push the chosen label size into root CSS vars and persist it
+    // Push the resolved page + label sizes into root CSS vars and persist them
     $effect(() => {
-        applySize(store.size);
+        applySize(store.page, store.size, store.orientation);
         persistSize();
     });
 
-    // Paper orientation for printing, kept in a raw <style> element
+    // Make the printed page EXACTLY the physical media so a label printer maps
+    // it 1:1 (no scale-to-fit) — kept in a raw <style> element.
     let pageStyleEl;
     $effect(() => {
         if (!pageStyleEl) {
             pageStyleEl = document.createElement('style');
             document.head.appendChild(pageStyleEl);
         }
-        pageStyleEl.textContent = `@page { size: ${store.orientation}; }`;
+        const p = orientedPage(store.page, store.orientation);
+        pageStyleEl.textContent = `@page { size: ${p.width}mm ${p.height}mm; margin: 0; }`;
     });
 </script>
 
