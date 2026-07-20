@@ -12,6 +12,13 @@
     --color-purple-deep: #443B85;
     --color-orange: #C75B24;
     --color-amber: #E8C24A;
+    --color-highlight: #FEFFB4;
+
+    /* One elevation scale for every floating surface, tinted with the ink token
+       (so shadows track the palette). shadow-popover: menus/dropdowns/popovers;
+       shadow-modal: dialogs. */
+    --shadow-popover: 0 10px 24px color-mix(in srgb, var(--color-ink) 30%, transparent);
+    --shadow-modal: 0 12px 32px color-mix(in srgb, var(--color-ink) 40%, transparent);
 }
 
 /* Fonts live in static/fonts -> served at /fonts. Absolute paths so the bundled
@@ -71,7 +78,9 @@ body {
     }
 
     .group-label {
-        @apply text-[0.7rem] font-bold tracking-[0.12em] uppercase text-orange;
+        @apply text-[0.7rem] font-bold tracking-[0.12em] uppercase;
+        /* Darkened orange so this small-caps label clears WCAG AA on paper */
+        color: color-mix(in srgb, var(--color-orange) 80%, black);
     }
 
     .group-row {
@@ -115,13 +124,13 @@ body {
         /* Re-centre the native modal — Tailwind's reset zeroes the dialog margin
            that <dialog>.showModal() relies on to centre in the viewport. */
         margin: auto;
-        box-shadow: 0 12px 32px rgba(45, 58, 46, 0.4);
+        box-shadow: var(--shadow-modal);
     }
     .dialog-wide {
         @apply w-[min(40rem,calc(100vw-2rem))];
     }
     .dialog::backdrop {
-        background: rgba(45, 58, 46, 0.55);
+        background: color-mix(in srgb, var(--color-ink) 55%, transparent);
     }
 
     /* Per-label hover action buttons (drag / edit / ⋯), fixed square so they
@@ -134,13 +143,28 @@ body {
     .label-tool:hover {
         @apply bg-amber;
     }
+    /* Give secondary icon buttons a finger-friendly hit area on touch devices
+       without changing their visual size (a centred expanded overlay). */
+    @media (pointer: coarse) {
+        .label-tool {
+            position: relative;
+        }
+        .label-tool::after {
+            content: "";
+            position: absolute;
+            inset: 50%;
+            width: 44px;
+            height: 44px;
+            transform: translate(-50%, -50%);
+        }
+    }
 
     /* Image editor preview: checkerboard backing + grab cursor (raw because the
        repeating-conic-gradient has no utility equivalent). */
     .adjust-preview {
         @apply self-center border-2 border-ink rounded-md overflow-hidden;
         background:
-            repeating-conic-gradient(rgba(45, 58, 46, 0.10) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+            repeating-conic-gradient(color-mix(in srgb, var(--color-ink) 10%, transparent) 0% 25%, transparent 0% 50%) 50% / 16px 16px;
         touch-action: none;
         cursor: grab;
     }
@@ -163,7 +187,7 @@ body {
     /* Preset thumbnail checkerboard backing */
     .preset-thumb {
         background:
-            repeating-conic-gradient(rgba(45, 58, 46, 0.10) 0% 25%, transparent 0% 50%) 50% / 12px 12px;
+            repeating-conic-gradient(color-mix(in srgb, var(--color-ink) 10%, transparent) 0% 25%, transparent 0% 50%) 50% / 12px 12px;
     }
 }
 
@@ -171,6 +195,18 @@ body {
 :focus-visible {
     outline: 3px solid var(--color-purple);
     outline-offset: 1px;
+}
+
+/* Honour reduced-motion preferences across all transitions/animations */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+    }
 }
 
 /* ---------------------------------------------------------------------------
@@ -209,7 +245,7 @@ li {
 /* Keep the box at its true print size while editing so live text fitting
    measures against the real label; the highlight alone signals edit focus. */
 .text-container:focus-within {
-    background-color: #feffb4;
+    background-color: var(--color-highlight);
 }
 
 .text:focus,
@@ -347,7 +383,7 @@ li.text-container.drag-over {
 /* Empty-label placeholder shown by the always-present editable text region */
 .text[data-placeholder]:empty::before {
     content: attr(data-placeholder);
-    color: rgba(45, 58, 46, 0.45);
+    color: color-mix(in srgb, var(--color-ink) 55%, transparent);
     font-weight: normal;
 }
 

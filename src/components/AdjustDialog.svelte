@@ -29,7 +29,10 @@
         const el = document.querySelector(`[data-id="${id}"]`);
         const rect = el ? el.getBoundingClientRect() : null;
         const aspect = rect && rect.width && rect.height ? rect.width / rect.height : 100 / 22;
-        const maxW = 360, maxH = 260;
+        // Never exceed the dialog's inner width on small screens: dialog is
+        // min(40rem, 100vw - 2rem) with 1.25rem padding each side.
+        const avail = (window.innerWidth || 360) - 32 - 40;
+        const maxW = Math.min(360, avail), maxH = 260;
         let w = maxW, h = w / aspect;
         if (h > maxH) { h = maxH; w = h * aspect; }
         previewW = Math.round(w);
@@ -41,6 +44,13 @@
         working.zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, isNaN(z) ? 1 : z));
     }
     function align(a) { working.posX = a.x; working.posY = a.y; }
+    // Human-readable name for an alignment cell (0/50/100 percentages)
+    const H = { 0: 'left', 50: 'centre', 100: 'right' };
+    const V = { 0: 'top', 50: 'middle', 100: 'bottom' };
+    function alignLabel(a) {
+        if (a.x === 50 && a.y === 50) { return 'Align centre'; }
+        return `Align ${V[a.y]} ${H[a.x]}`;
+    }
     function recenter() { working.posX = 50; working.posY = 50; working.zoom = 1; }
     function reset() { working = normalizeAdjust(DEFAULT_ADJUST); }
 
@@ -79,9 +89,9 @@
     function onDialogClick(event) { if (event.target === dlg) { closeAdjust(); } }
 </script>
 
-<dialog id="adjust-dialog" class="dialog dialog-wide" bind:this={dlg} use:dialogSync={open} onclose={closeAdjust} onclick={onDialogClick}>
+<dialog id="adjust-dialog" class="dialog dialog-wide" aria-labelledby="adjust-title" bind:this={dlg} use:dialogSync={open} onclose={closeAdjust} onclick={onDialogClick}>
     <div class="flex flex-col gap-[0.85rem] p-5">
-        <span class="group-label">Edit image</span>
+        <span class="group-label" id="adjust-title">Edit image</span>
 
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
@@ -112,8 +122,8 @@
                 </div>
             </div>
             <div class="control-group">
-                <span class="group-label">Position</span>
-                <div id="adj-align-grid" class="grid grid-cols-3 gap-[3px] w-fit">
+                <span class="group-label" id="adj-align-label">Position</span>
+                <div id="adj-align-grid" class="grid grid-cols-3 gap-[3px] w-fit" role="group" aria-labelledby="adj-align-label">
                     {#each ALIGN_CELLS as a}
                         <button
                             type="button"
@@ -123,7 +133,8 @@
                                        : 'bg-paper border-ink hover:bg-ink/[0.08]'}"
                             data-x={a.x}
                             data-y={a.y}
-                            aria-label={`Align ${a.x} ${a.y}`}
+                            aria-pressed={working.posX === a.x && working.posY === a.y}
+                            aria-label={alignLabel(a)}
                             onclick={() => align(a)}
                         ></button>
                     {/each}

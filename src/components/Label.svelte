@@ -33,11 +33,11 @@
         }
     }
     function onDrop(event) {
+        dragOver = false; // clear the highlight for every drop, image or not
         const file = event.dataTransfer && event.dataTransfer.files[0];
         if (!file || !file.type.startsWith('image/')) { return; }
         event.preventDefault();
         event.stopPropagation();
-        dragOver = false;
         fileToLabelImage(file).then((src) => setImage(label.id, src)).catch(() => {});
     }
 
@@ -50,6 +50,10 @@
         });
     }
     function onFocusOut(event) {
+        // Don't prune when focus is only moving to this label's own tools (drag
+        // handle, edit, ⋯ menu) — otherwise an empty label would delete itself
+        // out from under the action the user just clicked.
+        if (li && event.relatedTarget && li.contains(event.relatedTarget)) { return; }
         if (event.target.classList && event.target.classList.contains('text')) {
             if (!label.text || label.text.trim().length === 0) { captionOpen = false; }
             pruneIfEmpty(label.id);

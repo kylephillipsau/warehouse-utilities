@@ -7,6 +7,7 @@ export function draggable(node, params) {
     let id = params.id;
 
     const onPointerDown = (startEvent) => {
+        if (startEvent.button && startEvent.button !== 0) { return; } // primary button / touch only
         startEvent.preventDefault();
         const li = node.closest('.text-container');
         // Reorder across the whole sheet (segments span multiple media pages)

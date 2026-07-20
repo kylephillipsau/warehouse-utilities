@@ -5,11 +5,24 @@
     // workspace row, below the header. Esc closes it. Hidden entirely in print.
     let { open = false, title = '', onClose, children } = $props();
 
+    let panelEl;
+    // Move focus into the panel when it opens and restore it to whatever opened
+    // it (the toolbar toggle) when it closes — standard drawer focus handling.
     $effect(() => {
         if (!open) { return; }
+        const opener = document.activeElement;
+        const raf = requestAnimationFrame(() => {
+            // Don't steal focus if a control inside already claimed it (e.g. the
+            // just-saved preset's rename field auto-focusing).
+            if (panelEl && !panelEl.contains(document.activeElement)) { panelEl.focus(); }
+        });
         const onKey = (e) => { if (e.key === 'Escape') { onClose?.(); } };
         document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
+        return () => {
+            cancelAnimationFrame(raf);
+            document.removeEventListener('keydown', onKey);
+            if (opener && typeof opener.focus === 'function') { opener.focus(); }
+        };
     });
 </script>
 
@@ -20,9 +33,11 @@
     inert={!open ? true : undefined}
 >
     <div
-        class="flex h-full w-[min(22rem,calc(100vw-2.5rem))] flex-col bg-paper border-r-[3px] border-ink"
+        bind:this={panelEl}
+        class="flex h-full w-[min(22rem,calc(100vw-2.5rem))] flex-col bg-paper border-r-[3px] border-ink outline-none"
         role="dialog"
         aria-label={title}
+        tabindex="-1"
     >
         <div class="flex items-center justify-between gap-2 border-b-2 border-ink px-4 py-3">
             <span class="group-label">{title}</span>

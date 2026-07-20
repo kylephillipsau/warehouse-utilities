@@ -21,8 +21,10 @@
     class:opacity-0={!visible}
     class:translate-y-2={!visible}
     class:pointer-events-none={!visible}
-    style="box-shadow: 0 6px 18px rgba(45, 58, 46, 0.4)"
+    style="box-shadow: var(--shadow-popover)"
     role="status"
+    aria-hidden={!visible}
+    inert={!visible ? true : undefined}
 >
     <span>Label deleted</span>
     <button

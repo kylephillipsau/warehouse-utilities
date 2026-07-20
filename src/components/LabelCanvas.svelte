@@ -32,7 +32,7 @@
     );
 </script>
 
-<div class="label-content" class:has-caption={showCaptionBand}>
+<div class="label-content">
     {#if hasImage}
         <div class="label-image-frame">
             {#if editable && onImageClick}
@@ -47,7 +47,7 @@
         {#if showCaptionBand}
             <div class="label-caption">
                 {#if editable}
-                    <span class="text" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Add caption"></span>
+                    <span class="text" role="textbox" aria-label="Caption" aria-multiline="false" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Add caption"></span>
                 {:else}
                     <span class="text">{text}</span>
                 {/if}
@@ -58,7 +58,7 @@
              the placeholder, typing fills it in place. -->
         <div class="label-text-area">
             {#if editable}
-                <span class="text" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Type a label"></span>
+                <span class="text" role="textbox" aria-label="Label text" aria-multiline="false" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Type a label"></span>
             {:else}
                 <span class="text">{text}</span>
             {/if}

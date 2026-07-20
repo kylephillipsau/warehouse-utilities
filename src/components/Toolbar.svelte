@@ -129,7 +129,7 @@
                 <span class="text-[0.7em]" aria-hidden="true">▾</span>
             </button>
             {#if setupOpen}
-                <div class="absolute right-0 top-[calc(100%+6px)] z-[25] flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-[0.85rem] rounded-lg border-2 border-ink bg-paper p-4 shadow-[0_12px_28px_rgba(45,58,46,0.35)] max-sm:inset-x-0 max-sm:w-auto" role="dialog" aria-label="Label setup">
+                <div class="absolute right-0 top-[calc(100%+6px)] z-[25] flex max-h-[min(28rem,calc(100vh-7rem))] w-[min(24rem,calc(100vw-2rem))] flex-col gap-[0.85rem] overflow-y-auto rounded-lg border-2 border-ink bg-paper p-4 shadow-popover max-sm:inset-x-0 max-sm:w-auto" role="dialog" aria-label="Label setup">
                     <div class="flex flex-col gap-[0.35rem]">
                         <span class="group-label">Page / media <span class="up-readout font-normal normal-case tracking-normal text-purple">{store.divisions} up</span></span>
                         <div class="group-row">

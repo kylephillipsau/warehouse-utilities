@@ -32,9 +32,9 @@
     }
 </script>
 
-<dialog id="export-dialog" class="dialog" bind:this={dlg} use:dialogSync={ui.exportOpen} onclose={() => { ui.exportOpen = false; }} onclick={onDialogClick}>
+<dialog id="export-dialog" class="dialog" aria-labelledby="export-title" bind:this={dlg} use:dialogSync={ui.exportOpen} onclose={() => { ui.exportOpen = false; }} onclick={onDialogClick}>
     <div class="flex flex-col gap-3 p-5">
-        <span class="group-label">Save labels</span>
+        <span class="group-label" id="export-title">Save labels</span>
         <p class="m-0 text-[0.9rem] leading-[1.4]">
             {#if hasImages}
                 Your labels include images - save a label file to keep them. Plain text saves the words only.
