@@ -37,14 +37,18 @@
 
     /* Screen-only management chrome must never reach paper */
     .label-tools,
-    .label-image-remove,
-    .label-resize-handle,
+    .label-add-image,
     #undo-toast,
     #import-dialog,
     #export-dialog,
     #adjust-dialog,
     #presets-dialog {
         display: none !important;
+    }
+
+    /* Never print the empty-label placeholder hint */
+    .text[data-placeholder]:empty::before {
+        content: none !important;
     }
 
     /* A label focused for editing at print time keeps its plain look */
@@ -500,6 +504,11 @@ select {
     flex: 1 1 12rem;
 }
 
+.zoom-readout {
+    font-weight: normal;
+    color: rgba(45, 58, 46, 0.6);
+}
+
 #adj-side-group[hidden] {
     display: none;
 }
@@ -694,19 +703,18 @@ li.dragging {
 }
 
 /* Hover/focus strip for per-label actions; absolutely positioned inside the
-   label box so it never affects layout or the text-fitting measurements */
+   label box so it never affects layout or text-fitting. Slimmed to a drag
+   handle, an optional Edit-image button, and a "⋯" actions menu. */
 .label-tools {
     position: absolute;
     top: 4px;
     right: 4px;
     display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    max-width: calc(100% - 8px);
     gap: 4px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s ease;
+    z-index: 6;
 }
 
 li.text-container:hover .label-tools,
@@ -715,7 +723,7 @@ li.text-container:focus-within .label-tools {
     pointer-events: auto;
 }
 
-.label-tools button {
+.label-tool {
     width: 26px;
     height: 26px;
     display: inline-flex;
@@ -733,7 +741,7 @@ li.text-container:focus-within .label-tools {
     cursor: pointer;
 }
 
-.label-tools button:hover {
+.label-tool:hover {
     background: var(--amber);
 }
 
@@ -742,57 +750,45 @@ li.text-container:focus-within .label-tools {
     touch-action: none;
 }
 
-/* Inline handle to resize the beside-mode image column. Sits on the boundary
-   between image and text, screen-only, revealed on hover. */
-.label-resize-handle {
+/* "⋯" actions menu — progressive disclosure of the less-primary actions */
+.label-menu {
+    position: relative;
+}
+
+.label-menu-list {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    left: var(--split, 45%);
-    width: 10px;
-    margin-left: -5px;
-    cursor: ew-resize;
-    touch-action: none;
-    z-index: 6;
-    opacity: 0;
-    transition: opacity 0.12s ease;
+    top: calc(100% + 4px);
+    right: 0;
+    min-width: 10rem;
+    display: flex;
+    flex-direction: column;
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(45, 58, 46, 0.35);
+    overflow: hidden;
+    z-index: 20;
 }
 
-.side-right .label-resize-handle {
-    left: auto;
-    right: var(--split, 45%);
-    margin-left: 0;
-    margin-right: -5px;
+.label-menu-item {
+    text-align: left;
+    padding: 0.45rem 0.7rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: bold;
+    color: var(--ink);
+    background: var(--paper);
+    border: 0;
+    cursor: pointer;
+    white-space: nowrap;
 }
 
-.label-resize-handle::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 4px;
-    height: 40%;
-    min-height: 12px;
-    background: var(--purple);
-    border: 1px solid var(--paper);
-    border-radius: 3px;
+.label-menu-item:hover {
+    background: rgba(45, 58, 46, 0.08);
 }
 
-li.text-container:hover .label-resize-handle,
-li.text-container:focus-within .label-resize-handle {
-    opacity: 0.9;
-}
-
-/* Drag-to-pan hint on an adjustable image */
-.layout-beside .label-image,
-.layout-fill .label-image {
-    cursor: grab;
-    touch-action: none;
-}
-
-.label-image:active {
-    cursor: grabbing;
+.label-menu-item.danger {
+    color: var(--orange);
 }
 
 #undo-toast {
@@ -863,19 +859,20 @@ li.text-container:focus-within .label-resize-handle {
     display: block;
 }
 
-/* Image + text layout. The image lives in a clipping .label-image-frame; the
-   <img> fills it and its fit / object-position / scale come from CSS custom
-   properties (--fit/--posx/--posy/--zoom) that the Adjust editor writes. Two
-   layouts: "beside" (image in a side column, text auto-fits the rest) and
-   "fill" (image covers the label, text overlaid on top). resizeText measures
-   .label-text-area, so text always fits whichever region it occupies. */
+/* Content rendering. An image always fills the whole label; the crop within
+   that frame comes from CSS custom properties (--fit/--posx/--posy/--zoom) the
+   Edit-image editor writes. A text-only label fills with auto-fitted text; an
+   image label may carry a caption in a readable band. */
 .label-content {
+    position: relative;
     width: 100%;
     height: 100%;
     box-sizing: border-box;
 }
 
 .label-image-frame {
+    position: absolute;
+    inset: 0;
     overflow: hidden;
     background: transparent;
 }
@@ -888,97 +885,80 @@ li.text-container:focus-within .label-resize-handle {
     object-position: var(--posx, 50%) var(--posy, 50%);
     transform: scale(var(--zoom, 1));
     transform-origin: center;
+}
+
+.label-image.editable {
     cursor: pointer;
 }
 
-/* Beside: image in a fixed side column, text fills the remainder */
-.layout-beside .label-content {
-    display: flex;
-    align-items: stretch;
-    gap: 2mm;
-}
-
-.layout-beside .label-image-frame {
-    flex: 0 0 var(--split, 45%);
-}
-
-.layout-beside .label-text-area {
-    flex: 1 1 0;
-    min-width: 0;
+/* Text-only label: text fills the whole box and auto-fits */
+.label-text-area {
+    position: absolute;
+    inset: 0;
     overflow: hidden;
 }
 
-.layout-beside.side-right .label-image-frame {
-    order: 2;
-}
-
-/* Fill: image covers the whole label, text overlaid and centred */
-.layout-fill .label-content {
-    position: relative;
-}
-
-.layout-fill .label-image-frame {
+/* Caption band overlaid on an image; fixed proportion so the caption text has a
+   box to auto-fit into. Readable backing forced to print. */
+.label-caption {
     position: absolute;
-    inset: 0;
-}
-
-.layout-fill .label-text-area {
-    position: absolute;
-    inset: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 30%;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
-    /* Let clicks on empty areas fall through to the image (to open Adjust);
-       the text itself stays interactive for editing */
-    pointer-events: none;
-}
-
-.layout-fill .text {
-    pointer-events: auto;
-}
-
-/* Readability backing so overlaid text stays legible over any image; forced to
-   print so the halo survives paper output */
-.layout-fill .text {
-    padding: 0 0.15em;
-    background: rgba(255, 255, 255, 0.72);
-    box-decoration-break: clone;
+    padding: 0 1mm;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.82);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
 }
 
-/* Screen-only × to drop the image, mirroring the tool strip's reveal-on-hover */
-.label-image-remove {
+/* Empty-label placeholder: type text, or add an image */
+.label-empty {
     position: absolute;
-    top: 4px;
-    left: 4px;
-    width: 26px;
-    height: 26px;
-    display: inline-flex;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 0;
+    gap: 0.4rem;
+    padding: 2mm;
+    box-sizing: border-box;
+}
+
+.label-empty-text {
+    min-width: 2ch;
+}
+
+.text[data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: rgba(45, 58, 46, 0.45);
+    font-weight: normal;
+}
+
+.label-add-image {
     font-family: inherit;
-    font-size: 14px;
+    font-size: 0.8rem;
     font-weight: bold;
-    line-height: 1;
     color: var(--ink);
     background: var(--paper);
-    border: 2px solid var(--ink);
-    border-radius: 5px;
+    border: 2px dashed rgba(45, 58, 46, 0.5);
+    border-radius: 6px;
+    padding: 0.3rem 0.7rem;
     cursor: pointer;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.12s ease;
 }
 
-li.text-container:hover .label-image-remove,
-li.text-container:focus-within .label-image-remove {
-    opacity: 1;
-    pointer-events: auto;
+.label-add-image:hover {
+    border-color: var(--purple);
+    color: var(--purple);
 }
 
-.label-image-remove:hover {
-    background: var(--amber);
+/* Highlight a label as a drop target while an image is dragged over it */
+li.text-container.drag-over {
+    outline: 3px dashed var(--purple);
+    outline-offset: 2px;
 }

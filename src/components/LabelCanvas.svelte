@@ -1,54 +1,68 @@
 <script>
-    // The single renderer for a label's visual body (frame + image + text).
-    // Used interactively by Label.svelte and statically by the Adjust dialog
-    // preview, so the two can never drift. Layout/side classes and the adjust
-    // CSS vars live on the parent .text-container; this component owns only the
-    // .label-content subtree.
+    // The single renderer for a label's visual body, by content type:
+    //   image only    -> the image fills the label; NO text layer in front
+    //   text only      -> the text fills the label (auto-fitted)
+    //   image + caption -> image fills, caption text in a readable band
+    //   empty (editable) -> a placeholder: type text, or add an image
+    // Used interactively by Label.svelte and statically by the editor preview.
     import { store } from '../lib/store.svelte.js';
     import { fitText } from '../actions/fitText.js';
-    import { panImage } from '../actions/panImage.js';
-    import { zoomImage } from '../actions/zoomImage.js';
 
     let {
         image = null,
         text = $bindable(''),
         adjust,
         editable = false,
-        id = null,
         onImageClick = null,
+        onAddImage = null,
+        showCaption = false,
     } = $props();
 
     const hasImage = $derived(!!image);
-    const layout = $derived(hasImage && adjust.layout === 'fill' ? 'fill' : 'beside');
+    const hasText = $derived(!!(text && text.length > 0));
+    const showText = $derived(hasText || (editable && showCaption));
 
-    // Re-fit trigger for editable labels (ignored when not editable)
+    // Re-fit trigger; the box also resizes on size/orientation change (handled
+    // by the ResizeObserver inside the fitText action)
     const fitKey = $derived(
         `${text}|${store.size.preset}|${store.size.width}|${store.size.height}|` +
-        `${store.orientation}|${hasImage ? 1 : 0}|${adjust.split}|${layout}`
+        `${store.orientation}|${hasImage ? 1 : 0}`
     );
 </script>
 
-<div class="label-content">
-    {#if image}
+<div class="label-content" class:has-caption={hasImage && showText}>
+    {#if hasImage}
         <div class="label-image-frame">
-            {#if editable}
-                <img
-                    class="label-image"
-                    src={image}
-                    alt=""
-                    use:panImage={{ id, getAdjust: () => adjust, onClick: onImageClick }}
-                    use:zoomImage={{ id, getAdjust: () => adjust }}
-                />
+            {#if editable && onImageClick}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <img class="label-image editable" src={image} alt="" title="Edit image" onclick={onImageClick} />
             {:else}
                 <img class="label-image" src={image} alt="" />
             {/if}
         </div>
-    {/if}
-    <div class="label-text-area">
-        {#if editable}
-            <span class="text" contenteditable="true" bind:textContent={text} use:fitText={fitKey}></span>
-        {:else}
-            <span class="text">{text}</span>
+        {#if showText}
+            <div class="label-caption">
+                {#if editable}
+                    <span class="text" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Add caption"></span>
+                {:else}
+                    <span class="text">{text}</span>
+                {/if}
+            </div>
         {/if}
-    </div>
+    {:else if hasText || !editable}
+        <div class="label-text-area">
+            {#if editable}
+                <span class="text" contenteditable="true" bind:textContent={text} use:fitText={fitKey}></span>
+            {:else}
+                <span class="text">{text}</span>
+            {/if}
+        </div>
+    {:else}
+        <div class="label-empty">
+            <span class="text label-empty-text" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Type a label"></span>
+            <button type="button" class="label-add-image" onclick={onAddImage}>&#43; Add image</button>
+        </div>
+    {/if}
 </div>

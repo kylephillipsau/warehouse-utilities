@@ -1,45 +1,76 @@
 <script>
-    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, patchAdjust, moveLabel } from '../lib/store.svelte.js';
-    import { adjustStyle, effectiveLayout, isSideRight } from '../lib/adjust.js';
+    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, pruneIfEmpty, moveLabel } from '../lib/store.svelte.js';
+    import { adjustStyle } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { openAdjust, openPresets } from '../lib/ui.svelte.js';
     import { draggable } from '../actions/draggable.js';
-    import { resizable } from '../actions/resizable.js';
     import LabelCanvas from './LabelCanvas.svelte';
+    import LabelMenu from './LabelMenu.svelte';
 
     let { label } = $props();
 
+    let li;
     let fileInput;
+    let captionOpen = $state(false);
+    let dragOver = $state(false);
 
-    const hasImage = $derived(!!label.image);
-    const layout = $derived(effectiveLayout(label.adjust, hasImage));
-    const sideRight = $derived(isSideRight(label.adjust, hasImage));
-
-    function onImageTool() {
-        if (label.image) { openAdjust(label.id); }
-        else { fileInput.click(); }
-    }
-
+    // --- adding / replacing an image ---
+    function pickImage() { fileInput.click(); }
     function onPickImage(event) {
         const file = event.target.files[0];
         event.target.value = '';
         if (!file) { return; }
-        const hadImage = !!label.image;
         fileToLabelImage(file)
-            .then((src) => { setImage(label.id, src); if (!hadImage) { openAdjust(label.id); } })
-            .catch(() => { /* not an image - ignore */ });
+            .then((src) => { setImage(label.id, src); openAdjust(label.id); })
+            .catch(() => { /* not an image */ });
     }
 
-    function onSavePreset() {
+    // --- drop an image straight onto the label ---
+    function onDragOver(event) {
+        if (event.dataTransfer && [...event.dataTransfer.items].some((i) => i.kind === 'file')) {
+            event.preventDefault();
+            dragOver = true;
+        }
+    }
+    function onDrop(event) {
+        const file = event.dataTransfer && event.dataTransfer.files[0];
+        if (!file || !file.type.startsWith('image/')) { return; }
+        event.preventDefault();
+        event.stopPropagation();
+        dragOver = false;
+        fileToLabelImage(file).then((src) => setImage(label.id, src)).catch(() => {});
+    }
+
+    // --- caption (opt-in text on an image label) ---
+    function addCaption() {
+        captionOpen = true;
+        queueMicrotask(() => {
+            const el = li && li.querySelector('.label-caption .text');
+            if (el) { el.focus(); }
+        });
+    }
+    function onFocusOut(event) {
+        if (event.target.classList && event.target.classList.contains('text')) {
+            if (!label.text || label.text.trim().length === 0) { captionOpen = false; }
+            pruneIfEmpty(label.id);
+        }
+    }
+
+    function savePreset() {
         const name = window.prompt('Name this preset:', label.text || 'Label preset');
         if (name === null) { return; }
         savePresetFromLabel(label.id, name);
         openPresets();
     }
 
-    const toggleFit = () => patchAdjust(label.id, { fit: label.adjust.fit === 'cover' ? 'contain' : 'cover' });
-    const toggleLayout = () => patchAdjust(label.id, { layout: label.adjust.layout === 'fill' ? 'beside' : 'fill' });
-    const toggleSide = () => patchAdjust(label.id, { side: label.adjust.side === 'right' ? 'left' : 'right' });
+    // Progressive-disclosure actions menu (labeled, not cryptic icons)
+    const menuItems = $derived([
+        label.image ? { label: label.text ? 'Edit caption' : 'Add caption', action: addCaption } : { label: 'Add image', action: pickImage },
+        { label: 'Duplicate', action: () => duplicateLabel(label.id) },
+        { label: 'Save as preset…', action: savePreset },
+        label.image ? { label: 'Remove image', action: () => removeImage(label.id) } : null,
+        { label: 'Delete', action: () => deleteLabel(label.id), danger: true },
+    ].filter(Boolean));
 
     // Keyboard reordering on the drag handle (parity with the original)
     function onDragKey(event) {
@@ -55,44 +86,33 @@
 </script>
 
 <li
+    bind:this={li}
     class="text-container"
     class:landscape={store.orientation === 'landscape'}
-    class:layout-beside={layout === 'beside'}
-    class:layout-fill={layout === 'fill'}
-    class:side-right={sideRight}
+    class:drag-over={dragOver}
     style={adjustStyle(label.adjust)}
     data-id={label.id}
+    ondragover={onDragOver}
+    ondragleave={() => (dragOver = false)}
+    ondrop={onDrop}
+    onfocusout={onFocusOut}
 >
     <LabelCanvas
         editable
-        id={label.id}
         image={label.image}
         bind:text={label.text}
         adjust={label.adjust}
+        showCaption={captionOpen}
         onImageClick={() => openAdjust(label.id)}
+        onAddImage={pickImage}
     />
 
-    {#if label.image && layout === 'beside'}
-        <div class="label-resize-handle" use:resizable={{ id: label.id, getSide: () => label.adjust.side }}></div>
-    {/if}
-
-    {#if label.image}
-        <button type="button" class="label-image-remove" title="Remove image" aria-label="Remove image" onclick={() => removeImage(label.id)}>&times;</button>
-    {/if}
-
     <div class="label-tools">
-        <button type="button" class="tool-drag" title="Drag to reorder" aria-label="Drag to reorder" use:draggable={{ id: label.id }} onkeydown={onDragKey}>&#10495;</button>
-        <button type="button" class="tool-image" title="Add, replace or adjust image" aria-label="Add, replace or adjust image" onclick={onImageTool}>&#128247;</button>
+        <button type="button" class="label-tool tool-drag" title="Drag to reorder" aria-label="Drag to reorder" use:draggable={{ id: label.id }} onkeydown={onDragKey}>&#10495;</button>
         {#if label.image}
-            <button type="button" class="tool-fit" title="Toggle fit / fill" aria-label="Toggle fit or fill" onclick={toggleFit}>&#9635;</button>
-            <button type="button" class="tool-layout" title="Toggle beside / fill layout" aria-label="Toggle beside or fill layout" onclick={toggleLayout}>&#9707;</button>
-            {#if layout === 'beside'}
-                <button type="button" class="tool-side" title="Swap image side" aria-label="Swap image side" onclick={toggleSide}>&#8646;</button>
-            {/if}
+            <button type="button" class="label-tool tool-edit" title="Edit image" aria-label="Edit image" onclick={() => openAdjust(label.id)}>&#9998;</button>
         {/if}
-        <button type="button" class="tool-preset" title="Save as preset" aria-label="Save as preset" onclick={onSavePreset}>&#9733;</button>
-        <button type="button" class="tool-duplicate" title="Duplicate label" aria-label="Duplicate label" onclick={() => duplicateLabel(label.id)}>&#10697;</button>
-        <button type="button" class="tool-delete" title="Delete label" aria-label="Delete label" onclick={() => deleteLabel(label.id)}>&times;</button>
+        <LabelMenu items={menuItems} />
     </div>
 
     <input type="file" bind:this={fileInput} accept="image/*" hidden onchange={onPickImage} />

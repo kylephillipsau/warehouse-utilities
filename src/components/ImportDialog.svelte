@@ -1,7 +1,8 @@
 <script>
     import { ui, openImport } from '../lib/ui.svelte.js';
-    import { store, importLines } from '../lib/store.svelte.js';
+    import { store, importLines, addImageLabel } from '../lib/store.svelte.js';
     import { openLabelFile } from '../lib/serialize.js';
+    import { fileToLabelImage } from '../lib/image.js';
     import { dialogSync } from '../actions/dialogSync.js';
 
     const HINT_DEFAULT = 'Paste or type below, one label per line, or drop in a text file.';
@@ -73,6 +74,12 @@
         dragover = false;
         const file = event.dataTransfer && event.dataTransfer.files[0];
         if (!file) { return; }
+        // An image dropped on empty sheet space becomes a new image label
+        // (drops onto a label are handled there and don't bubble here).
+        if (file.type && file.type.startsWith('image/')) {
+            fileToLabelImage(file).then((src) => addImageLabel(src)).catch(() => {});
+            return;
+        }
         if (!ui.importOpen) { openImport(); }
         readImportFile(file);
     }
