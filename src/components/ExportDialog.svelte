@@ -3,6 +3,7 @@
     import { store, labelsHaveImages } from '../lib/store.svelte.js';
     import { serializeLabels, exportTextLines } from '../lib/serialize.js';
     import { buildZpl, ZPL_DPIS } from '../lib/zpl.js';
+    import { printZpl, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from '../lib/browserPrint.js';
     import { dialogSync } from '../actions/dialogSync.js';
     import Select from './Select.svelte';
 
@@ -10,7 +11,11 @@
     let zplDpi = $state(203);
     let zplBusy = $state(false);
     let zplError = $state('');
+    let printState = $state('idle'); // idle | printing | done | error | not-detected
+    let printMsg = $state('');
     const hasImages = $derived(ui.exportOpen && labelsHaveImages());
+
+    const hasPrintable = () => store.labels.some((l) => (l.text && l.text.trim()) || l.image);
 
     function downloadBlob(blob, filename) {
         const link = document.createElement('a');
@@ -34,7 +39,7 @@
 
     async function exportZpl() {
         zplError = '';
-        if (store.labels.every((l) => !(l.text && l.text.trim()) && !l.image)) {
+        if (!hasPrintable()) {
             zplError = 'Add a label first — there is nothing to print.';
             return;
         }
@@ -47,6 +52,25 @@
             zplError = "Couldn't generate ZPL. " + (e && e.message ? e.message : '');
         } finally {
             zplBusy = false;
+        }
+    }
+
+    async function printToZebra() {
+        zplError = '';
+        if (!hasPrintable()) {
+            zplError = 'Add a label first — there is nothing to print.';
+            return;
+        }
+        printState = 'printing';
+        printMsg = '';
+        try {
+            const { zpl } = await buildZpl(store, Number(zplDpi));
+            const device = await printZpl(zpl);
+            printState = 'done';
+            printMsg = 'Sent to ' + ((device && device.name) || 'the printer') + '.';
+        } catch (e) {
+            if (e && e.code === 'not-detected') { printState = 'not-detected'; }
+            else { printState = 'error'; printMsg = (e && e.message) || 'Print failed.'; }
         }
     }
 
@@ -73,19 +97,31 @@
         <div class="mt-1 flex flex-col gap-2 rounded-lg border-2 border-ink/15 p-3">
             <span class="group-label">Print exact on a Zebra</span>
             <p class="m-0 text-[0.85rem] leading-[1.4] text-ink/80">
-                Browser printing can scale labels (Chrome renders at 300&nbsp;dpi). Export <strong>ZPL</strong> to print at the printer's true dot size. Send the <code>.zpl</code> to the printer raw (a "Generic / Text Only" queue, or copy it to the printer share).
+                Browser printing can scale labels (Chrome renders at 300&nbsp;dpi). These print at the printer's true dot size. <strong>Print to Zebra</strong> sends straight to the printer via Zebra Browser Print; <strong>Download ZPL</strong> saves a <code>.zpl</code> you send raw (a "Generic / Text Only" queue, or the printer share).
             </p>
+            <label class="flex items-center gap-2 text-[0.85rem]">
+                <span class="whitespace-nowrap">Printer resolution</span>
+                <Select ariaLabel="Printer resolution" class="w-[15rem] max-w-full" options={ZPL_DPIS.map((d) => ({ value: d.value, label: d.label }))} bind:value={zplDpi} />
+            </label>
             <div class="flex flex-wrap items-center gap-2">
-                <button type="button" class="btn btn-primary flex-[1_1_12rem]" id="export-zpl" disabled={zplBusy} onclick={exportZpl}>
-                    {zplBusy ? 'Generating…' : 'Zebra ZPL (.zpl)'}
+                <button type="button" class="btn btn-primary flex-[1_1_11rem]" id="print-zebra" disabled={printState === 'printing'} onclick={printToZebra}>
+                    {printState === 'printing' ? 'Printing…' : 'Print to Zebra'}
                 </button>
-                <label class="flex items-center gap-2 text-[0.85rem]">
-                    <span class="whitespace-nowrap">Printer</span>
-                    <Select ariaLabel="Printer resolution" class="w-[15rem] max-w-full" options={ZPL_DPIS.map((d) => ({ value: d.value, label: d.label }))} bind:value={zplDpi} />
-                </label>
+                <button type="button" class="btn flex-[1_1_11rem]" id="export-zpl" disabled={zplBusy} onclick={exportZpl}>
+                    {zplBusy ? 'Generating…' : 'Download ZPL'}
+                </button>
             </div>
             {#if zplError}
                 <p class="m-0 text-[0.85rem] font-bold text-orange" role="alert">{zplError}</p>
+            {/if}
+            {#if printState === 'done'}
+                <p class="m-0 text-[0.85rem] font-bold text-purple" role="status">✓ {printMsg}</p>
+            {:else if printState === 'error'}
+                <p class="m-0 text-[0.85rem] font-bold text-orange" role="alert">{printMsg}</p>
+            {:else if printState === 'not-detected'}
+                <p class="m-0 text-[0.85rem] leading-[1.4] text-ink/80" role="alert">
+                    Zebra <strong>Browser Print</strong> wasn't reached. <a class="font-bold text-purple underline" href={BROWSER_PRINT_INSTALL_URL} target="_blank" rel="noopener">Install it</a> if you haven't — or if it's already installed, accept its certificate once at <a class="font-bold text-purple underline" href={BROWSER_PRINT_SSL_URL} target="_blank" rel="noopener">localhost:9101</a>, then try again. Otherwise use <strong>Download ZPL</strong>.
+                </p>
             {/if}
         </div>
 
