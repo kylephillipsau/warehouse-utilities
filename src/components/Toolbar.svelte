@@ -188,7 +188,7 @@
 
 {#if showTip}
     <div id="print-tip" class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b-2 border-ink bg-amber px-5 py-[0.6rem] text-[0.85rem] leading-snug text-ink" role="note">
-        <span><strong>Printing on a label printer?</strong> Pick the Page / media that exactly matches your stock (measure it — "4×3 in" stock is often really 104×76&nbsp;mm). Then in the print dialog select the label printer + that same media, set <strong>Scale = 100%</strong> (not "Fit") and <strong>Margins = None</strong>. If it still mis-sizes, calibrate the printer to the loaded labels.</span>
+        <span><strong>Printing on a label printer?</strong> Browser printing can mis-scale on thermal printers (Chrome renders at 300&nbsp;dpi). For guaranteed exact size on a Zebra, use <strong>Export → Zebra ZPL</strong>. To print from the browser instead: pick the Page / media that matches your stock (measure it — "4×3 in" is often really 104×76&nbsp;mm), select that same media in the dialog, and set <strong>Scale = 100%</strong> (not "Fit") + <strong>Margins = None</strong>.</span>
         <button type="button" class="btn ml-auto whitespace-nowrap" onclick={dismissTip}>Got it</button>
     </div>
 {/if}
