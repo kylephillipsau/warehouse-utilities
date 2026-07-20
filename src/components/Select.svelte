@@ -7,7 +7,9 @@
     // a `group` label; consecutive options with the same group get a heading.
     // Implements the listbox pattern: the trigger keeps focus and points at the
     // active option via aria-activedescendant; arrows move it, Enter selects,
-    // Esc closes. The list flips above the trigger when there's no room below.
+    // Esc closes. The list is rendered with position:fixed from the trigger's
+    // viewport rect, so it is never clipped by an overflow:auto ancestor (e.g.
+    // the mobile setup popover); it flips above when there's no room below.
     let {
         value = $bindable(),
         options = [],
@@ -22,13 +24,12 @@
 
     let open = $state(false);
     let active = $state(-1);
-    let flipUp = $state(false);
+    let pos = $state({ top: 0, left: 0, minWidth: 0 });
     let btnEl, listEl;
 
     const current = $derived(options.find((o) => String(o.value) === String(value)));
     const activeId = $derived(open && active >= 0 ? optId(active) : undefined);
 
-    // Group consecutive options by their `group` (blank = ungrouped)
     const grouped = $derived.by(() => {
         const out = [];
         let cur = null;
@@ -46,6 +47,21 @@
     }
     function choose(o) { value = o.value; open = false; btnEl?.focus(); }
 
+    function place() {
+        if (!btnEl || !listEl) { return; }
+        const r = btnEl.getBoundingClientRect();
+        const mw = listEl.offsetWidth;
+        const mh = listEl.offsetHeight;
+        const gap = 4, edge = 8;
+        let top = r.bottom + gap;
+        if (top + mh > window.innerHeight - edge) {
+            const above = r.top - gap - mh;
+            top = above >= edge ? above : Math.max(edge, window.innerHeight - edge - mh);
+        }
+        let left = Math.max(edge, Math.min(r.left, window.innerWidth - mw - edge));
+        pos = { top, left, minWidth: r.width };
+    }
+
     function onKey(event) {
         if (!open) {
             if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
@@ -59,20 +75,21 @@
         else if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); if (options[active]) { choose(options[active]); } }
     }
 
-    // Decide flip + keep the active option in view whenever the list is open
     $effect(() => {
         if (!open) { return; }
-        requestAnimationFrame(() => {
-            if (btnEl && listEl) {
-                const r = btnEl.getBoundingClientRect();
-                flipUp = r.bottom + listEl.offsetHeight > window.innerHeight - 8 && r.top > window.innerHeight - r.bottom;
-            }
-        });
+        requestAnimationFrame(() => { place(); });
         const onDoc = (e) => {
             if (btnEl && !btnEl.contains(e.target) && listEl && !listEl.contains(e.target)) { open = false; }
         };
+        const reposition = () => place();
         document.addEventListener('pointerdown', onDoc, true);
-        return () => document.removeEventListener('pointerdown', onDoc, true);
+        window.addEventListener('scroll', reposition, true);
+        window.addEventListener('resize', reposition);
+        return () => {
+            document.removeEventListener('pointerdown', onDoc, true);
+            window.removeEventListener('scroll', reposition, true);
+            window.removeEventListener('resize', reposition);
+        };
     });
     $effect(() => {
         if (open && active >= 0) { document.getElementById(optId(active))?.scrollIntoView({ block: 'nearest' }); }
@@ -102,9 +119,9 @@
         <div
             bind:this={listEl}
             id={listId}
-            class="absolute left-0 z-30 min-w-full w-max max-w-[min(22rem,calc(100vw-2rem))]
-                   max-h-[16rem] overflow-y-auto bg-paper border-2 border-ink rounded-md py-1 shadow-popover
-                   {flipUp ? 'bottom-[calc(100%+4px)]' : 'top-[calc(100%+4px)]'}"
+            class="fixed z-[60] w-max max-w-[min(24rem,calc(100vw-1rem))] max-h-[16rem] overflow-y-auto
+                   bg-paper border-2 border-ink rounded-md py-1 shadow-popover"
+            style="top: {pos.top}px; left: {pos.left}px; min-width: {pos.minWidth}px"
             role="listbox"
             aria-label={ariaLabel}
         >
