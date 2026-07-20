@@ -8,9 +8,8 @@ import { DEFAULT_PAGE, DEFAULT_DIVISIONS, clampDivisions } from './size.js';
 export const store = $state({
     labels: [],
     presets: [],
-    page: { preset: DEFAULT_PAGE.preset, width: '', height: '', unit: 'mm' },  // physical media / page size
+    page: { preset: DEFAULT_PAGE.preset, width: '', height: '', unit: 'mm' },  // physical media / page size (native orientation)
     divisions: DEFAULT_DIVISIONS,
-    orientation: 'landscape',
     margin: 0,   // page edge margin (mm) around the tiled labels
     gap: 0,      // gap (mm) between stacked label segments
 });
@@ -35,7 +34,6 @@ export function hydrateStore(data) {
         store.page.unit = data.page.unit || 'mm';
     }
     if (data.divisions != null) { store.divisions = clampDivisions(data.divisions); }
-    if (data.orientation === 'portrait' || data.orientation === 'landscape') { store.orientation = data.orientation; }
     if (typeof data.margin === 'number' && data.margin >= 0) { store.margin = data.margin; }
     if (typeof data.gap === 'number' && data.gap >= 0) { store.gap = data.gap; }
 }

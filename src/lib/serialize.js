@@ -14,7 +14,6 @@ export function serializeLabels() {
         version: LABEL_FILE_VERSION,
         page: { preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit },
         divisions: store.divisions,
-        orientation: store.orientation,
         margin: store.margin,
         gap: store.gap,
         labels: store.labels.map((l) => ({
@@ -51,9 +50,6 @@ export function openLabelFile(data, { confirmReplace } = {}) {
         if (data.page.unit) { store.page.unit = data.page.unit; }
     }
     if (data.divisions) { store.divisions = clampDivisions(data.divisions); }
-    if (data.orientation === 'portrait' || data.orientation === 'landscape') {
-        store.orientation = data.orientation;
-    }
     if (data.margin != null) { store.margin = clampSpacing(data.margin); }
     if (data.gap != null) { store.gap = clampSpacing(data.gap); }
     return { ok: true, error: null };

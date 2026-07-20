@@ -108,15 +108,6 @@
         <span class="group-label">Gap (mm)</span>
         <input type="number" id="label-gap" class="w-[7ch]" min="0" max={MAX_SPACING} step="0.5" aria-label="Gap between labels in millimetres" value={store.gap} onchange={onGap} />
     </div>
-    <div class="control-group">
-        <span class="group-label">Orientation</span>
-        <div class="segmented">
-            <input type="radio" id="portrait" name="orientation" value="portrait" bind:group={store.orientation} />
-            <label for="portrait">Portrait</label>
-            <input type="radio" id="landscape" name="orientation" value="landscape" bind:group={store.orientation} />
-            <label for="landscape">Landscape</label>
-        </div>
-    </div>
 {/snippet}
 
 <header
@@ -197,7 +188,7 @@
 
 {#if showTip}
     <div id="print-tip" class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b-2 border-ink bg-amber px-5 py-[0.6rem] text-[0.85rem] leading-snug text-ink" role="note">
-        <span><strong>Printing on a label printer?</strong> Set Page / media to match your stock, then in the print dialog pick the printer + its label media, set <strong>Scale = 100%</strong> and <strong>Margins = None</strong> so labels print at true size.</span>
+        <span><strong>Printing on a label printer?</strong> Pick the Page / media that exactly matches your stock (measure it — "4×3 in" stock is often really 104×76&nbsp;mm). Then in the print dialog select the label printer + that same media, set <strong>Scale = 100%</strong> (not "Fit") and <strong>Margins = None</strong>. If it still mis-sizes, calibrate the printer to the loaded labels.</span>
         <button type="button" class="btn ml-auto whitespace-nowrap" onclick={dismissTip}>Got it</button>
     </div>
 {/if}

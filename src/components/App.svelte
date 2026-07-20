@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { store, hydrateStore } from '../lib/store.svelte.js';
     import { loadAll, persistState } from '../lib/persistence.js';
-    import { applySize, orientedPage } from '../lib/size.js';
+    import { applySize, resolvePage } from '../lib/size.js';
     import Toolbar from './Toolbar.svelte';
     import LabelList from './LabelList.svelte';
     import UndoToast from './UndoToast.svelte';
@@ -21,18 +21,19 @@
 
     // Push the resolved page + label sizes into root CSS vars
     $effect(() => {
-        applySize(store.page, store.divisions, store.orientation, store.margin, store.gap);
+        applySize(store.page, store.divisions, store.margin, store.gap);
     });
 
-    // Make the printed page EXACTLY the physical media so a label printer maps
-    // it 1:1 (no scale-to-fit) — kept in a raw <style> element.
+    // Make the printed page EXACTLY the physical media (native width × height, no
+    // orientation swap) so a label printer maps it 1:1 with no scale-to-fit and
+    // no browser auto-rotation — kept in a raw <style> element.
     let pageStyleEl;
     $effect(() => {
         if (!pageStyleEl) {
             pageStyleEl = document.createElement('style');
             document.head.appendChild(pageStyleEl);
         }
-        const p = orientedPage(store.page, store.orientation);
+        const p = resolvePage(store.page);
         pageStyleEl.textContent = `@page { size: ${p.width}mm ${p.height}mm; margin: 0; }`;
     });
 
@@ -46,7 +47,7 @@
         void store.presets.length;
         store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; });
         void store.page.preset; void store.page.width; void store.page.height; void store.page.unit;
-        void store.divisions; void store.orientation; void store.margin; void store.gap;
+        void store.divisions; void store.margin; void store.gap;
         if (!ready) { return; }
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
@@ -55,7 +56,6 @@
                 presets: $state.snapshot(store.presets),
                 page: $state.snapshot(store.page),
                 divisions: store.divisions,
-                orientation: store.orientation,
                 margin: store.margin,
                 gap: store.gap,
             });
