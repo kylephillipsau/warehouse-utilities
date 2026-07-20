@@ -1,0 +1,14 @@
+# Cloudflare Worker (static assets only) for warehouseutilities.com.
+# The Workers Build runs `npm run build` (Vite -> ./public) then
+# `npx wrangler deploy`, which uploads ./public as static assets. There is no
+# Worker script (no `main`), so this serves the built site directly.
+#
+# NOTE: `name` must match the Worker in your Cloudflare account that
+# warehouseutilities.com is routed to. It defaults to the repo name; change it
+# here if your Worker is named differently, or the deploy will target the wrong
+# Worker.
+name = "warehouse-utilities"
+compatibility_date = "2025-01-01"
+
+[assets]
+directory = "./public"
