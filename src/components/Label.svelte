@@ -57,10 +57,10 @@
     }
 
     function savePreset() {
-        const name = window.prompt('Name this preset:', label.text || 'Label preset');
-        if (name === null) { return; }
-        savePresetFromLabel(label.id, name);
-        openPresets();
+        // Save straight away with a sensible default name, then open Presets with
+        // its name focused for inline renaming — no browser prompt.
+        const presetId = savePresetFromLabel(label.id);
+        openPresets(presetId);
     }
 
     // Progressive-disclosure actions menu (labeled, not cryptic icons)
@@ -103,7 +103,6 @@
         adjust={label.adjust}
         showCaption={captionOpen}
         onImageClick={() => openAdjust(label.id)}
-        onAddImage={pickImage}
     />
 
     <div class="label-tools">

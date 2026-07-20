@@ -344,23 +344,7 @@ li.text-container.drag-over {
     print-color-adjust: exact;
 }
 
-/* Empty-label placeholder: type text, or add an image */
-.label-empty {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    padding: 2mm;
-    box-sizing: border-box;
-}
-
-.label-empty-text {
-    min-width: 2ch;
-}
-
+/* Empty-label placeholder shown by the always-present editable text region */
 .text[data-placeholder]:empty::before {
     content: attr(data-placeholder);
     color: rgba(45, 58, 46, 0.45);
@@ -413,7 +397,6 @@ li.text-container:focus-within .label-tools {
 
     /* Screen-only management chrome must never reach paper */
     .label-tools,
-    .label-add-image,
     #print-tip,
     #undo-toast,
     .dialog,

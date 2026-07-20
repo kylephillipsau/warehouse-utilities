@@ -131,15 +131,16 @@ export function savePresetFromLabel(id, name) {
     const l = store.labels[indexOf(id)];
     if (!l) { return null; }
     const finalName = (name || '').trim() || (l.text || '').trim() || 'Label preset';
+    const presetId = newId();
     store.presets.push({
-        id: newId(),
+        id: presetId,
         name: finalName,
         text: l.text,
         image: l.image,
         adjust: normalizeAdjust(l.adjust),
     });
     persistPresets();
-    return finalName;
+    return presetId;
 }
 
 // Insert a preset as a new label. With no index (or an out-of-range one) it

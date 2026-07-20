@@ -129,9 +129,13 @@
                     {/each}
                 </div>
             </div>
-            <div class="control-group flex-[1_1_12rem]" id="adj-zoom-group">
-                <span class="group-label">Size <span class="font-normal text-ink/60">{Math.round(working.zoom * 100)}%</span></span>
-                <input type="range" id="adj-zoom" class="w-48 max-w-full accent-purple" min={ZOOM_MIN * 100} max={ZOOM_MAX * 100} step="1" value={Math.round(working.zoom * 100)} oninput={setZoom} aria-label="Image size" />
+            <div class="control-group flex-[1_1_14rem]" id="adj-zoom-group">
+                <span class="group-label">Size</span>
+                <div class="flex items-center gap-2">
+                    <input type="range" id="adj-zoom" class="min-w-[6rem] flex-1 accent-purple" min={ZOOM_MIN * 100} max={ZOOM_MAX * 100} step="1" value={Math.round(working.zoom * 100)} oninput={setZoom} aria-label="Image size" />
+                    <input type="number" id="adj-zoom-num" class="w-[4.75rem]" min={ZOOM_MIN * 100} max={ZOOM_MAX * 100} step="1" value={Math.round(working.zoom * 100)} onchange={setZoom} aria-label="Scale percent" />
+                    <span class="text-[0.9rem] text-ink/60">%</span>
+                </div>
             </div>
         </div>
 
