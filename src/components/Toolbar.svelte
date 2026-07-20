@@ -98,15 +98,15 @@
     <!-- Tier 2: create bar -->
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-[0.55rem] max-sm:flex-col max-sm:items-stretch">
         <div class="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <input type="text" id="labelText" class="min-w-0 flex-[1_1_8rem] max-sm:flex-[1_1_100%]" placeholder="New label text" aria-label="Label text" bind:value={text} onkeypress={onEnter} />
-            <input type="number" id="labelQuantity" class="w-[6ch]" placeholder="Qty" aria-label="Quantity" min="1" max="100" bind:value={quantity} onkeypress={onEnter} />
+            <input type="text" id="labelText" class="min-w-0 flex-[1_1_16rem] max-w-[30rem] max-sm:flex-[1_1_100%] max-sm:max-w-none" placeholder="New label text" aria-label="Label text" bind:value={text} onkeypress={onEnter} />
+            <input type="number" id="labelQuantity" class="w-[4.5rem]" placeholder="Qty" aria-label="Quantity" min="1" max="100" bind:value={quantity} onkeypress={onEnter} />
             <input type="button" class="btn btn-primary" value="Add" onclick={add} />
             <input type="button" class="btn" id="addImage" value="Add image" onclick={() => imageInput.click()} />
         </div>
 
         <div class="relative shrink-0 max-sm:self-stretch" bind:this={setupEl}>
             <button type="button" class="btn max-sm:w-full" aria-haspopup="dialog" aria-expanded={setupOpen} onclick={() => (setupOpen = !setupOpen)}>
-                Label setup <span class="up-readout font-normal normal-case tracking-normal text-purple">{store.divisions} up</span>
+                Label setup <span class="up-readout font-normal normal-case tracking-normal text-purple"><span class="inline-block min-w-[2ch] text-right tabular-nums">{store.divisions}</span> up</span>
                 <span class="text-[0.7em]" aria-hidden="true">▾</span>
             </button>
             {#if setupOpen}

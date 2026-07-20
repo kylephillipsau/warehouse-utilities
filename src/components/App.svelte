@@ -4,10 +4,10 @@
     import Toolbar from './Toolbar.svelte';
     import LabelList from './LabelList.svelte';
     import UndoToast from './UndoToast.svelte';
-    import ImportDialog from './ImportDialog.svelte';
+    import ImportDrawer from './ImportDrawer.svelte';
     import ExportDialog from './ExportDialog.svelte';
     import AdjustDialog from './AdjustDialog.svelte';
-    import PresetsDialog from './PresetsDialog.svelte';
+    import PresetsDrawer from './PresetsDrawer.svelte';
 
     // Push the resolved page + label sizes into root CSS vars and persist them
     $effect(() => {
@@ -31,7 +31,7 @@
 <Toolbar />
 <LabelList />
 <UndoToast />
-<ImportDialog />
+<ImportDrawer />
 <ExportDialog />
 <AdjustDialog />
-<PresetsDialog />
+<PresetsDrawer />

@@ -227,6 +227,13 @@ li.text-container.drag-over {
     overflow: auto;
 }
 
+/* Sheet highlighted while a preset is dragged over it */
+#labels-section.preset-drop-active {
+    outline: 3px dashed var(--color-purple);
+    outline-offset: -6px;
+    border-radius: 6px;
+}
+
 .print-page {
     display: grid;
     grid-template-columns: repeat(var(--tile-cols, 1), var(--label-w, 100mm));

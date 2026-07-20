@@ -142,10 +142,18 @@ export function savePresetFromLabel(id, name) {
     return finalName;
 }
 
-export function insertPreset(presetId) {
+// Insert a preset as a new label. With no index (or an out-of-range one) it
+// appends; dragging a preset onto the sheet passes the drop position so the new
+// label lands where it was dropped.
+export function insertPreset(presetId, index) {
     const p = store.presets.find((x) => String(x.id) === String(presetId));
     if (!p) { return; }
-    store.labels.push(makeLabel(p.text || '', p.image || null, p.adjust));
+    const label = makeLabel(p.text || '', p.image || null, p.adjust);
+    if (typeof index === 'number' && index >= 0 && index <= store.labels.length) {
+        store.labels.splice(index, 0, label);
+    } else {
+        store.labels.push(label);
+    }
 }
 
 export function renamePreset(presetId, name) {

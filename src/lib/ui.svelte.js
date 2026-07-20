@@ -9,6 +9,7 @@ export const ui = $state({
 
 export const openAdjust = (id) => { ui.adjustTargetId = id; };
 export const closeAdjust = () => { ui.adjustTargetId = null; };
-export const openPresets = () => { ui.presetsOpen = true; };
-export const openImport = () => { ui.importOpen = true; };
+// The two left drawers are mutually exclusive — opening one closes the other.
+export const openPresets = () => { ui.importOpen = false; ui.presetsOpen = true; };
+export const openImport = () => { ui.presetsOpen = false; ui.importOpen = true; };
 export const openExport = () => { ui.exportOpen = true; };
