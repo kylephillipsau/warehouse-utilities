@@ -7,7 +7,10 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 // deploys — so `public/` is a generated artifact (gitignored), not source.
 export default defineConfig({
   root: 'src',
-  base: './',
+  // Absolute base: the site is served at the domain root, so assets must
+  // resolve to /assets/... regardless of the page URL (e.g. /labels vs
+  // /labels/). A relative base breaks on clean/trailing-slash URLs.
+  base: '/',
   publicDir: '../static',
   plugins: [svelte()],
   build: {
