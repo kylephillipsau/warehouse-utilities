@@ -219,10 +219,30 @@ li.text-container.drag-over {
     outline-offset: 2px;
 }
 
+/* App shell: a fixed-height column so the header stays put and the workspace
+   below it scrolls on its own. The side drawer is a real column in that row, so
+   opening it pushes the label workspace to the right (rather than covering it).
+   All of this is neutralised in @media print (below) so pagination is untouched. */
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.workspace {
+    display: flex;
+    align-items: stretch;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
 /* The screen work area. A media page = one physical label; its size is the real
    stock size and the label segments tile onto it (cols x rows) to be cut apart
-   after printing. */
+   after printing. It takes the space the drawer leaves and scrolls on its own. */
 #labels-section {
+    flex: 1 1 auto;
+    min-width: 0;
     padding: 16px;
     overflow: auto;
 }
@@ -386,8 +406,20 @@ li.text-container:focus-within .label-tools {
     .label-add-image,
     #print-tip,
     #undo-toast,
-    .dialog {
+    .dialog,
+    .drawer-col {
         display: none !important;
+    }
+
+    /* Undo the app shell for print: normal block flow so every media page
+       paginates instead of being clipped to one viewport. */
+    #app,
+    .workspace,
+    #labels-section {
+        display: block !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
     }
 
     /* Never print the empty-label placeholder hint */

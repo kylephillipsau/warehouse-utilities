@@ -1,7 +1,8 @@
 <script>
-    // A non-blocking left slide-out panel. It floats over the left edge without a
-    // scrim, so the label sheet on the right stays visible and editable while the
-    // drawer is open (needed for dragging presets onto the sheet). Esc closes it.
+    // A left side panel that lives IN the layout (not an overlay): the outer
+    // column animates its width 0 <-> panel width, so opening it pushes the
+    // label workspace to the right instead of covering it. It sits inside the
+    // workspace row, below the header. Esc closes it. Hidden entirely in print.
     let { open = false, title = '', onClose, children } = $props();
 
     $effect(() => {
@@ -13,19 +14,22 @@
 </script>
 
 <div
-    class="fixed inset-y-0 left-0 z-40 flex w-[min(22rem,calc(100vw-3rem))] flex-col
-           bg-paper border-r-[3px] border-ink transition-transform duration-200 ease-out
-           {open ? 'translate-x-0 shadow-[6px_0_28px_rgba(45,58,46,0.28)]' : '-translate-x-full pointer-events-none'}"
-    role="dialog"
-    aria-label={title}
+    class="drawer-col shrink-0 overflow-hidden transition-[width] duration-200 ease-out
+           {open ? 'w-[min(22rem,calc(100vw-2.5rem))]' : 'w-0'}"
     aria-hidden={!open}
     inert={!open ? true : undefined}
 >
-    <div class="flex items-center justify-between gap-2 border-b-2 border-ink px-4 py-3">
-        <span class="group-label">{title}</span>
-        <button type="button" class="label-tool" aria-label="Close" title="Close" onclick={() => onClose?.()}>&times;</button>
-    </div>
-    <div class="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
-        {@render children?.()}
+    <div
+        class="flex h-full w-[min(22rem,calc(100vw-2.5rem))] flex-col bg-paper border-r-[3px] border-ink"
+        role="dialog"
+        aria-label={title}
+    >
+        <div class="flex items-center justify-between gap-2 border-b-2 border-ink px-4 py-3">
+            <span class="group-label">{title}</span>
+            <button type="button" class="label-tool" aria-label="Close" title="Close" onclick={() => onClose?.()}>&times;</button>
+        </div>
+        <div class="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+            {@render children?.()}
+        </div>
     </div>
 </div>

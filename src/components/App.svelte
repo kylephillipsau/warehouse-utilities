@@ -29,9 +29,11 @@
 </script>
 
 <Toolbar />
-<LabelList />
+<div class="workspace">
+    <ImportDrawer />
+    <PresetsDrawer />
+    <LabelList />
+</div>
 <UndoToast />
-<ImportDrawer />
 <ExportDialog />
 <AdjustDialog />
-<PresetsDrawer />
