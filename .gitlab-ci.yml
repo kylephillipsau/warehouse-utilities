@@ -1,11 +1,12 @@
-image: alpine:latest
+image: node:22-alpine
 
 pages:
   stage: deploy
   script:
-  - echo 'Nothing to do...'
+    - npm ci
+    - npm run build
   artifacts:
     paths:
-    - public
+      - public
   only:
-  - main
+    - main

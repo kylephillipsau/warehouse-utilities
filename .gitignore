@@ -1,0 +1,9 @@
+node_modules/
+
+# public/ is a build artifact produced by `npm run build` (Vite outputs here and
+# GitLab Pages deploys it). Source lives in src/ and static/.
+public/
+
+# Vite / tooling
+.vite/
+*.local

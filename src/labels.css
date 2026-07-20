@@ -1,15 +1,17 @@
+/* Fonts live in static/fonts -> served at /fonts. Absolute paths so the bundled
+   CSS resolves them regardless of where Vite emits the stylesheet. */
 @font-face {
     font-family: 'Glacial Indifference';
-    src: url('fonts/glacialindifference-regular-webfont.woff2') format('woff2'),
-        url('fonts/glacialindifference-regular-webfont.woff') format('woff');
+    src: url('/fonts/glacialindifference-regular-webfont.woff2') format('woff2'),
+        url('/fonts/glacialindifference-regular-webfont.woff') format('woff');
     font-weight: normal;
     font-style: normal;
 }
 
 @font-face {
     font-family: 'Glacial Indifference';
-    src: url('fonts/glacialindifference-bold-webfont.woff2') format('woff2'),
-        url('fonts/glacialindifference-bold-webfont.woff') format('woff');
+    src: url('/fonts/glacialindifference-bold-webfont.woff2') format('woff2'),
+        url('/fonts/glacialindifference-bold-webfont.woff') format('woff');
     font-weight: bold;
     font-style: normal;
 }
@@ -36,6 +38,7 @@
     /* Screen-only management chrome must never reach paper */
     .label-tools,
     .label-image-remove,
+    .label-resize-handle,
     #undo-toast,
     #import-dialog,
     #export-dialog,
@@ -617,8 +620,13 @@ select {
     align-items: center;
     justify-content: center;
     gap: 0.3rem;
+    width: 100%;
+    box-sizing: border-box;
     padding: 0.65rem;
+    font-family: inherit;
     font-size: 0.85rem;
+    color: var(--ink);
+    background: transparent;
     border: 2px dashed rgba(45, 58, 46, 0.45);
     border-radius: 6px;
     cursor: pointer;
@@ -731,6 +739,59 @@ li.text-container:focus-within .label-tools {
     touch-action: none;
 }
 
+/* Inline handle to resize the beside-mode image column. Sits on the boundary
+   between image and text, screen-only, revealed on hover. */
+.label-resize-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--split, 45%);
+    width: 10px;
+    margin-left: -5px;
+    cursor: ew-resize;
+    touch-action: none;
+    z-index: 6;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.side-right .label-resize-handle {
+    left: auto;
+    right: var(--split, 45%);
+    margin-left: 0;
+    margin-right: -5px;
+}
+
+.label-resize-handle::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 4px;
+    height: 40%;
+    min-height: 12px;
+    background: var(--purple);
+    border: 1px solid var(--paper);
+    border-radius: 3px;
+}
+
+li.text-container:hover .label-resize-handle,
+li.text-container:focus-within .label-resize-handle {
+    opacity: 0.9;
+}
+
+/* Drag-to-pan hint on an adjustable image */
+.layout-beside .label-image,
+.layout-fill .label-image {
+    cursor: grab;
+    touch-action: none;
+}
+
+.label-image:active {
+    cursor: grabbing;
+}
+
 #undo-toast {
     position: fixed;
     left: 50%;
@@ -835,7 +896,7 @@ li.text-container:focus-within .label-tools {
 }
 
 .layout-beside .label-image-frame {
-    flex: 0 0 45%;
+    flex: 0 0 var(--split, 45%);
 }
 
 .layout-beside .label-text-area {
