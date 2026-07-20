@@ -38,15 +38,31 @@ function startLabelDrag(li, startEvent) {
     document.addEventListener("pointercancel", stop);
 }
 
-function createLabel(text) {
+// A label can hold an optional image, the auto-fitting text, or both. The text
+// lives inside .label-text-area (a flex child) so resizeText fits it to the
+// space left beside the image; with no image the text area fills the whole box
+// and behaves exactly as before. imageSrc, when given, is a data URI.
+function createLabel(text, imageSrc) {
     var item = document.createElement("li");
     item.classList.add('text-container');
+
+    var content = document.createElement("div");
+    content.className = "label-content";
+
+    var textArea = document.createElement("div");
+    textArea.className = "label-text-area";
 
     var itemText = document.createElement("span");
     itemText.classList.add('text');
     itemText.contentEditable = true;
+    // Internal callers pass trusted text; imported files are set via
+    // textContent (see openLabelFile) so no untrusted HTML is injected.
     itemText.innerHTML = text;
-    item.appendChild(itemText);
+    textArea.appendChild(itemText);
+    content.appendChild(textArea);
+    item.appendChild(content);
+
+    if (imageSrc) { setLabelImage(item, imageSrc); }
 
     // Screen-only management strip; hidden by the print stylesheet and
     // positioned inside the label box so text fitting is unaffected
@@ -54,10 +70,106 @@ function createLabel(text) {
     tools.className = "label-tools";
     tools.innerHTML =
         '<button type="button" class="tool-drag" title="Drag to reorder" aria-label="Drag to reorder">&#10495;</button>' +
+        '<button type="button" class="tool-image" title="Add or replace image" aria-label="Add or replace image">&#128247;</button>' +
         '<button type="button" class="tool-duplicate" title="Duplicate label" aria-label="Duplicate label">&#10697;</button>' +
         '<button type="button" class="tool-delete" title="Delete label" aria-label="Delete label">&times;</button>';
     item.appendChild(tools);
     return item;
+}
+
+// Attach (or replace) a label's image. Given a data URI, sets the <img>; the
+// remove overlay is screen-only. Refits the text once the image has laid out.
+function setLabelImage(li, src) {
+    const content = li.querySelector(".label-content");
+    let img = content.querySelector(".label-image");
+    if (!img) {
+        img = document.createElement("img");
+        img.className = "label-image";
+        img.alt = "";
+        img.addEventListener("load", () => {
+            resizeText({ element: li.querySelector(".text"), step: 0.5 });
+        });
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "label-image-remove";
+        remove.title = "Remove image";
+        remove.setAttribute("aria-label", "Remove image");
+        remove.innerHTML = "&times;";
+        // Image first so it sits before the text area in the flex row
+        content.insertBefore(img, content.firstChild);
+        content.insertBefore(remove, img.nextSibling);
+    }
+    img.src = src;
+}
+
+function removeLabelImage(li) {
+    const content = li.querySelector(".label-content");
+    const img = content.querySelector(".label-image");
+    const remove = content.querySelector(".label-image-remove");
+    if (img) { img.remove(); }
+    if (remove) { remove.remove(); }
+    updateLabels();
+}
+
+// Read an image file into a downscaled data URI. Phone photos are capped to a
+// sensible longest side so the saved JSON stays reasonable; PNG keeps its
+// format (transparency), SVG is passed through untouched, everything else is
+// re-encoded as JPEG. Resolves with the data URI.
+var IMAGE_MAX_SIDE = 1200;
+
+function fileToLabelImage(file) {
+    return new Promise((resolve, reject) => {
+        if (!file || !file.type || !file.type.startsWith("image/")) {
+            reject(new Error("Not an image file"));
+            return;
+        }
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error || new Error("Could not read file"));
+        reader.onload = () => {
+            const dataUrl = reader.result;
+            // SVG scales losslessly - no point rasterising it
+            if (file.type === "image/svg+xml") { resolve(dataUrl); return; }
+            const image = new Image();
+            image.onerror = () => resolve(dataUrl); // fall back to the raw file
+            image.onload = () => {
+                const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(image.width, image.height));
+                if (scale >= 1) { resolve(dataUrl); return; }
+                const canvas = document.createElement("canvas");
+                canvas.width = Math.round(image.width * scale);
+                canvas.height = Math.round(image.height * scale);
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                const outType = file.type === "image/png" ? "image/png" : "image/jpeg";
+                resolve(canvas.toDataURL(outType, 0.85));
+            };
+            image.src = dataUrl;
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// "Add image" in the toolbar creates a fresh image-only label
+function addImageLabel(file) {
+    if (!file) { return; }
+    fileToLabelImage(file).then((src) => {
+        const label = createLabel("", src);
+        document.getElementById("labelList").appendChild(label);
+        updateLabels();
+    }).catch(() => { /* not an image - ignore */ });
+}
+
+// The per-label image tool shares one hidden file input; remember which label
+// it was opened for so applyPickedImage knows where to put the result.
+var pendingImageLabel = null;
+
+function applyPickedImage(file) {
+    const li = pendingImageLabel;
+    pendingImageLabel = null;
+    if (!file || !li) { return; }
+    fileToLabelImage(file).then((src) => {
+        setLabelImage(li, src);
+        updateLabels();
+    }).catch(() => { /* not an image - ignore */ });
 }
 
 function addItem(text, quantity) {
@@ -79,7 +191,8 @@ function addItem(text, quantity) {
 }
 
 function duplicateLabel(li) {
-    li.after(createLabel(li.querySelector(".text").innerHTML));
+    const img = li.querySelector(".label-image");
+    li.after(createLabel(li.querySelector(".text").innerHTML, img ? img.src : null));
     updateLabels();
 }
 
@@ -165,15 +278,17 @@ function multilineImportCancel() {
     document.getElementById("import-dialog").close();
 }
 
-// File import - reads into the textarea for review rather than importing
-// directly, appending if lines are already present
+// File import - JSON label files open directly (replacing the set); text files
+// read into the textarea for review, appending if lines are already present
 function readImportFile(file) {
     if (!file) { return; }
+    const looksLikeJson = /\.json$/i.test(file.name) || file.type === "application/json";
+    if (looksLikeJson) { readLabelFile(file); return; }
     const looksLikeText = (file.type && file.type.startsWith("text/")) ||
         (!file.type && /\.(txt|csv)$/i.test(file.name)) || /\.(txt|csv)$/i.test(file.name);
     if (!looksLikeText) {
         document.getElementById("import-hint").textContent =
-            "That file doesn't look like plain text. Use a .txt or .csv file.";
+            "That file doesn't look right. Use a .txt/.csv list or a .json label file.";
         return;
     }
     file.text().then((text) => {
@@ -183,6 +298,23 @@ function readImportFile(file) {
         document.getElementById("import-hint").textContent = IMPORT_HINT_DEFAULT;
         updateImportCount();
         box.focus();
+    });
+}
+
+// Parse and open a JSON label file. On success close the import dialog (it may
+// have been opened by a drag & drop); on failure leave the hint showing.
+function readLabelFile(file) {
+    file.text().then((text) => {
+        let data;
+        try { data = JSON.parse(text); }
+        catch (e) {
+            document.getElementById("import-hint").textContent =
+                "That .json file couldn't be read.";
+            return;
+        }
+        if (openLabelFile(data)) {
+            document.getElementById("import-dialog").close();
+        }
     });
 }
 
@@ -215,7 +347,9 @@ document.addEventListener("drop", (event) => {
 // Clicking the dimmed backdrop closes the dialog (such clicks target the
 // dialog element itself rather than its contents)
 document.addEventListener("click", (event) => {
-    if (event.target.id === "import-dialog") { event.target.close(); }
+    if (event.target.id === "import-dialog" || event.target.id === "export-dialog") {
+        event.target.close();
+    }
 });
 
 // Label size presets - "standard" leaves the stylesheet defaults untouched
@@ -339,8 +473,10 @@ function updateLabels() {
     // Resize label text
     resizeText({ elements: document.querySelectorAll('.text'), step: 0.5 })
     for (let i = 0; i < labelsList.length; i++) {
-        if (labelsListText[i].innerHTML.length == 0) {
-            labelsListText[i].parentElement.remove();
+        // Drop empty labels, but keep image-only ones (their text is blank)
+        if (labelsListText[i].innerHTML.length == 0 && !labelsList[i].querySelector(".label-image")) {
+            labelsList[i].remove();
+            continue;
         }
 
         if (labelOrientation == "landscape") {
@@ -354,16 +490,119 @@ function updateLabels() {
     resizeText({ elements: document.querySelectorAll('.text'), step: 0.5 })
 }
 
-// Export the current labels as a plain text file, one label per line,
-// matching the Import list format so a file can round-trip back in
-function exportList() {
-    const lines = [...document.querySelectorAll("#labelList .text")].map(t => t.textContent);
-    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+// Saving - two formats. Plain text (one label per line) round-trips with the
+// Import list flow but can't carry images; the label file is JSON with images
+// embedded as base64 data URIs, so a set of labels saves and restores whole.
+
+var LABEL_FILE_FORMAT = "warehouse-utilities-labels";
+var LABEL_FILE_VERSION = 1;
+
+function labelsHaveImages() {
+    return !!document.querySelector("#labelList .label-image");
+}
+
+// Small download helper shared by both formats
+function downloadBlob(blob, filename) {
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = "labels.txt";
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(link.href);
+}
+
+// The Export button opens a format chooser. The smart default (highlighted) is
+// the label file when any label has an image, otherwise plain text.
+function openExportDialog() {
+    const hasImages = labelsHaveImages();
+    const jsonBtn = document.getElementById("export-json");
+    const textBtn = document.getElementById("export-text");
+    jsonBtn.classList.toggle("btn-primary", hasImages);
+    textBtn.classList.toggle("btn-primary", !hasImages);
+    document.getElementById("export-hint").textContent = hasImages
+        ? "Your labels include images - save a label file to keep them. Plain text saves the words only."
+        : "Save a label file to keep images later, or plain text for a simple list.";
+    document.getElementById("export-dialog").showModal();
+}
+
+function serializeLabels() {
+    const labels = [...document.querySelectorAll("#labelList .text-container")].map((li) => {
+        const img = li.querySelector(".label-image");
+        return {
+            // textContent (not innerHTML) keeps the file to plain data
+            text: li.querySelector(".text").textContent,
+            image: img ? img.src : null,
+        };
+    });
+    return {
+        format: LABEL_FILE_FORMAT,
+        version: LABEL_FILE_VERSION,
+        size: {
+            preset: document.getElementById("label-size").value,
+            width: document.getElementById("custom-width").value,
+            height: document.getElementById("custom-height").value,
+        },
+        orientation: document.getElementById("landscape").checked ? "landscape" : "portrait",
+        labels,
+    };
+}
+
+function exportJson() {
+    const blob = new Blob([JSON.stringify(serializeLabels(), null, 2)], { type: "application/json" });
+    downloadBlob(blob, "labels.json");
+    document.getElementById("export-dialog").close();
+}
+
+// Plain text export - one non-empty label per line, matching the import format.
+// Image-only labels have no text, so they simply don't appear.
+function exportText() {
+    const lines = [...document.querySelectorAll("#labelList .text")]
+        .map(t => t.textContent)
+        .filter(line => line.trim().length > 0);
+    downloadBlob(new Blob([lines.join("\n")], { type: "text/plain" }), "labels.txt");
+    document.getElementById("export-dialog").close();
+}
+
+// Load a saved label file, replacing the current set (like opening a document)
+// and restoring its size and orientation. Text is set via textContent so a
+// crafted file can't inject markup.
+function openLabelFile(data) {
+    if (!data || data.format !== LABEL_FILE_FORMAT || !Array.isArray(data.labels)) {
+        document.getElementById("import-hint").textContent =
+            "That JSON file isn't a label file this app recognises.";
+        return false;
+    }
+    const list = document.getElementById("labelList");
+    if (list.children.length > 0 &&
+        !window.confirm("Opening this file will replace your current labels. Continue?")) {
+        return false;
+    }
+    list.innerHTML = "";
+    data.labels.forEach((entry) => {
+        const label = createLabel("", entry && entry.image ? entry.image : null);
+        if (entry && typeof entry.text === "string") {
+            label.querySelector(".text").textContent = entry.text;
+        }
+        list.appendChild(label);
+    });
+    restoreImportedSize(data.size);
+    if (data.orientation === "portrait" || data.orientation === "landscape") {
+        document.getElementById(data.orientation).checked = true;
+    }
+    updateLabels();
+    return true;
+}
+
+// Apply a size block from an imported file through the existing size machinery
+function restoreImportedSize(size) {
+    if (!size) { return; }
+    const select = document.getElementById("label-size");
+    if (size.preset && [...select.options].some(o => o.value === size.preset)) {
+        select.value = size.preset;
+    }
+    if (size.width) { document.getElementById("custom-width").value = size.width; }
+    if (size.height) { document.getElementById("custom-height").value = size.height; }
+    applyLabelSize();
+    saveLabelSize();
 }
 
 // Printing Functions
@@ -403,13 +642,24 @@ document.addEventListener("focusout", (event) => {
 
 // Per-label tool strip, handled by delegation so duplicated labels work too
 document.addEventListener("click", (event) => {
-    const button = event.target.closest ? event.target.closest(".label-tools button") : null;
+    if (!event.target.closest) { return; }
+    // The remove-image overlay sits on the image, outside the tool strip
+    const removeBtn = event.target.closest(".label-image-remove");
+    if (removeBtn) {
+        removeLabelImage(removeBtn.closest("li.text-container"));
+        return;
+    }
+    const button = event.target.closest(".label-tools button");
     if (!button) { return; }
     const li = button.closest("li.text-container");
     if (button.classList.contains("tool-delete")) {
         deleteLabel(li);
     } else if (button.classList.contains("tool-duplicate")) {
         duplicateLabel(li);
+    } else if (button.classList.contains("tool-image")) {
+        // Route the shared hidden picker back to this label
+        pendingImageLabel = li;
+        document.getElementById("label-image-file").click();
     }
 });
 

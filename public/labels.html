@@ -39,6 +39,8 @@
             max="100" onkeypress="enterPress(event)">
           <input type="button" class="btn btn-primary" value="Add"
             onclick="addItem(document.getElementById('labelText').value, document.getElementById('labelQuantity').value)" />
+          <input type="button" class="btn" id="addImage" value="Add image"
+            onclick="document.getElementById('new-image-file').click()">
           <input type="button" class="btn" id="inputMultiple" value="Import list" onclick="toggleMultilineImport()">
         </div>
       </div>
@@ -72,7 +74,7 @@
           <label for="landscape">Landscape</label>
         </div>
       </div>
-      <button id="export-button" class="btn" onclick="exportList()">
+      <button id="export-button" class="btn" onclick="openExportDialog()">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true">
           <!--! Font Awesome Free 6.1.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. -->
           <path
@@ -100,7 +102,7 @@
       <div id="file-drop" onclick="document.getElementById('import-file').click()">
         Drag a text file here, or <span id="file-browse">browse</span>
       </div>
-      <input type="file" id="import-file" accept=".txt,.csv,text/plain"
+      <input type="file" id="import-file" accept=".txt,.csv,.json,text/plain,application/json"
         onchange="readImportFile(this.files[0]); this.value = '';" hidden>
       <div id="import-actions">
         <button type="button" class="btn" id="multiline-input-cancel" onclick="multilineImportCancel()">Cancel</button>
@@ -109,6 +111,27 @@
       </div>
     </div>
   </dialog>
+
+  <dialog id="export-dialog">
+    <div id="export-dialog-body">
+      <span class="group-label">Save labels</span>
+      <p id="export-hint">Save a label file to keep images, or plain text for a simple list.</p>
+      <div id="export-actions">
+        <button type="button" class="btn" id="export-json" onclick="exportJson()">Label file (.json)</button>
+        <button type="button" class="btn" id="export-text" onclick="exportText()">Plain text (.txt)</button>
+      </div>
+      <div id="export-close-row">
+        <button type="button" class="btn" id="export-cancel" onclick="document.getElementById('export-dialog').close()">Cancel</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- Hidden file inputs for picking images. The per-label picker remembers
+       which label to apply to via a variable set when its tool is clicked. -->
+  <input type="file" id="new-image-file" accept="image/*"
+    onchange="addImageLabel(this.files[0]); this.value = '';" hidden>
+  <input type="file" id="label-image-file" accept="image/*"
+    onchange="applyPickedImage(this.files[0]); this.value = '';" hidden>
 
   <main id="labels-section">
     <ul id="labelList" class="printable"></ul>
