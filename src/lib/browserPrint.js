@@ -63,6 +63,27 @@ export async function sendZpl(base, device, zpl) {
     return true;
 }
 
+// List every Zebra the local Browser Print service can see, plus which one is
+// the default. Rejects with code 'not-detected' if the service isn't reachable.
+export async function getPrinters() {
+    const base = await detectBase();
+    if (!base) { throw Object.assign(new Error('Browser Print service not detected'), { code: 'not-detected' }); }
+    let printers = await listPrinters(base).catch(() => []);
+    let def = null;
+    try { def = await getDefaultDevice(base); } catch (e) { /* no default set */ }
+    if (def && !printers.some((p) => p.uid === def.uid)) { printers = [def, ...printers]; }
+    return { printers, defaultUid: def ? def.uid : (printers[0] ? printers[0].uid : null) };
+}
+
+// Send ZPL to a specific chosen device.
+export async function printTo(device, zpl) {
+    const base = await detectBase();
+    if (!base) { throw Object.assign(new Error('Browser Print service not detected'), { code: 'not-detected' }); }
+    if (!device) { throw Object.assign(new Error('No printer selected'), { code: 'no-printer' }); }
+    await sendZpl(base, device, zpl);
+    return device;
+}
+
 // High-level: detect service → pick default printer → send ZPL. Rejects with a
 // coded error the UI can branch on ('not-detected' | 'no-printer' | other).
 export async function printZpl(zpl) {
