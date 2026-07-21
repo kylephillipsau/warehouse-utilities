@@ -16,6 +16,7 @@ export function serializeLabels() {
         divisions: store.divisions,
         margin: store.margin,
         gap: store.gap,
+        orientation: store.orientation,
         labels: store.labels.map((l) => ({
             text: l.text,
             image: l.image || null,
@@ -52,6 +53,7 @@ export function openLabelFile(data, { confirmReplace } = {}) {
     if (data.divisions) { store.divisions = clampDivisions(data.divisions); }
     if (data.margin != null) { store.margin = clampSpacing(data.margin); }
     if (data.gap != null) { store.gap = clampSpacing(data.gap); }
+    if (data.orientation === 'landscape' || data.orientation === 'portrait') { store.orientation = data.orientation; }
     return { ok: true, error: null };
 }
 

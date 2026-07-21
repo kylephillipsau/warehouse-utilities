@@ -56,14 +56,26 @@ export function clampSpacing(v) {
     return round(Math.min(MAX_SPACING, n));
 }
 
-// The physical media size in mm — width (across head) × height (feed). This is
-// exactly what the @page rule emits, so it must match the printer's stock.
+// The physical media size in mm — width (across head) × height (feed). The
+// printer's stock is fixed in this native orientation; ZPL uses it as the true
+// media so output is 1:1 regardless of the design orientation below.
 export function resolvePage(page) {
     if (page.preset === 'custom') {
         return { width: clampMm(page.width, page.unit, 101.6), height: clampMm(page.height, page.unit, 152.4) };
     }
     const p = MEDIA_PRESETS[page.preset] || MEDIA_PRESETS.a4;
     return { width: p.width, height: p.height };
+}
+
+// The DESIGN surface — what the user lays out on and what the screen + @page
+// show. Landscape swaps width/height so you design wide; at print time the
+// content is rotated back onto the native media (see zpl.buildZpl), which keeps
+// the physical output exact and stops Chrome from auto-rotating the page.
+export function resolveDesign(page, orientation = 'portrait') {
+    const p = resolvePage(page);
+    return orientation === 'landscape'
+        ? { width: p.height, height: p.width }
+        : { width: p.width, height: p.height };
 }
 
 // Build a store.page spec from a device media query (browserPrint.queryMedia).
@@ -82,10 +94,10 @@ export function pageFromMedia(media, currentPage) {
     };
 }
 
-// A label fills the page width inside the page margin; its height is the
+// A label fills the design width inside the page margin; its height is the
 // remaining height (after margins + the gaps between labels) divided by N.
-export function resolveLabel(page, divisions, margin = 0, gap = 0) {
-    const p = resolvePage(page);
+export function resolveLabel(page, divisions, margin = 0, gap = 0, orientation = 'portrait') {
+    const p = resolveDesign(page, orientation);
     const n = clampDivisions(divisions);
     const m = clampSpacing(margin);
     const g = clampSpacing(gap);
@@ -100,10 +112,12 @@ export function tiling(divisions) {
     return { cols: 1, rows: n, perPage: n };
 }
 
-// Push resolved dimensions into root CSS custom properties.
-export function applySize(page, divisions, margin = 0, gap = 0) {
-    const p = resolvePage(page);
-    const label = resolveLabel(page, divisions, margin, gap);
+// Push resolved dimensions into root CSS custom properties. The screen shows the
+// DESIGN surface (portrait or landscape-swapped), so a landscape design renders
+// as a wide page here; print rotates it back onto the native media.
+export function applySize(page, divisions, margin = 0, gap = 0, orientation = 'portrait') {
+    const p = resolveDesign(page, orientation);
+    const label = resolveLabel(page, divisions, margin, gap, orientation);
     const n = clampDivisions(divisions);
     const root = document.documentElement.style;
     root.setProperty('--page-w', p.width + 'mm');

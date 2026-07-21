@@ -12,6 +12,7 @@ export const store = $state({
     divisions: DEFAULT_DIVISIONS,
     margin: 0,   // page edge margin (mm) around the tiled labels
     gap: 0,      // gap (mm) between stacked label segments
+    orientation: 'portrait',  // 'portrait' | 'landscape' — landscape rotates the design (see size.resolveDesign)
     output: { method: 'zebra', dpi: 203, saveFormat: 'json' },  // configurable print/output (see output.js)
 });
 
@@ -37,6 +38,7 @@ export function hydrateStore(data) {
     if (data.divisions != null) { store.divisions = clampDivisions(data.divisions); }
     if (typeof data.margin === 'number' && data.margin >= 0) { store.margin = data.margin; }
     if (typeof data.gap === 'number' && data.gap >= 0) { store.gap = data.gap; }
+    if (data.orientation === 'landscape' || data.orientation === 'portrait') { store.orientation = data.orientation; }
     if (data.output && typeof data.output === 'object') {
         // method validated lazily at render (getMethod falls back if unknown)
         if (typeof data.output.method === 'string') { store.output.method = data.output.method; }

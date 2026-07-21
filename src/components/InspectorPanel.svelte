@@ -2,7 +2,7 @@
     import { store } from '../lib/store.svelte.js';
     import {
         MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing,
-        MAX_DIVISIONS, MAX_SPACING, resolvePage, resolveLabel, pageFromMedia,
+        MAX_DIVISIONS, MAX_SPACING, resolveDesign, resolveLabel, pageFromMedia,
     } from '../lib/size.js';
     import { ui, closeInspector } from '../lib/ui.svelte.js';
     import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
@@ -41,8 +41,8 @@
     function onGap(event) { store.gap = clampSpacing(event.target.value); }
 
     // Live readout of the computed geometry (always mm — the canonical unit).
-    const pageDims = $derived(resolvePage(store.page));
-    const labelDims = $derived(resolveLabel(store.page, store.divisions, store.margin, store.gap));
+    const pageDims = $derived(resolveDesign(store.page, store.orientation));
+    const labelDims = $derived(resolveLabel(store.page, store.divisions, store.margin, store.gap, store.orientation));
 
     // Seed sensible custom defaults when switching to a custom size.
     $effect(() => {
@@ -129,6 +129,14 @@
                     <Select ariaLabel="Page size unit" class="w-[4.75rem]" options={unitOptions} bind:value={store.page.unit} />
                 </div>
             {/if}
+        </div>
+
+        <div class="control-group">
+            <span class="group-label">Orientation</span>
+            <div class="flex gap-2" role="group" aria-label="Orientation">
+                <button type="button" id="orient-portrait" class="btn flex-1" class:btn-active={store.orientation === 'portrait'} aria-pressed={store.orientation === 'portrait'} onclick={() => (store.orientation = 'portrait')}>Portrait</button>
+                <button type="button" id="orient-landscape" class="btn flex-1" class:btn-active={store.orientation === 'landscape'} aria-pressed={store.orientation === 'landscape'} onclick={() => (store.orientation = 'landscape')}>Landscape</button>
+            </div>
         </div>
 
         <div class="flex flex-wrap gap-x-5 gap-y-3">

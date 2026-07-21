@@ -139,18 +139,23 @@ function canvasToGFA(canvas) {
 export async function buildZpl(store, dpi = 203) {
     // Zebra "203 dpi" is really 203.2 = exactly 8 dots/mm; 300 dpi = 300/25.4.
     const dpmm = dpi === 203 ? 8 : dpi / MM_PER_IN;
-    const page = resolvePage(store.page);
+    const media = resolvePage(store.page);                 // native physical stock
+    const landscape = store.orientation === 'landscape';
     const n = clampDivisions(store.divisions);
     const per = tiling(store.divisions).perPage;
     const m = clampSpacing(store.margin);
     const g = clampSpacing(store.gap);
 
-    const pageW = Math.round(page.width * dpmm);
-    const pageH = Math.round(page.height * dpmm);
+    // The bitmap is always the native media (so ^PW/^LL match the loaded stock);
+    // in landscape the design layout is rotated 90° onto it, so it prints exact.
+    const pageW = Math.round(media.width * dpmm);
+    const pageH = Math.round(media.height * dpmm);
+    const designW = landscape ? pageH : pageW;             // layout coords
+    const designH = landscape ? pageW : pageH;
     const marginD = Math.round(m * dpmm);
     const gapD = Math.round(g * dpmm);
-    const labelW = pageW - 2 * marginD;
-    const labelH = Math.round((pageH - 2 * marginD - (n - 1) * gapD) / n);
+    const labelW = designW - 2 * marginD;
+    const labelH = Math.round((designH - 2 * marginD - (n - 1) * gapD) / n);
 
     // only print non-empty labels
     const labels = store.labels.filter((l) => (l.text && l.text.trim()) || l.image);
@@ -176,11 +181,16 @@ export async function buildZpl(store, dpi = 203) {
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, pageW, pageH);
+        // Landscape: rotate the drawing frame 90° CW so the design (designW ×
+        // designH) maps exactly onto the native media canvas (pageW × pageH).
+        ctx.save();
+        if (landscape) { ctx.translate(pageW, 0); ctx.rotate(Math.PI / 2); }
         group.forEach((l, idx) => {
             const x = marginD;
             const y = marginD + idx * (labelH + gapD);
             drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image));
         });
+        ctx.restore();
         const { hex, bytesPerRow, total } = canvasToGFA(canvas);
         zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n^FO0,0^GFA,${total},${total},${bytesPerRow},${hex}^FS\n^XZ\n`;
         pages++;

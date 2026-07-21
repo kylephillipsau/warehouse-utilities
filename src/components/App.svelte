@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { store, hydrateStore } from '../lib/store.svelte.js';
     import { loadAll, persistState } from '../lib/persistence.js';
-    import { applySize, resolvePage } from '../lib/size.js';
+    import { applySize, resolveDesign } from '../lib/size.js';
     import Toolbar from './Toolbar.svelte';
     import LabelList from './LabelList.svelte';
     import UndoToast from './UndoToast.svelte';
@@ -21,7 +21,7 @@
 
     // Push the resolved page + label sizes into root CSS vars
     $effect(() => {
-        applySize(store.page, store.divisions, store.margin, store.gap);
+        applySize(store.page, store.divisions, store.margin, store.gap, store.orientation);
     });
 
     // Make the printed page EXACTLY the physical media (native width × height, no
@@ -33,7 +33,9 @@
             pageStyleEl = document.createElement('style');
             document.head.appendChild(pageStyleEl);
         }
-        const p = resolvePage(store.page);
+        // Browser print gets the DESIGN size (so landscape prints landscape on a
+        // sheet printer). ZPL ignores @page and rotates onto the native media.
+        const p = resolveDesign(store.page, store.orientation);
         pageStyleEl.textContent = `@page { size: ${p.width}mm ${p.height}mm; margin: 0; }`;
     });
 
@@ -47,7 +49,7 @@
         void store.presets.length;
         store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; });
         void store.page.preset; void store.page.width; void store.page.height; void store.page.unit;
-        void store.divisions; void store.margin; void store.gap;
+        void store.divisions; void store.margin; void store.gap; void store.orientation;
         void store.output.method; void store.output.dpi; void store.output.saveFormat;
         if (!ready) { return; }
         clearTimeout(saveTimer);
@@ -59,6 +61,7 @@
                 divisions: store.divisions,
                 margin: store.margin,
                 gap: store.gap,
+                orientation: store.orientation,
                 output: $state.snapshot(store.output),
             });
         }, 500);

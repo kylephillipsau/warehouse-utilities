@@ -3,7 +3,7 @@
 // Legacy localStorage keys from the pre-IndexedDB app are migrated once.
 import { idbAvailable, idbGet, idbSet } from './idb.js';
 
-const KEYS = ['labels', 'presets', 'page', 'divisions', 'margin', 'gap', 'output'];
+const KEYS = ['labels', 'presets', 'page', 'divisions', 'margin', 'gap', 'orientation', 'output'];
 
 // --- legacy localStorage (read-only, for one-time migration) ---
 const LS_PAGE = 'labelMakerPage';
