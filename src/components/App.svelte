@@ -7,7 +7,7 @@
     import LabelList from './LabelList.svelte';
     import UndoToast from './UndoToast.svelte';
     import ImportDrawer from './ImportDrawer.svelte';
-    import ExportDialog from './ExportDialog.svelte';
+    import InspectorPanel from './InspectorPanel.svelte';
     import AdjustDialog from './AdjustDialog.svelte';
     import PresetsDrawer from './PresetsDrawer.svelte';
 
@@ -48,6 +48,7 @@
         store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; });
         void store.page.preset; void store.page.width; void store.page.height; void store.page.unit;
         void store.divisions; void store.margin; void store.gap;
+        void store.output.method; void store.output.dpi; void store.output.saveFormat;
         if (!ready) { return; }
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
@@ -58,6 +59,7 @@
                 divisions: store.divisions,
                 margin: store.margin,
                 gap: store.gap,
+                output: $state.snapshot(store.output),
             });
         }, 500);
     });
@@ -68,7 +70,7 @@
     <ImportDrawer />
     <PresetsDrawer />
     <LabelList />
+    <InspectorPanel />
 </div>
 <UndoToast />
-<ExportDialog />
 <AdjustDialog />

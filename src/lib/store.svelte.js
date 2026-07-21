@@ -12,6 +12,7 @@ export const store = $state({
     divisions: DEFAULT_DIVISIONS,
     margin: 0,   // page edge margin (mm) around the tiled labels
     gap: 0,      // gap (mm) between stacked label segments
+    output: { method: 'zebra', dpi: 203, saveFormat: 'json' },  // configurable print/output (see output.js)
 });
 
 // Populate the store from persisted state (see persistence.loadAll). Applied
@@ -36,6 +37,12 @@ export function hydrateStore(data) {
     if (data.divisions != null) { store.divisions = clampDivisions(data.divisions); }
     if (typeof data.margin === 'number' && data.margin >= 0) { store.margin = data.margin; }
     if (typeof data.gap === 'number' && data.gap >= 0) { store.gap = data.gap; }
+    if (data.output && typeof data.output === 'object') {
+        // method validated lazily at render (getMethod falls back if unknown)
+        if (typeof data.output.method === 'string') { store.output.method = data.output.method; }
+        if (data.output.dpi === 203 || data.output.dpi === 300) { store.output.dpi = data.output.dpi; }
+        if (data.output.saveFormat === 'txt' || data.output.saveFormat === 'json') { store.output.saveFormat = data.output.saveFormat; }
+    }
 }
 
 // A transient stack of deleted labels for the undo toast
