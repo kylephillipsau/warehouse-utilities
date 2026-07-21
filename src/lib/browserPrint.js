@@ -8,7 +8,7 @@
 // 'not-detected' so the UI can fall back to the .zpl download + an install link.
 
 export const BROWSER_PRINT_INSTALL_URL =
-    'https://www.zebra.com/us/en/support-downloads/printer-software/browser-print.html';
+    'https://www.zebra.com/us/en/support-downloads/software/printer-software/browser-print.html';
 // The self-signed cert's CN is "localhost"; users accept it once here.
 export const BROWSER_PRINT_SSL_URL = 'https://localhost:9101/ssl_support';
 
