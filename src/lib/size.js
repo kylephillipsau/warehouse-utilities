@@ -66,6 +66,22 @@ export function resolvePage(page) {
     return { width: p.width, height: p.height };
 }
 
+// Build a store.page spec from a device media query (browserPrint.queryMedia).
+// The printer senses LENGTH reliably (→ page height) but never senses WIDTH, so
+// width comes back as a suggestion: use it if present, else keep the current
+// page width. Always a custom spec so the width stays visible in the UI's
+// width input for the user to confirm/correct. Returns null if no usable length.
+export function pageFromMedia(media, currentPage) {
+    if (!media || (media.lengthMm == null && media.widthMm == null)) { return null; }
+    const cur = resolvePage(currentPage || DEFAULT_PAGE);
+    return {
+        preset: 'custom',
+        width: media.widthMm != null ? media.widthMm : cur.width,
+        height: media.lengthMm != null ? media.lengthMm : cur.height,
+        unit: 'mm',
+    };
+}
+
 // A label fills the page width inside the page margin; its height is the
 // remaining height (after margins + the gaps between labels) divided by N.
 export function resolveLabel(page, divisions, margin = 0, gap = 0) {

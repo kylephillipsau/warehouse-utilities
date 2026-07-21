@@ -1,8 +1,10 @@
 <script>
     import { store, addLabels, addImageLabel, clearAllLabels } from '../lib/store.svelte.js';
-    import { MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing, MAX_DIVISIONS, MAX_SPACING } from '../lib/size.js';
+    import { MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing, MAX_DIVISIONS, MAX_SPACING, pageFromMedia } from '../lib/size.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { ui, openExport } from '../lib/ui.svelte.js';
+    import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
+    import { queryMedia } from '../lib/browserPrint.js';
     import Select from './Select.svelte';
 
     // The two side drawers toggle from their toolbar buttons (and stay visibly
@@ -49,6 +51,45 @@
     function onDivisions(event) { store.divisions = clampDivisions(event.target.value); }
     function onMargin(event) { store.margin = clampSpacing(event.target.value); }
     function onGap(event) { store.gap = clampSpacing(event.target.value); }
+
+    // Remember the chosen printer as the default (shared with the Export dialog).
+    $effect(() => {
+        if (printer.bpState === 'ready' && printer.selectedUid) { rememberPrinter(printer.selectedUid); }
+    });
+
+    // Ask the selected printer for its loaded media size. Length is sensed and
+    // set authoritatively; width isn't sensed, so it's pre-filled as a suggestion
+    // (page becomes "custom", so the width input appears for the user to confirm).
+    async function detectSize() {
+        if (!selectedDevice()) { await ensurePrinters(); }
+        const device = selectedDevice();
+        if (!device) { printer.detectState = 'error'; printer.detectMsg = 'Select a printer first.'; return; }
+        printer.detectState = 'querying';
+        printer.detectMsg = '';
+        try {
+            const media = await queryMedia(device);
+            printer.lastMedia = media;
+            const spec = pageFromMedia(media, store.page);
+            if (!spec) {
+                printer.detectState = 'unsupported';
+                printer.detectMsg = "Couldn't read a size — try calibrating the printer, then retry.";
+                return;
+            }
+            store.page = spec; // flows to applySize + @page reactively
+            printer.detectState = 'done';
+            printer.detectMsg = media.lengthMm != null
+                ? `Length ${media.lengthMm} mm set from the printer. Width isn't sensed — confirm it.`
+                : `Width suggested at ${media.widthMm} mm — confirm the size.`;
+        } catch (e) {
+            if (e && e.code === 'not-detected') {
+                printer.detectState = 'unsupported';
+                printer.detectMsg = 'Browser Print not reachable.';
+            } else {
+                printer.detectState = 'error';
+                printer.detectMsg = 'Query failed.';
+            }
+        }
+    }
 
     $effect(() => {
         if (isCustom(store.page)) {
@@ -147,6 +188,31 @@
                 <span class="btn-label max-md:hidden">Print</span>
             </button>
         </div>
+    </div>
+
+    <!-- Tier 1b: label-printer bar (right-aligned second row). Discovery is lazy
+         — nothing probes Browser Print until the user clicks "Find label
+         printer". Inside <header>, so it's hidden in print automatically. -->
+    <div class="flex flex-wrap items-center justify-end gap-2 text-[0.85rem] max-md:justify-start">
+        {#if !printer.discovered && printer.bpState !== 'loading'}
+            <button type="button" id="printer-detect" class="btn" onclick={ensurePrinters} title="Find a Zebra label printer via Browser Print">Find label printer</button>
+        {:else if printer.bpState === 'loading'}
+            <span class="text-ink/60">Detecting printers…</span>
+        {:else if printer.bpState === 'ready' && printer.printers.length > 0}
+            <span class="whitespace-nowrap text-ink/70">Label printer</span>
+            <Select ariaLabel="Label printer" class="min-w-0 w-[16rem] max-w-full" options={printerOptions()} bind:value={printer.selectedUid} />
+            <button type="button" class="label-tool shrink-0" title="Refresh printer list" aria-label="Refresh printer list" onclick={loadPrinters}>&#8635;</button>
+            <button type="button" id="detect-size" class="btn" disabled={printer.detectState === 'querying'} onclick={detectSize} title="Read the loaded label size from the printer">
+                {printer.detectState === 'querying' ? 'Reading…' : 'Detect size'}
+            </button>
+            {#if printer.detectState === 'done'}
+                <span class="font-bold text-purple" role="status">{printer.detectMsg}</span>
+            {:else if printer.detectState === 'error' || printer.detectState === 'unsupported'}
+                <span class="font-bold text-orange" role="alert">{printer.detectMsg}</span>
+            {/if}
+        {:else}
+            <span class="text-ink/60">No label printer found. <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button></span>
+        {/if}
     </div>
 
     <!-- Tier 2: create bar -->

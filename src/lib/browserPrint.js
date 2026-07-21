@@ -63,6 +63,118 @@ export async function sendZpl(base, device, zpl) {
     return true;
 }
 
+// Read whatever is currently in Browser Print's read buffer for a device. Same
+// CORS-simple shape as /write (text/plain body, no preflight). The body carries
+// just the device — no `data`.
+async function readOnce(base, device, timeoutMs = 1500) {
+    const res = await fetchWithTimeout(base + '/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({ device }),
+    }, timeoutMs);
+    if (!res.ok) { throw new Error('read failed (HTTP ' + res.status + ')'); }
+    return res.text();
+}
+
+const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Send an SGD/control command, then poll /read until a reply lands or we give
+// up. The buffer is usually empty on the first read (the printer hasn't answered
+// yet), so we poll a few times. Returns the accumulated raw text (may be '').
+export async function readSgd(base, device, cmd, { tries = 8, gapMs = 150 } = {}) {
+    await sendZpl(base, device, cmd);
+    let acc = '';
+    for (let i = 0; i < tries; i++) {
+        let chunk = '';
+        try { chunk = await readOnce(base, device); } catch (e) { /* keep polling */ }
+        if (chunk) { acc += chunk; }
+        if (acc.trim()) { break; }
+        await delay(gapMs);
+    }
+    return acc;
+}
+
+// SGD getvar replies come back quoted, e.g. `"1218"`. Strip quotes/whitespace.
+function unquote(s) {
+    return String(s || '').replace(/[\r\n]/g, '').trim().replace(/^"|"$/g, '').trim();
+}
+
+// A numeric SGD value we can trust: not empty, not "?", and not a sentinel
+// (0 or the 32000 max). Returns the integer or null ("unknown").
+function sgdNumber(s) {
+    const v = unquote(s);
+    if (!v || v === '?') { return null; }
+    const n = parseInt(v, 10);
+    if (!Number.isFinite(n) || n <= 0 || n >= 32000) { return null; }
+    return n;
+}
+
+// ~HS host status: three STX/CRLF-delimited strings. String 1 is a comma list
+// whose 4th field (index 3) is the label length in dots. Returns dots or null.
+function parseHostStatusLength(text) {
+    const clean = String(text || '').replace(/[\x02\x03]/g, '');
+    const line1 = clean.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)[0] || '';
+    const fields = line1.split(',');
+    return fields.length > 3 ? sgdNumber(fields[3]) : null;
+}
+
+const round1 = (n) => Math.round(n * 10) / 10;
+
+// Query the loaded media size from the printer. Returns
+// { dpi, widthMm, lengthMm, widthSensed, lengthReliable, raw }.
+//
+// LENGTH is physically sensed (gap sensor) after calibration and is reliable on
+// gap/notch/black-mark stock. WIDTH is NOT sensed — ezpl.print_width only echoes
+// the printhead's configured width — so widthSensed is always false and callers
+// should treat widthMm as a suggestion to confirm. Only throws when the service
+// is unreachable / no device (coded errors); unknown values come back as null so
+// callers can fall back to manual entry.
+export async function queryMedia(device) {
+    const base = await detectBase();
+    if (!base) { throw Object.assign(new Error('Browser Print service not detected'), { code: 'not-detected' }); }
+    if (!device) { throw Object.assign(new Error('No printer selected'), { code: 'no-printer' }); }
+
+    const raw = {};
+
+    // DPI — needed to convert dots→mm. Zebra "203 dpi" is really 203.2 = exactly
+    // 8 dots/mm (same convention as zpl.js); default to 203 when unanswered.
+    raw.dpi = await readSgd(base, device, '! U1 getvar "head.resolution.in_dpi"\r\n');
+    const dpi = sgdNumber(raw.dpi) || 203;
+    const dpmm = dpi === 203 ? 8 : dpi / 25.4;
+    const dotsToMm = (dots) => dots / dpmm;
+
+    // LENGTH — reliable on gap media after calibration. Fall back to ~HS.
+    raw.length = await readSgd(base, device, '! U1 getvar "zpl.label_length"\r\n');
+    let lengthDots = sgdNumber(raw.length);
+    let lengthReliable = lengthDots != null;
+    if (lengthDots == null) {
+        raw.hs = await readSgd(base, device, '~HS\r\n');
+        lengthDots = parseHostStatusLength(raw.hs);
+        lengthReliable = false;
+    }
+
+    // WIDTH — configured print width, not a sensor reading. Suggestion only.
+    raw.width = await readSgd(base, device, '! U1 getvar "ezpl.print_width"\r\n');
+    const widthDots = sgdNumber(raw.width);
+
+    return {
+        dpi,
+        widthMm: widthDots != null ? round1(dotsToMm(widthDots)) : null,
+        lengthMm: lengthDots != null ? round1(dotsToMm(lengthDots)) : null,
+        widthSensed: false,
+        lengthReliable,
+        raw,
+    };
+}
+
+// Trigger a media calibration so the printer re-senses the loaded label length.
+export async function calibrate(device) {
+    const base = await detectBase();
+    if (!base) { throw Object.assign(new Error('Browser Print service not detected'), { code: 'not-detected' }); }
+    await sendZpl(base, device, '~JC\r\n');
+    return true;
+}
+
 // List every Zebra the local Browser Print service can see, plus which one is
 // the default. Rejects with code 'not-detected' if the service isn't reachable.
 export async function getPrinters() {
