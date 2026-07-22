@@ -9,6 +9,7 @@
     import ImportDrawer from './ImportDrawer.svelte';
     import InspectorPanel from './InspectorPanel.svelte';
     import AdjustDialog from './AdjustDialog.svelte';
+    import FieldsDialog from './FieldsDialog.svelte';
     import PresetsDrawer from './PresetsDrawer.svelte';
 
     // Hydrate the store from IndexedDB once on mount; only then start autosaving,
@@ -50,9 +51,12 @@
     let saveTimer;
     $effect(() => {
         void store.labels.length;
-        store.labels.forEach((l) => { void l.text; void l.image; void l.adjust; });
+        store.labels.forEach((l) => {
+            void l.text; void l.image; void l.adjust; void l.fields;
+            if (l.fields) { l.fields.forEach((f) => { void f.value; void f.size; void f.align; void f.bold; }); }
+        });
         void store.presets.length;
-        store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; });
+        store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; void p.fields; });
         void store.page.preset; void store.page.width; void store.page.height; void store.page.unit;
         void store.divisions; void store.margin; void store.gap; void store.orientation; void store.showBorders;
         void store.output.method; void store.output.dpi; void store.output.saveFormat;
@@ -83,3 +87,4 @@
 </div>
 <UndoToast />
 <AdjustDialog />
+<FieldsDialog />

@@ -5,6 +5,8 @@
 // ^PW/^LL lock the physical extents so the output is exact by construction.
 import { resolvePage, tiling, clampSpacing, clampDivisions } from './size.js';
 import { normalizeAdjust } from './adjust.js';
+import { fieldWeight, labelIsEmpty } from './fields.js';
+import { resolveTemplate } from './tokens.js';
 
 const FONT = '"Glacial Indifference", sans-serif';
 const MM_PER_IN = 25.4;
@@ -38,13 +40,14 @@ function wrapLines(ctx, text, maxW) {
     return lines;
 }
 
-// Largest bold font (binary search) whose wrapped lines fit the box
-function fitText(ctx, text, maxW, maxH) {
+// Largest font (binary search) whose wrapped lines fit the box
+function fitText(ctx, text, maxW, maxH, bold = true) {
     let lo = 4, hi = Math.max(6, Math.floor(maxH)), best = 4, bestLines = [String(text)];
     const lhFactor = 1.15;
+    const weight = bold ? 'bold ' : '';
     while (lo <= hi) {
         const mid = (lo + hi) >> 1;
-        ctx.font = `bold ${mid}px ${FONT}`;
+        ctx.font = `${weight}${mid}px ${FONT}`;
         const lines = wrapLines(ctx, text, maxW);
         const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
         const totalH = lines.length * mid * lhFactor;
@@ -54,16 +57,36 @@ function fitText(ctx, text, maxW, maxH) {
     return { fontSize: best, lines: bestLines, lineH: best * lhFactor };
 }
 
-function drawText(ctx, text, x, y, w, h) {
+function drawText(ctx, text, x, y, w, h, align = 'center', bold = true) {
     const pad = Math.max(2, Math.round(w * 0.03));
-    const { fontSize, lines, lineH } = fitText(ctx, text, w - 2 * pad, h - 2 * pad);
+    const { fontSize, lines, lineH } = fitText(ctx, text, w - 2 * pad, h - 2 * pad, bold);
     ctx.fillStyle = '#000';
-    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `bold ${fontSize}px ${FONT}`;
+    ctx.font = `${bold ? 'bold ' : ''}${fontSize}px ${FONT}`;
+    let tx;
+    if (align === 'left') { ctx.textAlign = 'left'; tx = x + pad; }
+    else if (align === 'right') { ctx.textAlign = 'right'; tx = x + w - pad; }
+    else { ctx.textAlign = 'center'; tx = x + w / 2; }
     const totalH = lines.length * lineH;
     let cy = y + h / 2 - totalH / 2 + lineH / 2;
-    for (const line of lines) { ctx.fillText(line, x + w / 2, cy); cy += lineH; }
+    for (const line of lines) { ctx.fillText(line, tx, cy); cy += lineH; }
+}
+
+// Draw a stack of template fields into (x,y,w,h): each band's height is its
+// relative weight, tokens resolved, drawn per the field's align/bold. Mirrors
+// the on-screen flex stack so screen and print divide the label identically.
+function drawFields(ctx, fields, x, y, w, h) {
+    const weights = fields.map(fieldWeight);
+    const total = weights.reduce((a, b) => a + b, 0) || 1;
+    const gapD = Math.round(h * 0.02);
+    const avail = h - gapD * (fields.length - 1);
+    let cy = y;
+    fields.forEach((f, i) => {
+        const bh = Math.round(avail * weights[i] / total);
+        const resolved = resolveTemplate(f.value);
+        if (resolved && resolved.trim()) { drawText(ctx, resolved, x, cy, w, bh, f.align, f.bold); }
+        cy += bh + gapD;
+    });
 }
 
 // Replicate CSS object-fit + object-position + transform:scale for an image
@@ -88,11 +111,14 @@ function drawImage(ctx, img, x, y, w, h, adjust) {
 // Draw one label segment into (x,y,w,h), optionally with a cut-guide border
 function drawLabel(ctx, label, x, y, w, h, img, showBorder = true) {
     const border = Math.max(2, Math.round(Math.min(w, h) * 0.01));
+    const hasFields = label.fields && label.fields.length && !label.image;
     const hasImage = !!label.image && img;
     const hasText = label.text && label.text.trim().length > 0;
     ctx.fillStyle = '#fff';
     ctx.fillRect(x, y, w, h);
-    if (hasImage) {
+    if (hasFields) {
+        drawFields(ctx, label.fields, x, y, w, h);
+    } else if (hasImage) {
         drawImage(ctx, img, x, y, w, h, label.adjust);
         if (hasText) {
             const bandH = Math.round(h * 0.3);
@@ -160,8 +186,8 @@ export async function buildZpl(store, dpi = 203) {
     const labelW = designW - 2 * marginD;
     const labelH = Math.round((designH - 2 * marginD - (n - 1) * gapD) / n);
 
-    // only print non-empty labels
-    const labels = store.labels.filter((l) => (l.text && l.text.trim()) || l.image);
+    // only print non-empty labels (classic text/image OR template fields)
+    const labels = store.labels.filter((l) => !labelIsEmpty(l));
     const skipped = store.labels.length - labels.length;
 
     if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {

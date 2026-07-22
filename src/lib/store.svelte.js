@@ -4,6 +4,8 @@
 import { normalizeAdjust } from './adjust.js';
 import { newId } from './persistence.js';
 import { DEFAULT_PAGE, DEFAULT_DIVISIONS, clampDivisions } from './size.js';
+import { normalizeFields, cloneFields, makeField, normalizeField, labelIsEmpty } from './fields.js';
+import { resolveTemplate } from './tokens.js';
 
 export const store = $state({
     labels: [],
@@ -22,12 +24,17 @@ export const store = $state({
 export function hydrateStore(data) {
     if (!data) { return; }
     if (Array.isArray(data.labels)) {
-        store.labels = data.labels.map((l) => ({
-            id: (l && l.id) || newId(),
-            text: l && typeof l.text === 'string' ? l.text : '',
-            image: l && l.image ? l.image : null,
-            adjust: normalizeAdjust(l && l.adjust),
-        }));
+        store.labels = data.labels.map((l) => {
+            const label = {
+                id: (l && l.id) || newId(),
+                text: l && typeof l.text === 'string' ? l.text : '',
+                image: l && l.image ? l.image : null,
+                adjust: normalizeAdjust(l && l.adjust),
+            };
+            const fields = normalizeFields(l && l.fields);
+            if (fields.length) { label.fields = fields; }  // keep classic labels classic
+            return label;
+        });
     }
     if (Array.isArray(data.presets)) { store.presets = data.presets; }
     if (data.page && typeof data.page === 'object') {
@@ -52,8 +59,11 @@ export function hydrateStore(data) {
 // A transient stack of deleted labels for the undo toast
 export const undo = $state({ items: [] });
 
-export function makeLabel(text = '', image = null, adjust) {
-    return { id: newId(), text, image: image || null, adjust: normalizeAdjust(adjust) };
+export function makeLabel(text = '', image = null, adjust, fields) {
+    const l = { id: newId(), text, image: image || null, adjust: normalizeAdjust(adjust) };
+    const nf = normalizeFields(fields);
+    if (nf.length) { l.fields = nf; }   // only template labels carry `fields`
+    return l;
 }
 
 export function addLabels(text, quantity) {
@@ -79,7 +89,7 @@ export function duplicateLabel(id) {
     const i = indexOf(id);
     if (i === -1) { return; }
     const l = store.labels[i];
-    store.labels.splice(i + 1, 0, makeLabel(l.text, l.image, l.adjust));
+    store.labels.splice(i + 1, 0, makeLabel(l.text, l.image, l.adjust, cloneFields(l.fields)));
 }
 
 export function deleteLabel(id) {
@@ -110,13 +120,12 @@ export function clearAllLabels() {
     undo.items.push({ batch: cleared });
 }
 
-// Prune a label that has become empty (no text, no image) - mirrors the old
-// updateLabels() behaviour, but never removes an image-only label.
+// Prune a label that has become empty (no text/fields, no image) - mirrors the
+// old updateLabels() behaviour, but never removes an image-only label.
 export function pruneIfEmpty(id) {
     const i = indexOf(id);
     if (i === -1) { return; }
-    const l = store.labels[i];
-    if ((!l.text || l.text.trim().length === 0) && !l.image) {
+    if (labelIsEmpty(store.labels[i])) {
         store.labels.splice(i, 1);
     }
 }
@@ -151,6 +160,50 @@ export function moveLabel(id, toIndex) {
     store.labels.splice(clamped, 0, l);
 }
 
+// ---- Multi-field templates ----
+// A label becomes a template when it carries a non-empty `fields` array. Removing
+// the last field reverts it to a classic (empty) label, which then prunes.
+
+// Turn a classic label into a template, seeding one field from its current text.
+export function convertToTemplate(id) {
+    const l = store.labels[indexOf(id)];
+    if (!l || (l.fields && l.fields.length)) { return; }
+    l.fields = [makeField({ value: l.text || '', size: 'm' })];
+    l.text = '';   // so stale text can't resurface if all fields are later removed
+}
+
+export function addField(id, partial) {
+    const l = store.labels[indexOf(id)];
+    if (!l) { return; }
+    if (!l.fields) { l.fields = []; }
+    l.fields.push(makeField(partial));
+}
+
+export function removeField(id, fieldId) {
+    const l = store.labels[indexOf(id)];
+    if (!l || !l.fields) { return; }
+    l.fields = l.fields.filter((f) => f.id !== fieldId);
+    if (!l.fields.length) { delete l.fields; }  // back to a classic (empty) label
+}
+
+export function moveField(id, fieldId, dir) {
+    const l = store.labels[indexOf(id)];
+    if (!l || !l.fields) { return; }
+    const i = l.fields.findIndex((f) => f.id === fieldId);
+    const j = i + dir;
+    if (i === -1 || j < 0 || j >= l.fields.length) { return; }
+    const arr = l.fields;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+}
+
+export function patchField(id, fieldId, partial) {
+    const l = store.labels[indexOf(id)];
+    if (!l || !l.fields) { return; }
+    const i = l.fields.findIndex((f) => f.id === fieldId);
+    if (i === -1) { return; }
+    l.fields[i] = normalizeField({ ...l.fields[i], ...partial });
+}
+
 // ---- Preset library ----
 // (persistence is reactive — see App.svelte — so mutations no longer save
 // explicitly; every change to the store is autosaved to IndexedDB.)
@@ -158,15 +211,21 @@ export function moveLabel(id, toIndex) {
 export function savePresetFromLabel(id, name) {
     const l = store.labels[indexOf(id)];
     if (!l) { return null; }
-    const finalName = (name || '').trim() || (l.text || '').trim() || 'Label preset';
+    // Default name: explicit → first non-empty field/text (resolved) → fallback.
+    const firstText = (l.fields && l.fields.length)
+        ? (l.fields.map((f) => resolveTemplate(f.value).trim()).find(Boolean) || '')
+        : (l.text || '');
+    const finalName = (name || '').trim() || firstText.trim() || 'Label preset';
     const presetId = newId();
-    store.presets.push({
+    const preset = {
         id: presetId,
         name: finalName,
         text: l.text,
         image: l.image,
         adjust: normalizeAdjust(l.adjust),
-    });
+    };
+    if (l.fields && l.fields.length) { preset.fields = normalizeFields(l.fields); }
+    store.presets.push(preset);
     return presetId;
 }
 
@@ -176,7 +235,7 @@ export function savePresetFromLabel(id, name) {
 export function insertPreset(presetId, index) {
     const p = store.presets.find((x) => String(x.id) === String(presetId));
     if (!p) { return; }
-    const label = makeLabel(p.text || '', p.image || null, p.adjust);
+    const label = makeLabel(p.text || '', p.image || null, p.adjust, cloneFields(p.fields));
     if (typeof index === 'number' && index >= 0 && index <= store.labels.length) {
         store.labels.splice(index, 0, label);
     } else {

@@ -14,12 +14,14 @@ import { buildZpl } from './zpl.js';
 import { serializeLabels, exportTextLines } from './serialize.js';
 import { printTo, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from './browserPrint.js';
 import { selectedDevice, ensurePrinters, rememberPrinter, printer } from './printer.svelte.js';
+import { labelIsEmpty } from './fields.js';
 
 export { BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL };
 
 export const DEFAULT_OUTPUT = { method: 'zebra', dpi: 203, saveFormat: 'json' };
 
-const hasPrintable = (store) => store.labels.some((l) => (l.text && l.text.trim()) || l.image);
+// printable when at least one label has content — classic text/image OR template fields
+const hasPrintable = (store) => store.labels.some((l) => !labelIsEmpty(l));
 
 function downloadBlob(blob, filename) {
     const link = document.createElement('a');

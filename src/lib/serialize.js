@@ -2,6 +2,7 @@
 // embedded as base64 data URIs, plus per-label adjust, size, orientation, and
 // the preset library so presets travel between devices. Still opens v1 files.
 import { normalizeAdjust } from './adjust.js';
+import { normalizeFields } from './fields.js';
 import { clampDivisions, clampSpacing } from './size.js';
 import { store, makeLabel, mergePresets } from './store.svelte.js';
 
@@ -22,6 +23,9 @@ export function serializeLabels() {
             text: l.text,
             image: l.image || null,
             adjust: normalizeAdjust(l.adjust),
+            // `fields` written only for template labels, so classic labels
+            // serialize byte-identically to older files (additive, still v2).
+            ...(l.fields && l.fields.length ? { fields: normalizeFields(l.fields) } : {}),
         })),
         presets: store.presets,
     };
@@ -42,6 +46,7 @@ export function openLabelFile(data, { confirmReplace } = {}) {
             entry && typeof entry.text === 'string' ? entry.text : '',
             entry && entry.image ? entry.image : null,
             entry && entry.adjust,
+            entry && entry.fields,
         ),
     );
     if (data.presets) { mergePresets(data.presets); }

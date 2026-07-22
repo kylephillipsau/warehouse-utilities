@@ -363,6 +363,31 @@ li.text-container.drag-over {
     overflow: hidden;
 }
 
+/* Multi-field template label: a vertical stack of bands filling the segment.
+   Each band's height is its flex weight (from the field's size); text auto-fits
+   its band. Black text on white, so no print-color-adjust needed. */
+.fields-stack {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.field-band {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    min-height: 0;
+    padding: 0 1mm;
+    box-sizing: border-box;
+    /* flex-grow / justify-content / text-align / font-weight come from the
+       inline fieldStyle() so screen + ZPL divide the label identically. */
+}
+.field-band .text {
+    width: 100%;
+    display: block;
+}
+
 /* Caption band overlaid on an image; fixed proportion so the caption text has a
    box to auto-fit into. Readable backing forced to print. */
 .label-caption {

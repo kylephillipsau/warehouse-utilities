@@ -1,6 +1,7 @@
 <script>
     import { ui } from '../lib/ui.svelte.js';
     import { store, insertPreset, renamePreset, deletePreset } from '../lib/store.svelte.js';
+    import { resolveTemplate } from '../lib/tokens.js';
     import Drawer from './Drawer.svelte';
 
     function close() { ui.presetsOpen = false; }
@@ -56,11 +57,15 @@
                 title={editingId === preset.id ? '' : 'Drag onto the sheet to place'}
             >
                 <span class="shrink-0 text-ink/40 select-none" aria-hidden="true">&#10495;</span>
-                <div class="preset-thumb flex-none w-14 h-10 flex items-center justify-center overflow-hidden border border-ink/35 rounded font-bold text-ink">
-                    {#if preset.image}
+                <div class="preset-thumb flex-none w-14 h-10 flex flex-col items-stretch justify-center overflow-hidden border border-ink/35 rounded font-bold text-ink leading-none">
+                    {#if preset.fields && preset.fields.length}
+                        {#each preset.fields.slice(0, 3) as f}
+                            <span class="block truncate px-[2px] text-center text-[6px]">{resolveTemplate(f.value) || '—'}</span>
+                        {/each}
+                    {:else if preset.image}
                         <img src={preset.image} alt="" class="w-full h-full object-contain pointer-events-none" />
                     {:else}
-                        Aa
+                        <span class="text-center">Aa</span>
                     {/if}
                 </div>
                 {#if editingId === preset.id}

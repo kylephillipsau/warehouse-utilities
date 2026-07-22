@@ -1,10 +1,11 @@
 <script>
-    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, pruneIfEmpty, moveLabel } from '../lib/store.svelte.js';
+    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, pruneIfEmpty, moveLabel, convertToTemplate } from '../lib/store.svelte.js';
     import { adjustStyle } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
-    import { openAdjust, openPresets } from '../lib/ui.svelte.js';
+    import { openAdjust, openPresets, openFields } from '../lib/ui.svelte.js';
     import { draggable } from '../actions/draggable.js';
     import LabelCanvas from './LabelCanvas.svelte';
+    import FieldsLabel from './FieldsLabel.svelte';
     import LabelMenu from './LabelMenu.svelte';
 
     let { label } = $props();
@@ -68,11 +69,17 @@
     }
 
     // Progressive-disclosure actions menu (labeled, not cryptic icons)
+    const isTemplate = $derived(!!(label.fields && label.fields.length));
     const menuItems = $derived([
-        label.image ? { label: label.text ? 'Edit caption' : 'Add caption', action: addCaption } : { label: 'Add image', action: pickImage },
+        isTemplate
+            ? { label: 'Edit fields', action: () => openFields(label.id) }
+            : (label.image
+                ? { label: label.text ? 'Edit caption' : 'Add caption', action: addCaption }
+                : { label: 'Add image', action: pickImage }),
+        !isTemplate && !label.image ? { label: 'Make it a template', action: () => { convertToTemplate(label.id); openFields(label.id); } } : null,
         { label: 'Duplicate', action: () => duplicateLabel(label.id) },
         { label: 'Save as preset…', action: savePreset },
-        label.image ? { label: 'Remove image', action: () => removeImage(label.id) } : null,
+        label.image && !isTemplate ? { label: 'Remove image', action: () => removeImage(label.id) } : null,
         { label: 'Delete', action: () => deleteLabel(label.id), danger: true },
     ].filter(Boolean));
 
@@ -100,14 +107,18 @@
     ondrop={onDrop}
     onfocusout={onFocusOut}
 >
-    <LabelCanvas
-        editable
-        image={label.image}
-        bind:text={label.text}
-        adjust={label.adjust}
-        showCaption={captionOpen}
-        onImageClick={() => openAdjust(label.id)}
-    />
+    {#if isTemplate}
+        <FieldsLabel {label} editable />
+    {:else}
+        <LabelCanvas
+            editable
+            image={label.image}
+            bind:text={label.text}
+            adjust={label.adjust}
+            showCaption={captionOpen}
+            onImageClick={() => openAdjust(label.id)}
+        />
+    {/if}
 
     <div class="label-tools">
         <button type="button" class="label-tool tool-drag" title="Drag to reorder" aria-label="Drag to reorder" use:draggable={{ id: label.id }} onkeydown={onDragKey}>&#10495;</button>
