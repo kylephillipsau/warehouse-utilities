@@ -5,6 +5,7 @@
 import JsBarcode from 'jsbarcode';
 import qrcode from 'qrcode-generator';
 import { parseGs1, gs1ForJsBarcode, gs1Hri, validateGs1, gtinCheckDigit } from './gs1.js';
+import { encodeDataMatrix } from './vendor/datamatrix.js';
 
 // GTIN/GLN/SSCC check digit lives in gs1.js (shared with the GS1-128 path);
 // re-exported here so existing barcode importers keep their entry point.
@@ -20,6 +21,7 @@ export const SYMBOLOGY_META = {
     'gs1-128': { label: 'GS1-128', kind: '1d', gs1: true },
     code39: { label: 'Code 39', kind: '1d' },
     qr: { label: 'QR code', kind: '2d' },
+    datamatrix: { label: 'Data Matrix', kind: '2d' },
 };
 
 export const SYMBOLOGY_OPTIONS = [
@@ -29,6 +31,7 @@ export const SYMBOLOGY_OPTIONS = [
     { value: 'gs1-128', label: 'GS1-128' },
     { value: 'code39', label: 'Code 39' },
     { value: 'qr', label: 'QR code' },
+    { value: 'datamatrix', label: 'Data Matrix' },
 ];
 
 export const QR_EC_OPTIONS = [
@@ -78,6 +81,9 @@ export function validate(value, symbology) {
         }
     }
     if (symbology === 'gs1-128') { return validateGs1(v); }
+    if (symbology === 'datamatrix' && encodeDataMatrix(v) == null) {
+        return { ok: false, error: 'Too much data for one Data Matrix symbol.' };
+    }
     return { ok: true, error: null };
 }
 
@@ -96,6 +102,10 @@ export function encodeBarcode(value, symbology, { ecLevel } = {}) {
             qr.addData(v);
             qr.make();
             return { kind: '2d', size: qr.getModuleCount(), isDark: (r, c) => qr.isDark(r, c) };
+        }
+        if (symbology === 'datamatrix') {
+            const dm = encodeDataMatrix(v);   // square, ECC 200
+            return dm || { error: 'encode-failed' };
         }
         if (symbology === 'ean13' || symbology === 'upca') {
             const g = gtinData(v, symbology);
@@ -176,8 +186,15 @@ function fdTail(body) {
 export function barcodeZplField(enc, data, layout, symbology, { landscape = false, pageW = 0, ecLevel } = {}) {
     const L = layout;
     if (enc.kind === '2d') {
+        // 2D symbols scan at any angle, so we keep them upright (orient N) at the
+        // landscape-mapped top-left rather than rotating the field.
         const fox = landscape ? (pageW - L.sy - L.fh) : L.sx;
         const foy = landscape ? L.sx : L.sy;
+        if (symbology === 'datamatrix') {
+            // ^BX: module dot size = mag, quality 200 (ECC 200); columns/rows
+            // auto (printer sizes the symbol from the data).
+            return `^FO${fox},${foy}^BXN,${L.mag},200${fdTail(data)}`;
+        }
         // ^BQ error-correction: the model param and the ^FD prefix must agree.
         const ec = ['L', 'M', 'Q', 'H'].includes(ecLevel) ? ecLevel : 'M';
         return `^FO${fox},${foy}^BQN,2,${L.mag},${ec}${fdTail(ec + 'A,' + data)}`;

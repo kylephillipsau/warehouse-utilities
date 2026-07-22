@@ -156,7 +156,7 @@
                                             <button type="button" class="btn px-[0.55rem] py-[0.25rem]" class:btn-active={(field.ecLevel || 'M') === opt.value} aria-pressed={(field.ecLevel || 'M') === opt.value} onclick={() => patchField(label.id, field.id, { ecLevel: opt.value })}>{opt.label}</button>
                                         {/each}
                                     </div>
-                                {:else}
+                                {:else if SYMBOLOGY_META[field.symbology]?.kind !== '2d'}
                                     <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.hri !== false} aria-pressed={field.hri !== false} onclick={() => patchField(label.id, field.id, { hri: field.hri === false })}>Show value</button>
                                 {/if}
                                 <label class="flex items-center gap-1">

@@ -43,7 +43,7 @@
     </div>
 {:else if qr}
     <div class="barcode-box qr" style="width:{boxWidth}">
-        <svg class="barcode-qr" viewBox="0 0 {qr.w} {qr.w}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="QR code">
+        <svg class="barcode-qr" viewBox="0 0 {qr.w} {qr.w}" preserveAspectRatio="xMidYMid meet" role="img" aria-label={symbology === 'datamatrix' ? 'Data Matrix barcode' : 'QR code'}>
             {#each qr.cells as [cx, cy]}
                 <rect x={cx} y={cy} width="1" height="1" fill="#000" shape-rendering="crispEdges" />
             {/each}
