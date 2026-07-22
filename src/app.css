@@ -237,7 +237,7 @@ li {
     box-sizing: border-box;
     width: var(--label-w, 100mm);
     height: var(--label-h, 22mm);
-    border: 2px solid;
+    border: var(--label-border-w, 2px) solid;
     margin: 0;
     position: relative;
 }

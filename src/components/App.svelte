@@ -24,6 +24,11 @@
         applySize(store.page, store.divisions, store.margin, store.gap, store.orientation);
     });
 
+    // Toggle the label border / cut guide (screen). ZPL handles it separately.
+    $effect(() => {
+        document.documentElement.style.setProperty('--label-border-w', store.showBorders ? '2px' : '0');
+    });
+
     // Make the printed page EXACTLY the physical media (native width × height, no
     // orientation swap) so a label printer maps it 1:1 with no scale-to-fit and
     // no browser auto-rotation — kept in a raw <style> element.
@@ -49,7 +54,7 @@
         void store.presets.length;
         store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; });
         void store.page.preset; void store.page.width; void store.page.height; void store.page.unit;
-        void store.divisions; void store.margin; void store.gap; void store.orientation;
+        void store.divisions; void store.margin; void store.gap; void store.orientation; void store.showBorders;
         void store.output.method; void store.output.dpi; void store.output.saveFormat;
         if (!ready) { return; }
         clearTimeout(saveTimer);
@@ -62,6 +67,7 @@
                 margin: store.margin,
                 gap: store.gap,
                 orientation: store.orientation,
+                showBorders: store.showBorders,
                 output: $state.snapshot(store.output),
             });
         }, 500);

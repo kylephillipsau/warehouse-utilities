@@ -123,9 +123,9 @@
             <Select id="page-size" ariaLabel="Page / media size" class="w-full" options={pageOptions} bind:value={store.page.preset} />
             {#if isCustom(store.page)}
                 <div class="mt-1 flex flex-wrap items-center gap-[0.4rem] text-[0.85rem]">
-                    <input type="number" id="page-width" class="w-[6ch]" min="5" max="1000" step="0.1" aria-label="Page width" bind:value={store.page.width} />
+                    <input type="number" id="page-width" class="w-[9ch]" min="5" max="1000" step="0.1" aria-label="Page width" bind:value={store.page.width} />
                     <span aria-hidden="true">&times;</span>
-                    <input type="number" id="page-height" class="w-[6ch]" min="5" max="1000" step="0.1" aria-label="Page height" bind:value={store.page.height} />
+                    <input type="number" id="page-height" class="w-[9ch]" min="5" max="1000" step="0.1" aria-label="Page height" bind:value={store.page.height} />
                     <Select ariaLabel="Page size unit" class="w-[4.75rem]" options={unitOptions} bind:value={store.page.unit} />
                 </div>
             {/if}
@@ -150,18 +150,23 @@
             <div class="control-group">
                 <span class="group-label">Margin</span>
                 <div class="group-row">
-                    <input type="number" id="page-margin" class="w-[7ch]" min="0" max={MAX_SPACING} step="0.5" aria-label="Page margin in millimetres" value={store.margin} oninput={onMargin} />
+                    <input type="number" id="page-margin" class="w-[9ch]" min="0" max={MAX_SPACING} step="0.5" aria-label="Page margin in millimetres" value={store.margin} oninput={onMargin} />
                     <span class="text-[0.8rem] text-ink/70">mm</span>
                 </div>
             </div>
             <div class="control-group">
                 <span class="group-label">Gap</span>
                 <div class="group-row">
-                    <input type="number" id="label-gap" class="w-[7ch]" min="0" max={MAX_SPACING} step="0.5" aria-label="Gap between labels in millimetres" value={store.gap} oninput={onGap} />
+                    <input type="number" id="label-gap" class="w-[9ch]" min="0" max={MAX_SPACING} step="0.5" aria-label="Gap between labels in millimetres" value={store.gap} oninput={onGap} />
                     <span class="text-[0.8rem] text-ink/70">mm</span>
                 </div>
             </div>
         </div>
+
+        <label class="flex items-center gap-2 text-[0.85rem]">
+            <input type="checkbox" id="show-borders" class="size-4 accent-purple" bind:checked={store.showBorders} />
+            <span>Show label borders <span class="text-ink/60">(cut guides)</span></span>
+        </label>
 
         <div id="size-readout" class="rounded-md border-2 border-ink bg-highlight px-3 py-2 text-[0.8rem] leading-[1.5] tabular-nums" role="status" aria-live="polite">
             Each label = <strong>{labelDims.width} × {labelDims.height} mm</strong><br />

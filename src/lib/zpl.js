@@ -85,8 +85,8 @@ function drawImage(ctx, img, x, y, w, h, adjust) {
     ctx.restore();
 }
 
-// Draw one label segment into (x,y,w,h) with a cut-guide border
-function drawLabel(ctx, label, x, y, w, h, img) {
+// Draw one label segment into (x,y,w,h), optionally with a cut-guide border
+function drawLabel(ctx, label, x, y, w, h, img, showBorder = true) {
     const border = Math.max(2, Math.round(Math.min(w, h) * 0.01));
     const hasImage = !!label.image && img;
     const hasText = label.text && label.text.trim().length > 0;
@@ -103,9 +103,11 @@ function drawLabel(ctx, label, x, y, w, h, img) {
     } else if (hasText) {
         drawText(ctx, label.text, x, y, w, h);
     }
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = border;
-    ctx.strokeRect(x + border / 2, y + border / 2, w - border, h - border);
+    if (showBorder) {
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = border;
+        ctx.strokeRect(x + border / 2, y + border / 2, w - border, h - border);
+    }
 }
 
 // Pack a canvas to a 1-bit ^GFA payload (MSB = leftmost pixel, 1 = black dot)
@@ -141,6 +143,7 @@ export async function buildZpl(store, dpi = 203) {
     const dpmm = dpi === 203 ? 8 : dpi / MM_PER_IN;
     const media = resolvePage(store.page);                 // native physical stock
     const landscape = store.orientation === 'landscape';
+    const showBorder = store.showBorders !== false;
     const n = clampDivisions(store.divisions);
     const per = tiling(store.divisions).perPage;
     const m = clampSpacing(store.margin);
@@ -188,7 +191,7 @@ export async function buildZpl(store, dpi = 203) {
         group.forEach((l, idx) => {
             const x = marginD;
             const y = marginD + idx * (labelH + gapD);
-            drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image));
+            drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image), showBorder);
         });
         ctx.restore();
         const { hex, bytesPerRow, total } = canvasToGFA(canvas);
