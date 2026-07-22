@@ -16,6 +16,7 @@
         ariaLabel = '',
         id = undefined,
         class: className = '',
+        onChange = null,   // optional (value) => void, for one-way callers
     } = $props();
 
     const uid = `sel-${seq++}`;
@@ -45,7 +46,7 @@
         open = !open;
         if (open) { active = options.findIndex((o) => String(o.value) === String(value)); }
     }
-    function choose(o) { value = o.value; open = false; btnEl?.focus(); }
+    function choose(o) { value = o.value; open = false; btnEl?.focus(); onChange?.(o.value); }
 
     function place() {
         if (!btnEl || !listEl) { return; }

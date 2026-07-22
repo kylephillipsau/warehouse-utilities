@@ -25,7 +25,7 @@
     {#each label.fields as field (field.id)}
         <div class="field-band" style={fieldStyle(field)}>
             {#if field.type === 'barcode'}
-                <BarcodeView value={resolveTemplate(field.value)} symbology={field.symbology} hri={field.hri} scale={field.scale} />
+                <BarcodeView value={resolveTemplate(field.value)} symbology={field.symbology} hri={field.hri} scale={field.scale} ecLevel={field.ecLevel} />
             {:else if editable}
                 <!-- child left empty on purpose: editableField owns the content so
                      Svelte never reactively overwrites it while you type -->

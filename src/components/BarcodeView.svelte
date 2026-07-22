@@ -6,9 +6,9 @@
     // handles left/center/right via justify-content, so we just size the box.
     import { encodeBarcode, QUIET_1D, QUIET_QR } from '../lib/barcode.js';
 
-    let { value = '', symbology = 'code128', hri = true, scale = 1 } = $props();
+    let { value = '', symbology = 'code128', hri = true, scale = 1, ecLevel = 'M' } = $props();
 
-    const enc = $derived(encodeBarcode(value, symbology));
+    const enc = $derived(encodeBarcode(value, symbology, { ecLevel }));
     const boxWidth = $derived(`${Math.min(100, Math.max(10, scale * 100))}%`);
 
     // 1D bars (module units); HRI is a separate row so it isn't distorted.

@@ -99,12 +99,12 @@ function drawFields(ctx, fields, x, y, w, h, native) {
 // to emit after the ^GFA, and leave the bar area white in the bitmap. The
 // human-readable value is still rasterized (in our font) under a 1D symbol.
 function drawBarcodeField(ctx, field, value, x, y, w, h, native) {
-    const enc = encodeBarcode(value, field.symbology);
+    const enc = encodeBarcode(value, field.symbology, { ecLevel: field.ecLevel });
     if (!enc || enc.error) { return; }
     const showHri = enc.kind === '1d' && field.hri !== false;
     const hriH = showHri ? Math.max(12, Math.round(h * 0.22)) : 0;
     const layout = barcodeLayout(enc, x, y, w, h - hriH, { align: field.align, scale: field.scale });
-    if (native) { native.push({ enc, data: value, symbology: field.symbology, layout }); }
+    if (native) { native.push({ enc, data: value, symbology: field.symbology, layout, ecLevel: field.ecLevel }); }
     if (showHri) { drawText(ctx, enc.text, x, y + h - hriH, w, hriH, 'center', false); }
 }
 
@@ -259,7 +259,7 @@ export async function buildZpl(store, dpi = 203) {
         // it (they overprint the white bar area) with the landscape transform.
         let body = `^FO0,0^GFA,${total},${total},${bytesPerRow},${hex}^FS\n`;
         for (const d of native) {
-            body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { landscape, pageW }) + '\n';
+            body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { landscape, pageW, ecLevel: d.ecLevel }) + '\n';
         }
         zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n${body}^XZ\n`;
         pages++;

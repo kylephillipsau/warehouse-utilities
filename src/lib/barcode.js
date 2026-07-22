@@ -5,19 +5,62 @@
 import JsBarcode from 'jsbarcode';
 import qrcode from 'qrcode-generator';
 
+// Per-symbology metadata drives the UI (labels, hints) and the encoders. `kind`
+// is the geometry family (1d bars vs 2d matrix); `lengths` (EAN/UPC) is the set
+// of accepted digit counts (data-only, and data+check-digit).
+export const SYMBOLOGY_META = {
+    code128: { label: 'Code 128', kind: '1d' },
+    ean13: { label: 'EAN-13', kind: '1d', digitsOnly: true, lengths: [12, 13] },
+    upca: { label: 'UPC-A', kind: '1d', digitsOnly: true, lengths: [11, 12] },
+    code39: { label: 'Code 39', kind: '1d' },
+    qr: { label: 'QR code', kind: '2d' },
+};
+
 export const SYMBOLOGY_OPTIONS = [
     { value: 'code128', label: 'Code 128' },
-    { value: 'qr', label: 'QR code' },
+    { value: 'ean13', label: 'EAN-13' },
+    { value: 'upca', label: 'UPC-A' },
     { value: 'code39', label: 'Code 39' },
+    { value: 'qr', label: 'QR code' },
+];
+
+export const QR_EC_OPTIONS = [
+    { value: 'L', label: 'L' },
+    { value: 'M', label: 'M' },
+    { value: 'Q', label: 'Q' },
+    { value: 'H', label: 'H' },
 ];
 
 const JSBARCODE_FORMAT = { code128: 'CODE128', code39: 'CODE39' };
-export const is1D = (symbology) => symbology === 'code128' || symbology === 'code39';
+export const is1D = (symbology) => (SYMBOLOGY_META[symbology]?.kind || '1d') === '1d';
 export const isBarcode = (f) => !!(f && f.type === 'barcode');
 
 // Quiet zones (in modules) per spec: ≥10 for 1D, 4 for QR.
 export const QUIET_1D = 10;
 export const QUIET_QR = 4;
+
+// GS1 mod-10 check digit for a GTIN data string (no check digit): weight the
+// rightmost data digit ×3, then alternate ×1/×3 leftward. Used by EAN-13/UPC-A.
+export function gtinCheckDigit(digits) {
+    let sum = 0;
+    for (let i = 0; i < digits.length; i++) {
+        const d = digits.charCodeAt(digits.length - 1 - i) - 48;
+        sum += d * (i % 2 === 0 ? 3 : 1);
+    }
+    return (10 - (sum % 10)) % 10;
+}
+
+// Normalise EAN-13/UPC-A input to { data (12/11 digits, no check), full (with
+// check digit) }, or null if it isn't the right count of digits. Both the
+// encoder (screen) and the native-ZPL emitter route through this so they agree.
+function gtinData(value, symbology) {
+    const compact = String(value == null ? '' : value).replace(/\s/g, '');
+    const meta = SYMBOLOGY_META[symbology];
+    const dataLen = meta.lengths[0];
+    if (!/^\d+$/.test(compact) || !meta.lengths.includes(compact.length)) { return null; }
+    const data = compact.length === dataLen + 1 ? compact.slice(0, dataLen) : compact;
+    return { data, full: data + String(gtinCheckDigit(data)) };
+}
 
 // Lightweight validation for UI hints (encodeBarcode is the source of truth).
 export function validate(value, symbology) {
@@ -28,22 +71,44 @@ export function validate(value, symbology) {
     if (symbology === 'code39' && /[^0-9A-Z\-. $/+%]/.test(v.toUpperCase())) {
         return { ok: false, error: 'Code 39 allows A–Z, 0–9 and - . $ / + % and space only.' };
     }
+    if (symbology === 'ean13' || symbology === 'upca') {
+        const meta = SYMBOLOGY_META[symbology];
+        const compact = v.replace(/\s/g, '');
+        if (!/^\d+$/.test(compact)) {
+            return { ok: false, error: `${meta.label} is digits only.` };
+        }
+        if (!meta.lengths.includes(compact.length)) {
+            return { ok: false, error: `${meta.label} needs ${meta.lengths[0]} digits (${meta.lengths[1]} with check digit).` };
+        }
+    }
     return { ok: true, error: null };
 }
 
 // Encode a value. Returns one of:
 //   { kind:'1d', modules:'1010…', text }   — modules string, 1=bar 0=space
-//   { kind:'2d', size, isDark(r,c) }        — square QR module matrix
+//   { kind:'2d', size, isDark(r,c) }        — square 2D module matrix (QR)
 //   { error }                               — invalid / un-encodable data
-export function encodeBarcode(value, symbology) {
+// `opts.ecLevel` (QR only) sets error-correction 'L'|'M'|'Q'|'H' (default 'M').
+export function encodeBarcode(value, symbology, { ecLevel } = {}) {
     const v = value == null ? '' : String(value);
     if (!v.trim()) { return { error: 'empty' }; }
     try {
         if (symbology === 'qr') {
-            const qr = qrcode(0, 'M');       // version auto, error-correction M
+            const ec = ['L', 'M', 'Q', 'H'].includes(ecLevel) ? ecLevel : 'M';
+            const qr = qrcode(0, ec);        // version auto, error-correction ec
             qr.addData(v);
             qr.make();
             return { kind: '2d', size: qr.getModuleCount(), isDark: (r, c) => qr.isDark(r, c) };
+        }
+        if (symbology === 'ean13' || symbology === 'upca') {
+            const g = gtinData(v, symbology);
+            if (!g) { return { error: 'bad-data' }; }
+            const enc = {};
+            JsBarcode(enc, g.full, { format: symbology === 'ean13' ? 'EAN13' : 'UPC', flat: true });
+            const e = enc.encodings && enc.encodings[0];
+            if (!e || !e.data) { return { error: 'encode-failed' }; }
+            // HRI from the validated digits — flat mode's .text is guard-only.
+            return { kind: '1d', modules: e.data, text: g.full };
         }
         const fmt = JSBARCODE_FORMAT[symbology] || 'CODE128';
         const enc = {};
@@ -102,16 +167,26 @@ function fdTail(body) {
 // P(dx,dy)=(pageW−dy,dx): a 1D field rotates via orientation R (its ^FO anchors
 // the top-right); QR scans at any angle so we leave it upright (orientation N) at
 // the mapped top-left. Printer dots throughout.
-export function barcodeZplField(enc, data, layout, symbology, { landscape = false, pageW = 0 } = {}) {
+export function barcodeZplField(enc, data, layout, symbology, { landscape = false, pageW = 0, ecLevel } = {}) {
     const L = layout;
     if (enc.kind === '2d') {
         const fox = landscape ? (pageW - L.sy - L.fh) : L.sx;
         const foy = landscape ? L.sx : L.sy;
-        return `^FO${fox},${foy}^BQN,2,${L.mag},M${fdTail('MA,' + data)}`;
+        // ^BQ error-correction: the model param and the ^FD prefix must agree.
+        const ec = ['L', 'M', 'Q', 'H'].includes(ecLevel) ? ecLevel : 'M';
+        return `^FO${fox},${foy}^BQN,2,${L.mag},${ec}${fdTail(ec + 'A,' + data)}`;
     }
     const fox = landscape ? (pageW - L.sy) : L.sx;
     const foy = landscape ? L.sx : L.sy;
     const o = landscape ? 'R' : 'N';
+    if (symbology === 'ean13' || symbology === 'upca') {
+        // The printer computes and appends the check digit, so feed the data
+        // digits only (12 for EAN-13, 11 for UPC-A). HRI drawn in our own font.
+        const g = gtinData(data, symbology);
+        const fd = g ? g.data : String(data).replace(/\s/g, '');
+        const cmd = symbology === 'ean13' ? `^BE${o},${L.fh},N,N` : `^BU${o},${L.fh},N,N,N`;
+        return `^FO${fox},${foy}^BY${L.module}${cmd}${fdTail(fd)}`;
+    }
     if (symbology === 'code39') {
         return `^FO${fox},${foy}^BY${L.module},3^B3${o},N,${L.fh},N,N${fdTail(data)}`;
     }

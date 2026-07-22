@@ -13,6 +13,11 @@ export const SIZE_OPTIONS = [{ value: 's', label: 'S' }, { value: 'm', label: 'M
 export const ALIGN_OPTIONS = [{ value: 'left', label: 'L' }, { value: 'center', label: 'C' }, { value: 'right', label: 'R' }];
 export const DEFAULT_FIELD = { value: '', size: 'm', align: 'center', bold: true };
 
+// Symbology values a barcode field may hold — kept in sync with the keys of
+// SYMBOLOGY_META in src/lib/barcode.js (duplicated here so this pure model
+// module never imports the barcode encoding libraries).
+const BARCODE_SYMBOLOGIES = ['code128', 'ean13', 'upca', 'code39', 'qr'];
+
 // Coerce one field to the canonical shape, tolerant of junk. Preserves id.
 // Barcode keys (type/symbology/hri) are attached ONLY to barcode fields, so a
 // plain text field stays {id,value,size,align,bold} — byte-identical to before.
@@ -27,11 +32,17 @@ export function normalizeField(f) {
     };
     if (f.type === 'barcode') {
         out.type = 'barcode';
-        out.symbology = (f.symbology === 'qr' || f.symbology === 'code39') ? f.symbology : 'code128';
+        // Kept as a local list so this pure module stays free of the barcode
+        // libraries; mirror src/lib/barcode.js SYMBOLOGY_META keys.
+        out.symbology = BARCODE_SYMBOLOGIES.includes(f.symbology) ? f.symbology : 'code128';
         out.hri = f.hri !== false;
         // barcode width as a fraction of the band (1 = as wide as possible)
         const s = parseFloat(f.scale);
         out.scale = isNaN(s) ? 1 : Math.min(1, Math.max(0.1, s));
+        // QR error-correction level (attached only to QR fields).
+        if (out.symbology === 'qr') {
+            out.ecLevel = ['L', 'M', 'Q', 'H'].includes(f.ecLevel) ? f.ecLevel : 'M';
+        }
     }
     return out;
 }

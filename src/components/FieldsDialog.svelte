@@ -6,10 +6,11 @@
     import { ui, closeFields } from '../lib/ui.svelte.js';
     import { store, addField, removeField, moveField, patchField } from '../lib/store.svelte.js';
     import { SIZE_OPTIONS, ALIGN_OPTIONS } from '../lib/fields.js';
-    import { SYMBOLOGY_OPTIONS, validate } from '../lib/barcode.js';
+    import { SYMBOLOGY_OPTIONS, QR_EC_OPTIONS, SYMBOLOGY_META, validate } from '../lib/barcode.js';
     import { TOKEN_PRESETS, resolveTemplate } from '../lib/tokens.js';
     import { dialogSync } from '../actions/dialogSync.js';
     import FieldsLabel from './FieldsLabel.svelte';
+    import Select from './Select.svelte';
 
     let dlg;
     let previewW = $state(320);
@@ -79,6 +80,17 @@
         }
     }
 
+    // Placeholder hint per field type/symbology — digit-count guidance for the
+    // fixed-format retail codes, generic otherwise.
+    function fieldPlaceholder(field) {
+        if (field.type === 'barcode') {
+            const meta = SYMBOLOGY_META[field.symbology];
+            if (meta && meta.digitsOnly) { return `${meta.lengths[0]} digits (check digit added)`; }
+            return 'Barcode value — token menu works too';
+        }
+        return 'Field text — use the token menu for dates';
+    }
+
     function onDialogClick(event) { if (event.target === dlg) { closeFields(); } }
 </script>
 
@@ -101,7 +113,7 @@
                                 type="text"
                                 class="min-w-0 flex-1"
                                 aria-label={`Field ${i + 1} text`}
-                                placeholder="Field text — use the token menu for dates"
+                                placeholder={fieldPlaceholder(field)}
                                 value={field.value}
                                 bind:this={inputs[field.id]}
                                 oninput={(e) => onFieldInput(field, e)}
@@ -132,13 +144,18 @@
                                 {/each}
                             </div>
                             {#if field.type === 'barcode'}
-                                <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} symbology`}>
+                                <div class="flex items-center gap-1">
                                     <span class="group-label mr-1">Code</span>
-                                    {#each SYMBOLOGY_OPTIONS as opt}
-                                        <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.symbology === opt.value} aria-pressed={field.symbology === opt.value} onclick={() => patchField(label.id, field.id, { symbology: opt.value })}>{opt.label}</button>
-                                    {/each}
+                                    <Select class="w-[8.5rem]" ariaLabel={`Field ${i + 1} symbology`} options={SYMBOLOGY_OPTIONS} value={field.symbology} onChange={(v) => patchField(label.id, field.id, { symbology: v })} />
                                 </div>
-                                {#if field.symbology !== 'qr'}
+                                {#if field.symbology === 'qr'}
+                                    <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} error correction`}>
+                                        <span class="group-label mr-1" title="Error correction: higher survives more damage but holds less data">EC</span>
+                                        {#each QR_EC_OPTIONS as opt}
+                                            <button type="button" class="btn px-[0.55rem] py-[0.25rem]" class:btn-active={(field.ecLevel || 'M') === opt.value} aria-pressed={(field.ecLevel || 'M') === opt.value} onclick={() => patchField(label.id, field.id, { ecLevel: opt.value })}>{opt.label}</button>
+                                        {/each}
+                                    </div>
+                                {:else}
                                     <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.hri !== false} aria-pressed={field.hri !== false} onclick={() => patchField(label.id, field.id, { hri: field.hri === false })}>Show value</button>
                                 {/if}
                                 <label class="flex items-center gap-1">
