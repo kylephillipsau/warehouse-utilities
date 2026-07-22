@@ -16,7 +16,7 @@ export const DEFAULT_FIELD = { value: '', size: 'm', align: 'center', bold: true
 // Symbology values a barcode field may hold — kept in sync with the keys of
 // SYMBOLOGY_META in src/lib/barcode.js (duplicated here so this pure model
 // module never imports the barcode encoding libraries).
-const BARCODE_SYMBOLOGIES = ['code128', 'ean13', 'upca', 'code39', 'qr'];
+const BARCODE_SYMBOLOGIES = ['code128', 'ean13', 'upca', 'gs1-128', 'code39', 'qr'];
 
 // Coerce one field to the canonical shape, tolerant of junk. Preserves id.
 // Barcode keys (type/symbology/hri) are attached ONLY to barcode fields, so a

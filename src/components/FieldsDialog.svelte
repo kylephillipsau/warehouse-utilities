@@ -85,6 +85,7 @@
     function fieldPlaceholder(field) {
         if (field.type === 'barcode') {
             const meta = SYMBOLOGY_META[field.symbology];
+            if (meta && meta.gs1) { return '(01)09501101530003(17)261200(10)LOT1'; }
             if (meta && meta.digitsOnly) { return `${meta.lengths[0]} digits (check digit added)`; }
             return 'Barcode value — token menu works too';
         }

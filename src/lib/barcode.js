@@ -4,6 +4,11 @@
 // the print path snaps every module to whole printer dots (crisp + scannable).
 import JsBarcode from 'jsbarcode';
 import qrcode from 'qrcode-generator';
+import { parseGs1, gs1ForJsBarcode, gs1Hri, validateGs1, gtinCheckDigit } from './gs1.js';
+
+// GTIN/GLN/SSCC check digit lives in gs1.js (shared with the GS1-128 path);
+// re-exported here so existing barcode importers keep their entry point.
+export { gtinCheckDigit };
 
 // Per-symbology metadata drives the UI (labels, hints) and the encoders. `kind`
 // is the geometry family (1d bars vs 2d matrix); `lengths` (EAN/UPC) is the set
@@ -12,6 +17,7 @@ export const SYMBOLOGY_META = {
     code128: { label: 'Code 128', kind: '1d' },
     ean13: { label: 'EAN-13', kind: '1d', digitsOnly: true, lengths: [12, 13] },
     upca: { label: 'UPC-A', kind: '1d', digitsOnly: true, lengths: [11, 12] },
+    'gs1-128': { label: 'GS1-128', kind: '1d', gs1: true },
     code39: { label: 'Code 39', kind: '1d' },
     qr: { label: 'QR code', kind: '2d' },
 };
@@ -20,6 +26,7 @@ export const SYMBOLOGY_OPTIONS = [
     { value: 'code128', label: 'Code 128' },
     { value: 'ean13', label: 'EAN-13' },
     { value: 'upca', label: 'UPC-A' },
+    { value: 'gs1-128', label: 'GS1-128' },
     { value: 'code39', label: 'Code 39' },
     { value: 'qr', label: 'QR code' },
 ];
@@ -38,17 +45,6 @@ export const isBarcode = (f) => !!(f && f.type === 'barcode');
 // Quiet zones (in modules) per spec: ≥10 for 1D, 4 for QR.
 export const QUIET_1D = 10;
 export const QUIET_QR = 4;
-
-// GS1 mod-10 check digit for a GTIN data string (no check digit): weight the
-// rightmost data digit ×3, then alternate ×1/×3 leftward. Used by EAN-13/UPC-A.
-export function gtinCheckDigit(digits) {
-    let sum = 0;
-    for (let i = 0; i < digits.length; i++) {
-        const d = digits.charCodeAt(digits.length - 1 - i) - 48;
-        sum += d * (i % 2 === 0 ? 3 : 1);
-    }
-    return (10 - (sum % 10)) % 10;
-}
 
 // Normalise EAN-13/UPC-A input to { data (12/11 digits, no check), full (with
 // check digit) }, or null if it isn't the right count of digits. Both the
@@ -81,6 +77,7 @@ export function validate(value, symbology) {
             return { ok: false, error: `${meta.label} needs ${meta.lengths[0]} digits (${meta.lengths[1]} with check digit).` };
         }
     }
+    if (symbology === 'gs1-128') { return validateGs1(v); }
     return { ok: true, error: null };
 }
 
@@ -109,6 +106,15 @@ export function encodeBarcode(value, symbology, { ecLevel } = {}) {
             if (!e || !e.data) { return { error: 'encode-failed' }; }
             // HRI from the validated digits — flat mode's .text is guard-only.
             return { kind: '1d', modules: e.data, text: g.full };
+        }
+        if (symbology === 'gs1-128') {
+            const segs = parseGs1(v);
+            if (!segs.length) { return { error: 'no-ai' }; }
+            const enc = {};
+            JsBarcode(enc, gs1ForJsBarcode(segs), { format: 'CODE128' });
+            const e = enc.encodings && enc.encodings[0];
+            if (!e || !e.data) { return { error: 'encode-failed' }; }
+            return { kind: '1d', modules: e.data, text: gs1Hri(segs) };
         }
         const fmt = JSBARCODE_FORMAT[symbology] || 'CODE128';
         const enc = {};
@@ -186,6 +192,13 @@ export function barcodeZplField(enc, data, layout, symbology, { landscape = fals
         const fd = g ? g.data : String(data).replace(/\s/g, '');
         const cmd = symbology === 'ean13' ? `^BE${o},${L.fh},N,N` : `^BU${o},${L.fh},N,N,N`;
         return `^FO${fox},${foy}^BY${L.module}${cmd}${fdTail(fd)}`;
+    }
+    if (symbology === 'gs1-128') {
+        // Native ^BC mode D: hand the printer the (AI)value string; it strips the
+        // parentheses, inserts the leading + separator FNC1s, and adds the check
+        // digit. HRI is drawn in our own font.
+        const fd = gs1Hri(parseGs1(data));
+        return `^FO${fox},${foy}^BY${L.module}^BC${o},${L.fh},N,N,N,D${fdTail(fd)}`;
     }
     if (symbology === 'code39') {
         return `^FO${fox},${foy}^BY${L.module},3^B3${o},N,${L.fh},N,N${fdTail(data)}`;
