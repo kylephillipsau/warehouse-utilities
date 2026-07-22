@@ -108,16 +108,29 @@ function drawBarcodeField(ctx, field, value, x, y, w, h, native) {
     if (showHri) { drawText(ctx, enc.text, x, y + h - hriH, w, hriH, 'center', false); }
 }
 
-// Replicate CSS object-fit + object-position + transform:scale for an image
-function drawImage(ctx, img, x, y, w, h, adjust) {
+// Replicate the CSS render EXACTLY so print matches the preview: object-fit
+// sizes the image (s0), object-position places it, THEN transform:scale(zoom)
+// scales about the box centre. The old code folded zoom into the fit-scale and
+// then positioned, which drifts when zoom≠1 AND pos≠50 (off-centre zoom printed
+// shifted). This matches CSS `object-position` + `transform:scale` (origin centre).
+// Where an image lands, matching the CSS render exactly: object-fit sizes it
+// (s0), object-position places it, THEN transform:scale(zoom) about the box
+// centre. Pure + exported so it's unit-testable. Returns {dx,dy,dw,dh}.
+export function imagePlacement(iw, ih, x, y, w, h, adjust) {
     const a = normalizeAdjust(adjust);
+    const s0 = a.fit === 'cover' ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih);
+    const pw = iw * s0, ph = ih * s0;                     // object-fit size
+    const dxPos = x + (w - pw) * ((a.posX ?? 50) / 100);  // object-position placement
+    const dyPos = y + (h - ph) * ((a.posY ?? 50) / 100);
+    const zoom = a.zoom || 1;
+    const cx = x + w / 2, cy = y + h / 2;                 // transform-origin: center
+    return { dw: pw * zoom, dh: ph * zoom, dx: cx + (dxPos - cx) * zoom, dy: cy + (dyPos - cy) * zoom };
+}
+
+function drawImage(ctx, img, x, y, w, h, adjust) {
     const iw = img.naturalWidth, ih = img.naturalHeight;
     if (!iw || !ih) { return; }
-    let scale = a.fit === 'cover' ? Math.max(w / iw, h / ih) : Math.min(w / iw, h / ih);
-    scale *= (a.zoom || 1);
-    const dw = iw * scale, dh = ih * scale;
-    const dx = x + (w - dw) * ((a.posX ?? 50) / 100);
-    const dy = y + (h - dh) * ((a.posY ?? 50) / 100);
+    const { dx, dy, dw, dh } = imagePlacement(iw, ih, x, y, w, h, adjust);
     ctx.save();
     ctx.beginPath();
     ctx.rect(x, y, w, h);

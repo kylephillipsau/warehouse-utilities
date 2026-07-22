@@ -1,5 +1,5 @@
 <script>
-    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, pruneIfEmpty, moveLabel, convertToTemplate, convertToBarcode } from '../lib/store.svelte.js';
+    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, pruneIfEmpty, moveLabel, convertToTemplate, convertToBarcode, patchAdjust } from '../lib/store.svelte.js';
     import { adjustStyle } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { openAdjust, openPresets, openFields } from '../lib/ui.svelte.js';
@@ -118,6 +118,7 @@
             adjust={label.adjust}
             showCaption={captionOpen}
             onImageClick={() => openAdjust(label.id)}
+            onAdjust={(partial) => patchAdjust(label.id, partial)}
         />
     {/if}
 

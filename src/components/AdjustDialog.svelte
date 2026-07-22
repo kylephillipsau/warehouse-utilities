@@ -51,8 +51,51 @@
         if (a.x === 50 && a.y === 50) { return 'Align centre'; }
         return `Align ${V[a.y]} ${H[a.x]}`;
     }
-    function recenter() { working.posX = 50; working.posY = 50; working.zoom = 1; }
+    const clampPct = (v) => Math.min(100, Math.max(0, v));
+    function recenterPan() { working.posX = 50; working.posY = 50; }   // pan only, keep zoom
+    function fit() { working.zoom = 1; working.posX = 50; working.posY = 50; }
     function reset() { working = normalizeAdjust(DEFAULT_ADJUST); }
+
+    // Zoom by `factor`, keeping the image point under (mx,my) in the preview box
+    // fixed — the standard "zoom to cursor". Adjusts posX/posY to compensate for
+    // the centre-origin scale; guards the degenerate case where the image exactly
+    // fills an axis (no pan possible → just zoom about centre).
+    function zoomAt(factor, mx, my) {
+        const z0 = working.zoom;
+        const z1 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z0 * factor));
+        if (z1 === z0) { return; }
+        const imgEl = previewEl && previewEl.querySelector('img.label-image');
+        const box = previewEl && previewEl.getBoundingClientRect();
+        if (imgEl && imgEl.naturalWidth && box) {
+            const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
+            const s0 = working.fit === 'cover' ? Math.max(box.width / iw, box.height / ih) : Math.min(box.width / iw, box.height / ih);
+            const kx = (box.width - iw * s0) / 100, ky = (box.height - ih * s0) / 100;
+            const dz = 1 / z0 - 1 / z1;
+            if (Math.abs(kx) > 0.5) { working.posX = clampPct(working.posX - (mx - box.width / 2) * dz / kx); }
+            if (Math.abs(ky) > 0.5) { working.posY = clampPct(working.posY - (my - box.height / 2) * dz / ky); }
+        }
+        working.zoom = z1;
+    }
+    function onWheel(event) {
+        event.preventDefault();
+        const box = previewEl.getBoundingClientRect();
+        zoomAt(Math.exp(-event.deltaY * 0.0015), event.clientX - box.left, event.clientY - box.top);
+    }
+    function onKey(event) {
+        const step = event.shiftKey ? 10 : 1;
+        const box = previewEl.getBoundingClientRect();
+        switch (event.key) {
+            case 'ArrowLeft': working.posX = clampPct(working.posX - step); break;
+            case 'ArrowRight': working.posX = clampPct(working.posX + step); break;
+            case 'ArrowUp': working.posY = clampPct(working.posY - step); break;
+            case 'ArrowDown': working.posY = clampPct(working.posY + step); break;
+            case '+': case '=': zoomAt(1.1, box.width / 2, box.height / 2); break;
+            case '-': case '_': zoomAt(1 / 1.1, box.width / 2, box.height / 2); break;
+            case '0': fit(); break;
+            default: return;
+        }
+        event.preventDefault();
+    }
 
     function onPreviewPointerDown(event) {
         event.preventDefault();
@@ -98,10 +141,15 @@
             id="adjust-preview"
             class="adjust-preview"
             bind:this={previewEl}
-            aria-label="Image preview — drag to reposition, double-click to recentre"
+            role="group"
+            tabindex="0"
+            aria-label="Image preview. Drag or arrow keys to reposition, scroll or +/- to zoom, 0 to fit."
+            aria-describedby="adjust-status"
             style="width:{previewW}px;height:{previewH}px"
             onpointerdown={onPreviewPointerDown}
-            ondblclick={recenter}
+            ondblclick={recenterPan}
+            onwheel={onWheel}
+            onkeydown={onKey}
         >
             {#if label}
                 <div class="text-container" style={adjustStyle(working)}>
@@ -109,7 +157,13 @@
                 </div>
             {/if}
         </div>
-        <p id="adjust-hint" class="m-0 text-[0.85rem] leading-[1.4] min-h-[1.2em]">Drag the image to reposition. Double-click to recentre.</p>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p class="m-0 text-[0.8rem] leading-[1.4] text-ink/70">Drag or arrows to move · scroll or +/− to zoom.</p>
+            <span class="flex-1"></span>
+            <button type="button" class="btn px-[0.7rem] py-[0.2rem] text-[0.8rem]" onclick={recenterPan}>Recenter</button>
+            <button type="button" class="btn px-[0.7rem] py-[0.2rem] text-[0.8rem]" onclick={fit}>Fit</button>
+        </div>
+        <p id="adjust-status" class="m-0 text-[0.8rem] tabular-nums text-ink/60" role="status" aria-live="polite">Position {Math.round(working.posX)}% × {Math.round(working.posY)}% · size {Math.round(working.zoom * 100)}%</p>
 
         <div class="flex flex-wrap gap-x-5 gap-y-3">
             <div class="control-group">
