@@ -59,41 +59,63 @@ export function encodeBarcode(value, symbology) {
 // Draw an encoded barcode into (x,y,w,h) on a 2D canvas context at INTEGER module
 // widths (so on the printer's dot grid each module is a whole number of dots →
 // crisp and scannable). Draws bars/modules only; the caller draws any HRI text.
-// Returns { ok } / { ok:false } so the caller can skip the HRI on failure.
-export function drawBarcodeToCanvas(ctx, enc, x, y, w, h, { align = 'center' } = {}) {
-    if (!enc || enc.error) { return { ok: false }; }
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = '#000';
+// Compute the design-space geometry of a barcode inside band (x,y,w,h): the
+// integer module width (1D) / magnification (QR), the content top-left (sx,sy)
+// after quiet zone + alignment, and its size (fw,fh). `scale` (0.1–1) narrows the
+// barcode from "as wide as possible" (1). Shared by the ZPL emitter so screen and
+// print size a barcode the same way; all values are printer dots.
+export function barcodeLayout(enc, x, y, w, h, { align = 'center', scale = 1 } = {}) {
+    const Wt = Math.max(1, w * Math.min(1, Math.max(0.1, scale)));
     if (enc.kind === '2d') {
         const n = enc.size;
-        const units = n + 2 * QUIET_QR;
-        const m = Math.max(1, Math.floor(Math.min(w, h) / units));
-        const gridPx = n * m;
-        const quietPx = QUIET_QR * m;
-        const ox = Math.round(x + alignOffset(align, w, gridPx + 2 * quietPx) + quietPx);
-        const oy = Math.round(y + (h - (gridPx + 2 * quietPx)) / 2 + quietPx);
-        for (let r = 0; r < n; r++) {
-            for (let c = 0; c < n; c++) {
-                if (enc.isDark(r, c)) { ctx.fillRect(ox + c * m, oy + r * m, m, m); }
-            }
-        }
-    } else {
-        const mods = enc.modules;
-        const N = mods.length;
-        const units = N + 2 * QUIET_1D;
-        const m = Math.max(1, Math.floor(w / units));
-        const barsW = N * m;
-        const quietPx = QUIET_1D * m;
-        const startX = Math.round(x + alignOffset(align, w, barsW + 2 * quietPx) + quietPx);
-        const top = Math.round(y);
-        const barH = Math.round(h);
-        for (let i = 0; i < N; i++) {
-            if (mods[i] === '1') { ctx.fillRect(startX + i * m, top, m, barH); }
-        }
+        const mag = Math.max(1, Math.floor(Math.min(Wt, h) / (n + 2 * QUIET_QR)));
+        const side = n * mag;
+        const quiet = QUIET_QR * mag;
+        const total = side + 2 * quiet;
+        const sx = Math.round(x + alignOffset(align, w, total) + quiet);
+        const sy = Math.round(y + Math.max(0, h - total) / 2 + quiet);
+        return { kind: '2d', mag, sx, sy, fw: side, fh: side };
     }
-    ctx.restore();
-    return { ok: true };
+    const N = enc.modules.length;
+    const module = Math.max(1, Math.floor(Wt / (N + 2 * QUIET_1D)));
+    const barsW = N * module;
+    const quiet = QUIET_1D * module;
+    const total = barsW + 2 * quiet;
+    const sx = Math.round(x + alignOffset(align, w, total) + quiet);
+    const sy = Math.round(y);
+    return { kind: '1d', module, sx, sy, fw: barsW, fh: Math.round(h) };
+}
+
+// Field-data tail with ZPL hex-escaping for ^ ~ _ (the only chars that would be
+// misread as commands). Returns e.g. "^FDABC^FS" or "^FH^FD_5eX^FS".
+function fdTail(body) {
+    if (/[\^~_]/.test(body)) {
+        const esc = body.replace(/[\^~_]/g, (ch) => '_' + ch.charCodeAt(0).toString(16).padStart(2, '0'));
+        return `^FH^FD${esc}^FS`;
+    }
+    return `^FD${body}^FS`;
+}
+
+// Emit ONE native ZPL barcode field. `data` is the resolved value; `layout` is
+// from barcodeLayout (design coords). In landscape the whole design frame is
+// rotated 90° CW on the printer, so we map the symbol's design top-left through
+// P(dx,dy)=(pageW−dy,dx): a 1D field rotates via orientation R (its ^FO anchors
+// the top-right); QR scans at any angle so we leave it upright (orientation N) at
+// the mapped top-left. Printer dots throughout.
+export function barcodeZplField(enc, data, layout, symbology, { landscape = false, pageW = 0 } = {}) {
+    const L = layout;
+    if (enc.kind === '2d') {
+        const fox = landscape ? (pageW - L.sy - L.fh) : L.sx;
+        const foy = landscape ? L.sx : L.sy;
+        return `^FO${fox},${foy}^BQN,2,${L.mag},M${fdTail('MA,' + data)}`;
+    }
+    const fox = landscape ? (pageW - L.sy) : L.sx;
+    const foy = landscape ? L.sx : L.sy;
+    const o = landscape ? 'R' : 'N';
+    if (symbology === 'code39') {
+        return `^FO${fox},${foy}^BY${L.module},3^B3${o},N,${L.fh},N,N${fdTail(data)}`;
+    }
+    return `^FO${fox},${foy}^BY${L.module}^BC${o},${L.fh},N,N,N${fdTail(data)}`;
 }
 
 function alignOffset(align, avail, content) {

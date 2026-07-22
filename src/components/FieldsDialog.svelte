@@ -141,6 +141,11 @@
                                 {#if field.symbology !== 'qr'}
                                     <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.hri !== false} aria-pressed={field.hri !== false} onclick={() => patchField(label.id, field.id, { hri: field.hri === false })}>Show value</button>
                                 {/if}
+                                <label class="flex items-center gap-1">
+                                    <span class="group-label mr-1">Width</span>
+                                    <input type="range" class="w-[6rem] accent-purple" min="10" max="100" step="5" aria-label={`Field ${i + 1} barcode width`} value={Math.round((field.scale ?? 1) * 100)} oninput={(e) => patchField(label.id, field.id, { scale: e.target.value / 100 })} />
+                                    <span class="w-[3ch] tabular-nums text-ink/60">{Math.round((field.scale ?? 1) * 100)}</span>
+                                </label>
                             {:else}
                                 <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.bold} aria-pressed={field.bold} onclick={() => patchField(label.id, field.id, { bold: !field.bold })}>Bold</button>
                             {/if}

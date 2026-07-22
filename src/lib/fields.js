@@ -29,6 +29,9 @@ export function normalizeField(f) {
         out.type = 'barcode';
         out.symbology = (f.symbology === 'qr' || f.symbology === 'code39') ? f.symbology : 'code128';
         out.hri = f.hri !== false;
+        // barcode width as a fraction of the band (1 = as wide as possible)
+        const s = parseFloat(f.scale);
+        out.scale = isNaN(s) ? 1 : Math.min(1, Math.max(0.1, s));
     }
     return out;
 }

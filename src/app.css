@@ -387,11 +387,39 @@ li.text-container.drag-over {
     width: 100%;
     display: block;
 }
-/* Barcode field: SVG fills the band, aspect preserved via preserveAspectRatio. */
-.barcode-svg {
+/* Barcode field: a 1D barcode fills the band width (bars stretch to the band
+   height); the human-readable line sits below. QR stays square. `scale` narrows
+   the box; the band's justify-content aligns it. */
+.barcode-box {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    height: 100%;
+    overflow: hidden;
+}
+.barcode-box.qr { align-items: center; }
+.barcode-bars {
     display: block;
     width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.barcode-hri {
+    flex: 0 0 auto;
+    text-align: center;
+    font-family: ui-monospace, monospace;
+    font-size: 0.7em;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.barcode-qr {
+    display: block;
     height: 100%;
+    width: auto;
+    max-width: 100%;
 }
 .barcode-invalid {
     font-size: 0.7rem;

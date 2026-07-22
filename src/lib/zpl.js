@@ -7,7 +7,7 @@ import { resolvePage, tiling, clampSpacing, clampDivisions } from './size.js';
 import { normalizeAdjust } from './adjust.js';
 import { fieldWeight, labelIsEmpty } from './fields.js';
 import { resolveTemplate } from './tokens.js';
-import { encodeBarcode, drawBarcodeToCanvas } from './barcode.js';
+import { encodeBarcode, barcodeLayout, barcodeZplField } from './barcode.js';
 
 const FONT = '"Glacial Indifference", sans-serif';
 const MM_PER_IN = 25.4;
@@ -76,7 +76,7 @@ function drawText(ctx, text, x, y, w, h, align = 'center', bold = true) {
 // Draw a stack of template fields into (x,y,w,h): each band's height is its
 // relative weight, tokens resolved, drawn per the field's align/bold. Mirrors
 // the on-screen flex stack so screen and print divide the label identically.
-function drawFields(ctx, fields, x, y, w, h) {
+function drawFields(ctx, fields, x, y, w, h, native) {
     const weights = fields.map(fieldWeight);
     const total = weights.reduce((a, b) => a + b, 0) || 1;
     const gapD = Math.round(h * 0.02);
@@ -86,7 +86,7 @@ function drawFields(ctx, fields, x, y, w, h) {
         const bh = Math.round(avail * weights[i] / total);
         const resolved = resolveTemplate(f.value);
         if (f.type === 'barcode') {
-            drawBarcodeField(ctx, f, resolved, x, cy, w, bh);
+            drawBarcodeField(ctx, f, resolved, x, cy, w, bh, native);
         } else if (resolved && resolved.trim()) {
             drawText(ctx, resolved, x, cy, w, bh, f.align, f.bold);
         }
@@ -94,15 +94,18 @@ function drawFields(ctx, fields, x, y, w, h) {
     });
 }
 
-// Draw a barcode field into its band: bars/modules via drawBarcodeToCanvas at
-// integer dots, and the human-readable value under a 1D symbol when enabled.
-function drawBarcodeField(ctx, field, value, x, y, w, h) {
+// A barcode field prints as a NATIVE ZPL barcode (sharpest/smallest, firmware-
+// scannable): compute its design-space layout, collect a descriptor for buildZpl
+// to emit after the ^GFA, and leave the bar area white in the bitmap. The
+// human-readable value is still rasterized (in our font) under a 1D symbol.
+function drawBarcodeField(ctx, field, value, x, y, w, h, native) {
     const enc = encodeBarcode(value, field.symbology);
     if (!enc || enc.error) { return; }
     const showHri = enc.kind === '1d' && field.hri !== false;
     const hriH = showHri ? Math.max(12, Math.round(h * 0.22)) : 0;
-    const drawn = drawBarcodeToCanvas(ctx, enc, x, y, w, h - hriH, { align: field.align });
-    if (drawn.ok && hriH) { drawText(ctx, enc.text, x, y + h - hriH, w, hriH, 'center', false); }
+    const layout = barcodeLayout(enc, x, y, w, h - hriH, { align: field.align, scale: field.scale });
+    if (native) { native.push({ enc, data: value, symbology: field.symbology, layout }); }
+    if (showHri) { drawText(ctx, enc.text, x, y + h - hriH, w, hriH, 'center', false); }
 }
 
 // Replicate CSS object-fit + object-position + transform:scale for an image
@@ -124,8 +127,9 @@ function drawImage(ctx, img, x, y, w, h, adjust) {
     ctx.restore();
 }
 
-// Draw one label segment into (x,y,w,h), optionally with a cut-guide border
-function drawLabel(ctx, label, x, y, w, h, img, showBorder = true) {
+// Draw one label segment into (x,y,w,h), optionally with a cut-guide border.
+// `native` collects native-barcode descriptors (design coords) for buildZpl.
+function drawLabel(ctx, label, x, y, w, h, img, showBorder = true, native) {
     const border = Math.max(2, Math.round(Math.min(w, h) * 0.01));
     const hasFields = label.fields && label.fields.length && !label.image;
     const hasImage = !!label.image && img;
@@ -133,7 +137,7 @@ function drawLabel(ctx, label, x, y, w, h, img, showBorder = true) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(x, y, w, h);
     if (hasFields) {
-        drawFields(ctx, label.fields, x, y, w, h);
+        drawFields(ctx, label.fields, x, y, w, h, native);
     } else if (hasImage) {
         drawImage(ctx, img, x, y, w, h, label.adjust);
         if (hasText) {
@@ -230,14 +234,21 @@ export async function buildZpl(store, dpi = 203) {
         // designH) maps exactly onto the native media canvas (pageW × pageH).
         ctx.save();
         if (landscape) { ctx.translate(pageW, 0); ctx.rotate(Math.PI / 2); }
+        const native = [];   // native barcode descriptors (design coords)
         group.forEach((l, idx) => {
             const x = marginD;
             const y = marginD + idx * (labelH + gapD);
-            drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image), showBorder);
+            drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image), showBorder, native);
         });
         ctx.restore();
         const { hex, bytesPerRow, total } = canvasToGFA(canvas);
-        zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n^FO0,0^GFA,${total},${total},${bytesPerRow},${hex}^FS\n^XZ\n`;
+        // The GFA holds text/images/HRI; native barcode fields are appended after
+        // it (they overprint the white bar area) with the landscape transform.
+        let body = `^FO0,0^GFA,${total},${total},${bytesPerRow},${hex}^FS\n`;
+        for (const d of native) {
+            body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { landscape, pageW }) + '\n';
+        }
+        zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n${body}^XZ\n`;
         pages++;
     }
     return { zpl, pages, skipped };
