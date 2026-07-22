@@ -46,6 +46,30 @@ export function normalizeAdjust(a) {
     };
 }
 
+const clampPct = (v) => Math.min(100, Math.max(0, v));
+
+// Zoom by `factor` about the point (mx,my) — in box pixels — of a (boxW×boxH)
+// frame showing an image of natural size (iw×ih): the "zoom to cursor / pinch
+// midpoint" transform. Returns updated { posX, posY, zoom }; an axis where the
+// image exactly fills the box can't pan, so its position is left unchanged.
+// Mirrors the CSS object-position + transform:scale(centre-origin) render model,
+// so screen and print stay in agreement. Shared by the editor dialog (wheel /
+// keyboard / buttons) and LabelCanvas (wheel / two-finger pinch).
+export function zoomAtPoint(a, boxW, boxH, iw, ih, factor, mx, my) {
+    const cur = normalizeAdjust(a);
+    const z0 = cur.zoom;
+    const z1 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z0 * factor));
+    let posX = cur.posX, posY = cur.posY;
+    if (z1 !== z0 && iw && ih && boxW && boxH) {
+        const s0 = cur.fit === 'cover' ? Math.max(boxW / iw, boxH / ih) : Math.min(boxW / iw, boxH / ih);
+        const kx = (boxW - iw * s0) / 100, ky = (boxH - ih * s0) / 100;
+        const dz = 1 / z0 - 1 / z1;
+        if (Math.abs(kx) > 0.5) { posX = clampPct(posX - (mx - boxW / 2) * dz / kx); }
+        if (Math.abs(ky) > 0.5) { posY = clampPct(posY - (my - boxH / 2) * dz / ky); }
+    }
+    return { posX, posY, zoom: z1 };
+}
+
 // CSS custom properties the stylesheet reads for object-fit/position/scale.
 export function adjustStyle(adjust) {
     const a = normalizeAdjust(adjust);

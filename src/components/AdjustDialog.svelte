@@ -1,7 +1,7 @@
 <script>
     import { ui, closeAdjust } from '../lib/ui.svelte.js';
     import { store, setAdjust, setImage, removeImage } from '../lib/store.svelte.js';
-    import { DEFAULT_ADJUST, normalizeAdjust, adjustStyle, FIT_OPTIONS, ALIGN_CELLS, ZOOM_MIN, ZOOM_MAX } from '../lib/adjust.js';
+    import { DEFAULT_ADJUST, normalizeAdjust, adjustStyle, zoomAtPoint, FIT_OPTIONS, ALIGN_CELLS, ZOOM_MIN, ZOOM_MAX } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { dialogSync } from '../actions/dialogSync.js';
     import LabelCanvas from './LabelCanvas.svelte';
@@ -57,24 +57,14 @@
     function reset() { working = normalizeAdjust(DEFAULT_ADJUST); }
 
     // Zoom by `factor`, keeping the image point under (mx,my) in the preview box
-    // fixed — the standard "zoom to cursor". Adjusts posX/posY to compensate for
-    // the centre-origin scale; guards the degenerate case where the image exactly
-    // fills an axis (no pan possible → just zoom about centre).
+    // fixed — the standard "zoom to cursor" (shared math in adjust.js).
     function zoomAt(factor, mx, my) {
-        const z0 = working.zoom;
-        const z1 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z0 * factor));
-        if (z1 === z0) { return; }
-        const imgEl = previewEl && previewEl.querySelector('img.label-image');
         const box = previewEl && previewEl.getBoundingClientRect();
-        if (imgEl && imgEl.naturalWidth && box) {
-            const iw = imgEl.naturalWidth, ih = imgEl.naturalHeight;
-            const s0 = working.fit === 'cover' ? Math.max(box.width / iw, box.height / ih) : Math.min(box.width / iw, box.height / ih);
-            const kx = (box.width - iw * s0) / 100, ky = (box.height - ih * s0) / 100;
-            const dz = 1 / z0 - 1 / z1;
-            if (Math.abs(kx) > 0.5) { working.posX = clampPct(working.posX - (mx - box.width / 2) * dz / kx); }
-            if (Math.abs(ky) > 0.5) { working.posY = clampPct(working.posY - (my - box.height / 2) * dz / ky); }
-        }
-        working.zoom = z1;
+        if (!box) { return; }
+        const imgEl = previewEl.querySelector('img.label-image');
+        const iw = imgEl ? imgEl.naturalWidth : 0, ih = imgEl ? imgEl.naturalHeight : 0;
+        const next = zoomAtPoint(working, box.width, box.height, iw, ih, factor, mx, my);
+        working.posX = next.posX; working.posY = next.posY; working.zoom = next.zoom;
     }
     function onWheel(event) {
         event.preventDefault();

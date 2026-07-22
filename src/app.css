@@ -354,6 +354,9 @@ li.text-container.drag-over {
 
 .label-image.editable {
     cursor: pointer;
+    /* Claim touch gestures for our own pan/pinch handler (scoped to editable
+       images, so the page still scrolls everywhere else). */
+    touch-action: none;
 }
 
 /* Text-only label: text fills the whole box and auto-fits */
