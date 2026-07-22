@@ -7,6 +7,7 @@ import { resolvePage, tiling, clampSpacing, clampDivisions } from './size.js';
 import { normalizeAdjust } from './adjust.js';
 import { fieldWeight, labelIsEmpty } from './fields.js';
 import { resolveTemplate } from './tokens.js';
+import { encodeBarcode, drawBarcodeToCanvas } from './barcode.js';
 
 const FONT = '"Glacial Indifference", sans-serif';
 const MM_PER_IN = 25.4;
@@ -84,9 +85,24 @@ function drawFields(ctx, fields, x, y, w, h) {
     fields.forEach((f, i) => {
         const bh = Math.round(avail * weights[i] / total);
         const resolved = resolveTemplate(f.value);
-        if (resolved && resolved.trim()) { drawText(ctx, resolved, x, cy, w, bh, f.align, f.bold); }
+        if (f.type === 'barcode') {
+            drawBarcodeField(ctx, f, resolved, x, cy, w, bh);
+        } else if (resolved && resolved.trim()) {
+            drawText(ctx, resolved, x, cy, w, bh, f.align, f.bold);
+        }
         cy += bh + gapD;
     });
+}
+
+// Draw a barcode field into its band: bars/modules via drawBarcodeToCanvas at
+// integer dots, and the human-readable value under a 1D symbol when enabled.
+function drawBarcodeField(ctx, field, value, x, y, w, h) {
+    const enc = encodeBarcode(value, field.symbology);
+    if (!enc || enc.error) { return; }
+    const showHri = enc.kind === '1d' && field.hri !== false;
+    const hriH = showHri ? Math.max(12, Math.round(h * 0.22)) : 0;
+    const drawn = drawBarcodeToCanvas(ctx, enc, x, y, w, h - hriH, { align: field.align });
+    if (drawn.ok && hriH) { drawText(ctx, enc.text, x, y + h - hriH, w, hriH, 'center', false); }
 }
 
 // Replicate CSS object-fit + object-position + transform:scale for an image

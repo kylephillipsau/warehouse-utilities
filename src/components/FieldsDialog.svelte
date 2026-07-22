@@ -6,7 +6,8 @@
     import { ui, closeFields } from '../lib/ui.svelte.js';
     import { store, addField, removeField, moveField, patchField } from '../lib/store.svelte.js';
     import { SIZE_OPTIONS, ALIGN_OPTIONS } from '../lib/fields.js';
-    import { TOKEN_PRESETS } from '../lib/tokens.js';
+    import { SYMBOLOGY_OPTIONS, validate } from '../lib/barcode.js';
+    import { TOKEN_PRESETS, resolveTemplate } from '../lib/tokens.js';
     import { dialogSync } from '../actions/dialogSync.js';
     import FieldsLabel from './FieldsLabel.svelte';
 
@@ -113,6 +114,11 @@
                             <button type="button" class="label-tool shrink-0 text-orange" title="Remove field" aria-label="Remove field" onclick={() => removeField(label.id, field.id)}>&times;</button>
                         </div>
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[0.85rem]">
+                            <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} type`}>
+                                <span class="group-label mr-1">Type</span>
+                                <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.type !== 'barcode'} aria-pressed={field.type !== 'barcode'} onclick={() => patchField(label.id, field.id, { type: 'text' })}>Text</button>
+                                <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.type === 'barcode'} aria-pressed={field.type === 'barcode'} onclick={() => patchField(label.id, field.id, { type: 'barcode' })}>Barcode</button>
+                            </div>
                             <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} size`}>
                                 <span class="group-label mr-1">Size</span>
                                 {#each SIZE_OPTIONS as opt}
@@ -125,8 +131,26 @@
                                     <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.align === opt.value} aria-pressed={field.align === opt.value} onclick={() => patchField(label.id, field.id, { align: opt.value })}>{opt.label}</button>
                                 {/each}
                             </div>
-                            <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.bold} aria-pressed={field.bold} onclick={() => patchField(label.id, field.id, { bold: !field.bold })}>Bold</button>
+                            {#if field.type === 'barcode'}
+                                <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} symbology`}>
+                                    <span class="group-label mr-1">Code</span>
+                                    {#each SYMBOLOGY_OPTIONS as opt}
+                                        <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.symbology === opt.value} aria-pressed={field.symbology === opt.value} onclick={() => patchField(label.id, field.id, { symbology: opt.value })}>{opt.label}</button>
+                                    {/each}
+                                </div>
+                                {#if field.symbology !== 'qr'}
+                                    <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.hri !== false} aria-pressed={field.hri !== false} onclick={() => patchField(label.id, field.id, { hri: field.hri === false })}>Show value</button>
+                                {/if}
+                            {:else}
+                                <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.bold} aria-pressed={field.bold} onclick={() => patchField(label.id, field.id, { bold: !field.bold })}>Bold</button>
+                            {/if}
                         </div>
+                        {#if field.type === 'barcode'}
+                            {@const v = validate(resolveTemplate(field.value), field.symbology)}
+                            {#if !v.ok}
+                                <p class="m-0 text-[0.8rem] font-bold text-orange" role="alert">{v.error}</p>
+                            {/if}
+                        {/if}
                     </div>
                 {/each}
             </div>

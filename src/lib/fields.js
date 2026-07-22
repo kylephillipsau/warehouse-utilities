@@ -14,15 +14,23 @@ export const ALIGN_OPTIONS = [{ value: 'left', label: 'L' }, { value: 'center', 
 export const DEFAULT_FIELD = { value: '', size: 'm', align: 'center', bold: true };
 
 // Coerce one field to the canonical shape, tolerant of junk. Preserves id.
+// Barcode keys (type/symbology/hri) are attached ONLY to barcode fields, so a
+// plain text field stays {id,value,size,align,bold} — byte-identical to before.
 export function normalizeField(f) {
     f = f || {};
-    return {
+    const out = {
         id: f.id || newId(),
         value: typeof f.value === 'string' ? f.value : '',
         size: f.size === 's' || f.size === 'l' ? f.size : 'm',
         align: f.align === 'left' || f.align === 'right' ? f.align : 'center',
         bold: f.bold !== false,
     };
+    if (f.type === 'barcode') {
+        out.type = 'barcode';
+        out.symbology = (f.symbology === 'qr' || f.symbology === 'code39') ? f.symbology : 'code128';
+        out.hri = f.hri !== false;
+    }
+    return out;
 }
 
 export function makeField(partial = {}) {

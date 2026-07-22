@@ -172,6 +172,14 @@ export function convertToTemplate(id) {
     l.text = '';   // so stale text can't resurface if all fields are later removed
 }
 
+// Turn a classic label into a single barcode, seeding the value from its text.
+export function convertToBarcode(id) {
+    const l = store.labels[indexOf(id)];
+    if (!l || (l.fields && l.fields.length)) { return; }
+    l.fields = [makeField({ value: l.text || '', size: 'l', type: 'barcode', symbology: 'code128' })];
+    l.text = '';
+}
+
 export function addField(id, partial) {
     const l = store.labels[indexOf(id)];
     if (!l) { return; }

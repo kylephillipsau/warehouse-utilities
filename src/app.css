@@ -387,6 +387,17 @@ li.text-container.drag-over {
     width: 100%;
     display: block;
 }
+/* Barcode field: SVG fills the band, aspect preserved via preserveAspectRatio. */
+.barcode-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+.barcode-invalid {
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: var(--color-orange);
+}
 
 /* Caption band overlaid on an image; fixed proportion so the caption text has a
    box to auto-fit into. Readable backing forced to print. */

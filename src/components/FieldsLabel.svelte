@@ -9,6 +9,7 @@
     import { resolveTemplate } from '../lib/tokens.js';
     import { editableField } from '../actions/editableField.js';
     import { fitText } from '../actions/fitText.js';
+    import BarcodeView from './BarcodeView.svelte';
 
     let { label, editable = false } = $props();
 
@@ -23,7 +24,9 @@
 <div class="fields-stack">
     {#each label.fields as field (field.id)}
         <div class="field-band" style={fieldStyle(field)}>
-            {#if editable}
+            {#if field.type === 'barcode'}
+                <BarcodeView value={resolveTemplate(field.value)} symbology={field.symbology} hri={field.hri} align={field.align} />
+            {:else if editable}
                 <!-- child left empty on purpose: editableField owns the content so
                      Svelte never reactively overwrites it while you type -->
                 <span

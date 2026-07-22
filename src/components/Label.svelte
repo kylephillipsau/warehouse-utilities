@@ -1,5 +1,5 @@
 <script>
-    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, pruneIfEmpty, moveLabel, convertToTemplate } from '../lib/store.svelte.js';
+    import { store, duplicateLabel, deleteLabel, setImage, removeImage, savePresetFromLabel, pruneIfEmpty, moveLabel, convertToTemplate, convertToBarcode } from '../lib/store.svelte.js';
     import { adjustStyle } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { openAdjust, openPresets, openFields } from '../lib/ui.svelte.js';
@@ -77,6 +77,7 @@
                 ? { label: label.text ? 'Edit caption' : 'Add caption', action: addCaption }
                 : { label: 'Add image', action: pickImage }),
         !isTemplate && !label.image ? { label: 'Make it a template', action: () => { convertToTemplate(label.id); openFields(label.id); } } : null,
+        !isTemplate && !label.image ? { label: 'Make it a barcode', action: () => { convertToBarcode(label.id); openFields(label.id); } } : null,
         { label: 'Duplicate', action: () => duplicateLabel(label.id) },
         { label: 'Save as preset…', action: savePreset },
         label.image && !isTemplate ? { label: 'Remove image', action: () => removeImage(label.id) } : null,
