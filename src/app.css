@@ -354,9 +354,34 @@ li.text-container.drag-over {
 
 .label-image.editable {
     cursor: pointer;
-    /* Claim touch gestures for our own pan/pinch handler (scoped to editable
-       images, so the page still scrolls everywhere else). */
+    /* Let a one-finger vertical swipe scroll the label list; horizontal drag and
+       two-finger pinch still reach our handler. The wheel is never captured, so
+       scrolling the page always works. */
+    touch-action: pan-y;
+}
+
+/* Corner resize handles: the primary resize affordance (drag a corner). Revealed
+   on hover of the image so the list stays uncluttered; always shown while coarse
+   pointers (touch) have no hover, and kept visible mid-drag. */
+.resize-handle {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    background: var(--color-paper, #fff);
+    border: 2px solid var(--color-purple, #6b4de6);
+    border-radius: 3px;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+    opacity: 0;
+    transition: opacity 0.12s ease;
     touch-action: none;
+    z-index: 3;
+}
+.label-image-frame:hover .resize-handle,
+.resize-handle:active {
+    opacity: 1;
+}
+@media (hover: none) {
+    .resize-handle { opacity: 1; }
 }
 
 /* Text-only label: text fills the whole box and auto-fits */

@@ -22,15 +22,24 @@
         showCaption = false,
     } = $props();
 
-    // Inline direct manipulation via a pointer-Map state machine (one code path
-    // for mouse and touch): one pointer pans, two pinch-zoom about their midpoint,
-    // and a press with no gesture opens the editor. `live` is seeded from the
-    // prop at each (re)start and accumulated locally — we never read the prop back
-    // mid-gesture, so store round-trips can't fight the fingers.
+    // Inline direct manipulation. Best-practice split so the label list always
+    // scrolls: the wheel and a one-finger vertical swipe scroll the page (never
+    // zoom), resizing is done with explicit CORNER HANDLES, and the image body is
+    // drag-to-pan / two-finger pinch / click-to-open-editor. `live` is seeded from
+    // the prop at gesture start and accumulated locally — we never read the prop
+    // back mid-gesture, so store round-trips can't fight the pointer.
     const clampPct = (v) => Math.min(100, Math.max(0, v));
+    // Resize scales about the frame centre, so every corner behaves identically;
+    // we skip the top-right one because the label's tool cluster (drag/edit/⋯)
+    // lives there.
+    const CORNERS = [
+        { key: 'nw', cls: 'top-1 left-1 cursor-nwse-resize' },
+        { key: 'sw', cls: 'bottom-1 left-1 cursor-nesw-resize' },
+        { key: 'se', cls: 'bottom-1 right-1 cursor-nwse-resize' },
+    ];
     const pointers = new Map();          // pointerId -> { x, y } in client px
     let mode = 'idle';                   // 'idle' | 'drag' | 'pinch'
-    let gestured = false;                // moved/pinched enough to suppress click
+    let gestured = false;                // moved/pinched (or cancelled) → suppress click
     let live = null;                     // { posX, posY, zoom, fit } during gesture
     let frameRect = null, imgW = 0, imgH = 0;
     let dragBase = null;                 // { sx, sy, baseX, baseY }
@@ -58,7 +67,6 @@
 
     function onImagePointerDown(event) {
         if (!onAdjust) { onImageClick?.(); return; }
-        event.preventDefault();
         const img = event.currentTarget;
         frameRect = img.parentElement.getBoundingClientRect();
         imgW = img.naturalWidth; imgH = img.naturalHeight;
@@ -69,7 +77,7 @@
         // Identical (type, listener) pairs de-dupe, so a 2nd finger won't double-add.
         window.addEventListener('pointermove', onImageMove);
         window.addEventListener('pointerup', onImageUp);
-        window.addEventListener('pointercancel', onImageUp);
+        window.addEventListener('pointercancel', onImageCancel);
     }
     function onImageMove(event) {
         if (!pointers.has(event.pointerId)) { return; }
@@ -94,24 +102,47 @@
             pinchPrev = cur;
         }
     }
-    function onImageUp(event) {
+    function endPointer(event, cancelled) {
         pointers.delete(event.pointerId);
+        // A cancelled pointer (e.g. the browser claimed a scroll) must never be
+        // read as a click-to-edit.
+        if (cancelled) { gestured = true; }
         if (pointers.size >= 2) { beginPinch(); }
         else if (pointers.size === 1) { live = normalizeAdjust(adjust); beginDrag(); }
         else {
             window.removeEventListener('pointermove', onImageMove);
             window.removeEventListener('pointerup', onImageUp);
-            window.removeEventListener('pointercancel', onImageUp);
+            window.removeEventListener('pointercancel', onImageCancel);
             mode = 'idle';
             if (!gestured) { onImageClick?.(); }
         }
     }
-    function onImageWheel(event) {
+    function onImageUp(event) { endPointer(event, false); }
+    function onImageCancel(event) { endPointer(event, true); }
+
+    // Corner handle: drag to resize (scale about the frame centre, matching the
+    // centre-origin transform used to render). Scoped to its own pointer capture
+    // so it never triggers the body pan / click.
+    function onHandlePointerDown(event) {
         if (!onAdjust) { return; }
         event.preventDefault();
-        const a = normalizeAdjust(adjust);
-        const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, (a.zoom || 1) * Math.exp(-event.deltaY * 0.0015)));
-        onAdjust({ zoom: z });
+        event.stopPropagation();
+        const frame = event.currentTarget.parentElement.getBoundingClientRect();
+        const cx = frame.left + frame.width / 2, cy = frame.top + frame.height / 2;
+        const z0 = normalizeAdjust(adjust).zoom || 1;
+        const d0 = Math.hypot(event.clientX - cx, event.clientY - cy) || 1;
+        const move = (ev) => {
+            const d1 = Math.hypot(ev.clientX - cx, ev.clientY - cy);
+            onAdjust({ zoom: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z0 * (d1 / d0))) });
+        };
+        const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', up);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', up);
     }
 
     const hasImage = $derived(!!image);
@@ -133,7 +164,13 @@
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
                 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
                 <!-- svelte-ignore a11y_click_events_have_key_events -->
-                <img class="label-image editable" src={image} alt="" title="Drag to move · scroll or pinch to zoom · click to edit" draggable="false" onpointerdown={onImagePointerDown} onwheel={onImageWheel} />
+                <img class="label-image editable" src={image} alt="" title="Drag to move · drag a corner to resize · click to edit" draggable="false" onpointerdown={onImagePointerDown} />
+                {#if onAdjust}
+                    {#each CORNERS as h (h.key)}
+                        <!-- svelte-ignore a11y_no_static_element_interactions -->
+                        <span class="resize-handle {h.cls}" aria-hidden="true" title="Drag to resize" onpointerdown={onHandlePointerDown}></span>
+                    {/each}
+                {/if}
             {:else}
                 <img class="label-image" src={image} alt="" />
             {/if}
