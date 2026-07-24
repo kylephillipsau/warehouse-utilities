@@ -1,9 +1,11 @@
 // Shared, app-wide Zebra printer state. The header selector and the Export
 // dialog both read/write this single $state object, so the chosen printer is
 // one source of truth (selecting in one surface reflects in the other) and the
-// choice is the remembered default. Discovery is lazy — nothing here probes the
-// Browser Print localhost service until the user asks (see ensurePrinters), so
-// users with no Zebra pay no cost on page load.
+// choice is the remembered default. Discovery is lazy for first-time visitors —
+// nothing probes the Browser Print localhost service until the user asks (see
+// ensurePrinters), so users with no Zebra pay no cost on page load. Returning
+// users who have connected a Zebra before get a silent auto-connect on load
+// (see autoConnectPrinter), so they never have to re-scan.
 import { getPrinters } from './browserPrint.js';
 
 export const PRINTER_KEY = 'labelMakerPrinter';
@@ -76,4 +78,24 @@ export function loadPrinters() {
 export async function ensurePrinters() {
     if (printer.discovered && printer.bpState !== 'unavailable') { return; }
     await loadPrinters();
+}
+
+// True once the user has successfully connected a Zebra (a printer is remembered).
+export function hasRememberedPrinter() {
+    try { return !!localStorage.getItem(PRINTER_KEY); } catch (e) { return false; }
+}
+
+// Silent best-effort auto-connect on page load. We only probe for users who
+// have connected a Zebra before (a remembered printer), so first-time and
+// non-Zebra visitors pay no page-load cost and never see an error — they get
+// the gentle "Find label printer" prompt instead. If the service isn't up right
+// now, we reset to the idle prompt rather than surfacing the install help on a
+// fresh load (that is reserved for when the user actively finds or prints).
+export async function autoConnectPrinter() {
+    if (!hasRememberedPrinter()) { return; }
+    await loadPrinters();
+    if (printer.bpState === 'unavailable') {
+        printer.bpState = 'idle';
+        printer.discovered = false;
+    }
 }

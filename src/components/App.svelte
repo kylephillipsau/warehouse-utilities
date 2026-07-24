@@ -1,6 +1,7 @@
 <script>
     import { onMount } from 'svelte';
     import { store, hydrateStore } from '../lib/store.svelte.js';
+    import { autoConnectPrinter } from '../lib/printer.svelte.js';
     import { loadAll, persistState } from '../lib/persistence.js';
     import { applySize, resolveDesign } from '../lib/size.js';
     import Toolbar from './Toolbar.svelte';
@@ -18,6 +19,10 @@
     onMount(async () => {
         hydrateStore(await loadAll());
         ready = true;
+        // Returning Zebra users reconnect to Browser Print automatically, so the
+        // remembered printer is ready without re-scanning. Fire-and-forget: it is
+        // a background best-effort and silent if the service isn't up.
+        autoConnectPrinter();
     });
 
     // Push the resolved page + label sizes into root CSS vars
