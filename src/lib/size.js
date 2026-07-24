@@ -48,6 +48,15 @@ export function clampDivisions(n) {
     return Math.min(MAX_DIVISIONS, Math.max(1, v));
 }
 
+// Print quantity: how many times the whole job repeats (Zebra ^PQ). 1 = a
+// single pass; capped so a stray keystroke can't queue thousands of labels.
+export const MAX_COPIES = 999;
+export function clampCopies(n) {
+    const v = parseInt(n, 10);
+    if (isNaN(v)) { return 1; }
+    return Math.min(MAX_COPIES, Math.max(1, v));
+}
+
 // Margin (page edge) / gap (between labels), in mm, clamped to a sane range.
 export const MAX_SPACING = 50;
 export function clampSpacing(v) {

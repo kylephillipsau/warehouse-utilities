@@ -18,7 +18,7 @@ import { labelIsEmpty } from './fields.js';
 
 export { BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL };
 
-export const DEFAULT_OUTPUT = { method: 'zebra', dpi: 203, saveFormat: 'json' };
+export const DEFAULT_OUTPUT = { method: 'zebra', dpi: 203, saveFormat: 'json', copies: 1 };
 
 // printable when at least one label has content — classic text/image OR template fields
 const hasPrintable = (store) => store.labels.some((l) => !labelIsEmpty(l));

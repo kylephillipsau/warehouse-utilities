@@ -1,8 +1,8 @@
 <script>
     import { store } from '../lib/store.svelte.js';
     import {
-        MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing,
-        MAX_DIVISIONS, MAX_SPACING, resolveDesign, resolveLabel, pageFromMedia,
+        MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing, clampCopies,
+        MAX_DIVISIONS, MAX_SPACING, MAX_COPIES, resolveDesign, resolveLabel, pageFromMedia,
     } from '../lib/size.js';
     import { ui, closeInspector } from '../lib/ui.svelte.js';
     import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
@@ -36,6 +36,7 @@
     ];
     const unitOptions = [{ value: 'mm', label: 'mm' }, { value: 'in', label: 'in' }];
 
+    function onCopies(event) { store.output.copies = clampCopies(event.target.value); }
     function onDivisions(event) { store.divisions = clampDivisions(event.target.value); }
     function onMargin(event) { store.margin = clampSpacing(event.target.value); }
     function onGap(event) { store.gap = clampSpacing(event.target.value); }
@@ -248,6 +249,16 @@
                 <span aria-hidden="true">{method.noteTone === 'warn' ? '⚠' : method.noteTone === 'ok' ? '✓' : 'ℹ'}</span>
                 <span>{method.note}</span>
             </p>
+        {/if}
+
+        {#if method.controls === 'zebra' || method.controls === 'zebraDpi'}
+            <div class="control-group">
+                <span class="group-label">Copies</span>
+                <div class="group-row">
+                    <input type="number" id="output-copies" class="w-[7ch]" min="1" max={MAX_COPIES} step="1" aria-label="Number of copies" value={store.output.copies} oninput={onCopies} />
+                    <span class="text-[0.8rem] text-ink/70">of the whole job</span>
+                </div>
+            </div>
         {/if}
 
         <button type="button" id="output-run" class="btn btn-primary w-full" disabled={runState === 'running'} onclick={runOutput}>

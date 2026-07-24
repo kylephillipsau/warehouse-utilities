@@ -3,7 +3,7 @@
 // and writes this one reactive store, so there is no manual cross-surface sync.
 import { normalizeAdjust } from './adjust.js';
 import { newId } from './persistence.js';
-import { DEFAULT_PAGE, DEFAULT_DIVISIONS, clampDivisions } from './size.js';
+import { DEFAULT_PAGE, DEFAULT_DIVISIONS, clampDivisions, clampCopies } from './size.js';
 import { normalizeFields, cloneFields, makeField, normalizeField, labelIsEmpty } from './fields.js';
 import { resolveTemplate } from './tokens.js';
 
@@ -16,7 +16,7 @@ export const store = $state({
     gap: 0,      // gap (mm) between stacked label segments
     orientation: 'portrait',  // 'portrait' | 'landscape' — landscape rotates the design (see size.resolveDesign)
     showBorders: true,        // draw the label border / cut guide (screen + ZPL)
-    output: { method: 'zebra', dpi: 203, saveFormat: 'json' },  // configurable print/output (see output.js)
+    output: { method: 'zebra', dpi: 203, saveFormat: 'json', copies: 1 },  // configurable print/output (see output.js)
 });
 
 // Populate the store from persisted state (see persistence.loadAll). Applied
@@ -53,6 +53,7 @@ export function hydrateStore(data) {
         if (typeof data.output.method === 'string') { store.output.method = data.output.method; }
         if (data.output.dpi === 203 || data.output.dpi === 300) { store.output.dpi = data.output.dpi; }
         if (data.output.saveFormat === 'txt' || data.output.saveFormat === 'json') { store.output.saveFormat = data.output.saveFormat; }
+        if (data.output.copies != null) { store.output.copies = clampCopies(data.output.copies); }
     }
 }
 

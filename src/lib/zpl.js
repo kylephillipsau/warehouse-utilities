@@ -3,7 +3,7 @@
 // ~300/203 ≈ 1.48× too big on a 203-dpi head). Each media page is rendered to a
 // 1-bit bitmap at the printer's dot grid and wrapped in a ^GFA graphic field;
 // ^PW/^LL lock the physical extents so the output is exact by construction.
-import { resolvePage, tiling, clampSpacing, clampDivisions } from './size.js';
+import { resolvePage, tiling, clampSpacing, clampDivisions, clampCopies } from './size.js';
 import { normalizeAdjust } from './adjust.js';
 import { fieldWeight, labelIsEmpty } from './fields.js';
 import { resolveTemplate } from './tokens.js';
@@ -205,6 +205,8 @@ export async function buildZpl(store, dpi = 203) {
     const showBorder = store.showBorders !== false;
     const n = clampDivisions(store.divisions);
     const per = tiling(store.divisions).perPage;
+    // ^PQ repeats each label format; emitting it per page repeats the whole job.
+    const copies = clampCopies(store.output && store.output.copies);
     const m = clampSpacing(store.margin);
     const g = clampSpacing(store.gap);
 
@@ -261,7 +263,8 @@ export async function buildZpl(store, dpi = 203) {
         for (const d of native) {
             body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { landscape, pageW, ecLevel: d.ecLevel }) + '\n';
         }
-        zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n${body}^XZ\n`;
+        const pq = copies > 1 ? `^PQ${copies},0,0,N\n` : '';
+        zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n${body}${pq}^XZ\n`;
         pages++;
     }
     return { zpl, pages, skipped };
