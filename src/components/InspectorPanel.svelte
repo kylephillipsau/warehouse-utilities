@@ -112,6 +112,22 @@
     }
 </script>
 
+<!-- Shown wherever Browser Print fails to connect: where to get it + how to set
+     it up. Browser Print is a small Zebra helper app that runs a local service
+     this page talks to, so labels print at exact size. -->
+{#snippet browserPrintHelp()}
+    <div class="rounded-md border-2 border-ink/15 bg-highlight/60 px-3 py-2 text-[0.8rem] leading-[1.5]" role="alert">
+        <p class="m-0 font-bold">Zebra Browser Print not found</p>
+        <p class="m-0 mt-1 text-ink/80">It is a small Zebra helper app that lets this page send labels straight to your printer.</p>
+        <ol class="m-0 mt-1.5 list-decimal space-y-0.5 pl-4 text-ink/80">
+            <li><a class="font-bold text-purple underline" href={BROWSER_PRINT_INSTALL_URL} target="_blank" rel="noopener">Download and install Browser Print</a>.</li>
+            <li>Open it and leave it running in the background.</li>
+            <li>On an HTTPS page, open <a class="font-bold text-purple underline" href={BROWSER_PRINT_SSL_URL} target="_blank" rel="noopener">localhost:9101</a> once and accept the certificate.</li>
+        </ol>
+        <p class="m-0 mt-1.5">Then <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button>. No Zebra handy? Switch the method to <strong>Download ZPL</strong>.</p>
+    </div>
+{/snippet}
+
 <Drawer id="inspector-panel" side="right" persistent={desktop} open={ui.inspectorOpen} title="Setup & print"
         widthClass="w-[min(20rem,calc(100vw-2.5rem))] lg:w-[22rem]" onClose={closeInspector}>
     <!-- ===== Setup ===== -->
@@ -209,8 +225,10 @@
                 {:else if printer.detectState === 'error' || printer.detectState === 'unsupported'}
                     <p class="m-0 text-[0.8rem] font-bold text-orange" role="alert">{printer.detectMsg}</p>
                 {/if}
+            {:else if printer.bpState === 'unavailable'}
+                {@render browserPrintHelp()}
             {:else}
-                <p class="m-0 text-[0.8rem] text-ink/70">No label printer found. <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button> after checking it's on and connected.</p>
+                <p class="m-0 text-[0.8rem] text-ink/70">Browser Print is running but no printer was found. <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button> after checking your Zebra is on and connected.</p>
             {/if}
         {:else if method.controls === 'zebraDpi'}
             <div class="control-group">
@@ -239,9 +257,7 @@
         {#if runState === 'done' && runMsg}
             <p class="m-0 text-[0.8rem] font-bold text-purple" role="status">✓ {runMsg}</p>
         {:else if runState === 'error' && runNotDetected}
-            <p class="m-0 text-[0.8rem] leading-[1.45] text-ink/80" role="alert">
-                Zebra <strong>Browser Print</strong> wasn't reached. <a class="font-bold text-purple underline" href={BROWSER_PRINT_INSTALL_URL} target="_blank" rel="noopener">Install it</a>, or if it's installed, accept its certificate once at <a class="font-bold text-purple underline" href={BROWSER_PRINT_SSL_URL} target="_blank" rel="noopener">localhost:9101</a>, then try again. Otherwise pick <strong>Download ZPL</strong>.
-            </p>
+            <p class="m-0 text-[0.8rem] leading-[1.45] text-ink/80" role="alert">Zebra <strong>Browser Print</strong> was not reached. Follow the setup steps above, or switch the method to <strong>Download ZPL</strong>.</p>
         {:else if runState === 'error' && runMsg}
             <p class="m-0 text-[0.8rem] font-bold text-orange" role="alert">{runMsg}</p>
         {/if}
