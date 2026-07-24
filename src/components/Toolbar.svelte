@@ -41,7 +41,7 @@
             document.removeEventListener('keydown', onKey);
         };
     });
-    function clearAll() { clearAllLabels(); menuOpen = false; }
+    function clearAll() { clearAllLabels(); }
 
     let scrolled = $state(false);
     function onScroll() { scrolled = window.scrollY > 0; }
@@ -68,14 +68,17 @@
                 <span class="btn-label max-md:hidden">Import</span>
             </button>
 
+            <button type="button" id="clear-all" class="btn text-orange" disabled={store.labels.length === 0} onclick={clearAll} title="Clear all labels">
+                <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" aria-hidden="true"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
+                <span class="btn-label max-md:hidden">Clear</span>
+            </button>
+
             <div class="relative" bind:this={menuEl}>
                 <button type="button" class="btn" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="More options" title="More" onclick={() => (menuOpen = !menuOpen)}>
                     <span aria-hidden="true" class="text-[1.1em] leading-none">⋯</span>
                 </button>
                 {#if menuOpen}
                     <div class="absolute right-0 top-[calc(100%+6px)] z-[25] w-max min-w-[12rem] rounded-lg border-2 border-ink bg-paper p-1 shadow-popover" role="menu">
-                        <button type="button" role="menuitem" class="block w-full whitespace-nowrap rounded px-3 py-2 text-left text-[0.9rem] font-bold text-orange hover:bg-ink/[0.08] disabled:opacity-45 disabled:pointer-events-none" disabled={store.labels.length === 0} onclick={clearAll}>Clear all labels</button>
-                        <div class="my-1 border-t border-ink/15"></div>
                         <a role="menuitem" href="/index.html" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Home</a>
                         <a role="menuitem" href="https://github.com/kylephillipsau/warehouse-utilities" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Source code</a>
                         <a role="menuitem" href="/old/labels.html" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Old version (v1)</a>
