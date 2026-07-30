@@ -1231,6 +1231,61 @@ relocation — has no demand-side cause at all. The existing `reason` enum alrea
 distinguishes what kind of movement it is; the cause FK says which document
 demanded it, when one did.
 
+### D18 — Multi-tenant and multi-site are different axes, and we build both
+
+**Decision.** `tenant` owns `site`. Multi-tenancy is a stated, non-negotiable
+requirement; multi-site already existed. They are orthogonal and cheap together,
+expensive apart.
+
+```
+tenant
+  id, name, slug, active
+
+site
+  id, tenant_id, name, timezone      -- tenant_id is new
+```
+
+`tenant_id` is denormalised onto every major table alongside the `site_id` the
+competitor analysis already recommended, and isolation is enforced by Postgres
+row-level security rather than by remembering a `WHERE` clause.
+
+**Why the distinction is worth stating.** Multiple warehouses in multiple
+Australian states is **multi-site** — one organisation, many locations, and the
+model already handled it. **Multi-tenant** is a different boundary: separate
+organisations whose data must never meet.
+
+They behave in opposite ways on exactly the thing we just designed:
+
+| | Across sites | Across tenants |
+|---|---|---|
+| Stock transfers (D16) | Normal | Must be impossible |
+| Reporting | Rolls up | Never joins |
+| Users | May span, with permissions | Never span |
+| Queries | A feature | A leak |
+
+**D16 is the proof.** A `transfer_order` moves stock between sites. You do not
+transfer stock between tenants — that is a sale, or a 3PL movement, not a
+transfer. So the Australian states are sites of one tenant, and building hard
+isolation around them would break the inter-state transfers just designed.
+
+**Why build tenancy now anyway.** It is the most expensive thing on the list to
+retrofit — every table, query, index and cache key — and Nosdesk's shape (BUSL
+licence, licence keypair, licensing module, hosted deployment targets) says this
+codebase is heading somewhere commercial. A `tenant_id` column added now costs
+about what the `site_id` denormalisation already costs. Added later it is a
+migration touching everything.
+
+**Deployment stays open.** Row-level security supports both shared-database and
+database-per-tenant, and a BUSL product that self-hosts usually wants the latter
+available. Deciding the schema now does not commit the deployment model.
+
+**Explicitly deferred: `stock.owner_id`.** Holding *another* organisation's
+stock at our site — 3PL — is a third axis again, and it would put owner in the
+`stock` key alongside status (D4), making it the fifth key column. We ship our
+own goods, so this is not needed. Recorded rather than assumed, because if 3PL
+ever becomes a product direction this is the migration nobody wants: see
+question 48.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -1388,3 +1443,22 @@ Raised by D17:
 44. **Are `activity_event` kinds an enum or a table?** An enum is honest and
     typed; a table invites per-site custom kinds, which is a small step toward
     the rules-engine-by-accretion D13 warned about. Leaning enum.
+
+Raised by D18:
+
+48. **Will we ever hold third-party stock (3PL)?** Deferred by D18. If yes,
+    `owner_id` joins the `stock` key as its fifth column, which is the same class
+    of migration D4 was urgent to avoid. Worth an explicit answer even if that
+    answer is "never".
+49. **Are the Australian states one legal entity or several?** If several, they
+    may be separate tenants that nonetheless move stock between each other —
+    which D18 says is impossible, and would need an inter-tenant transfer concept
+    (effectively an internal sale). This is the one thing that could invalidate
+    the site-not-tenant reading.
+50. **Is reference data per-tenant or shared?** Items, package types and carriers
+    are plausibly shared in a single-company deployment and must be isolated in a
+    product. Getting this wrong means either duplicating a catalogue per site or
+    leaking one between tenants.
+51. **Does `person` span tenants?** A support engineer or a group-level manager
+    might legitimately need access to several. If so, membership is a join table
+    rather than a column, and that is cheaper to decide now.
