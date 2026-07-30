@@ -917,6 +917,44 @@ The retroactive part falls out: stock of a held lot that is already allocated
 produces allocations against unavailable stock, which is a **finding** under D8
 rather than a special case anyone has to code.
 
+**Holds are intentions; the movements are the facts that carry them out.** This
+is principle 2's three categories doing real work, and it buys precision that a
+flag cannot.
+
+```
+lot_hold                    -- an intention (principle 2)
+  id, lot_id
+  reason, reference          -- recall notice number, test result, customer complaint
+  scope_note
+  raised_at, raised_by_id
+  lifted_at, lifted_by_id, lift_reason
+```
+
+Every status movement written by a hold references its `lot_hold`. Three things
+follow, and the third is the one that matters:
+
+**Release is precisely scoped.** Lifting hold H returns only what H held. A flag,
+or a naive "release everything held for this lot", would also release stock held
+for an *unrelated* reason — damage found separately, a quality quarantine, a
+customer complaint on the same lot. Because the movements name their cause, the
+reversal cannot overreach.
+
+**Overlapping holds compose correctly.** Two active holds on one lot mean stock
+returns to `available` only when the last is lifted. That is a count of unlifted
+`lot_hold` rows, not a boolean anyone has to keep consistent.
+
+**Stock that moves while held stays held.** A transfer of held stock is a
+movement with the status unchanged on both sides, so the hold follows the goods
+to their new location without anything tracking it. Release then acts on wherever
+the stock actually is now — which a snapshot of affected cells, taken at hold
+time, would have got wrong.
+
+**Amendment keeps the mistake visible.** If a hold was scoped too widely, the
+over-held stock is released with its own reason, and the record still shows what
+was held, by whom, and why it changed. Nothing is rewritten, so the correction is
+as auditable as the original decision — which is D8's invariant applied to
+directives rather than to work.
+
 **Serial stays split, per the analysis.** `tracking = serial` reserves the enum
 value, but **unit-level serialised inventory remains out of scope** — a serial as
 a stock-bearing entity with its own custody chain would reshape `stock` the way
