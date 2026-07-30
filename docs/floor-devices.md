@@ -23,7 +23,7 @@ mirroring NetSuite read-only "until the scanner path moves to us". If we own the
 device, that is a decision we can make rather than wait for. It does not become
 urgent, but it stops being blocked.
 
-## Getting scan data: three options
+## Getting scan data: four options
 
 Honeywell Android devices expose the scanner two ways, which gives three
 realistic architectures.
@@ -54,19 +54,55 @@ symbologies we actually use, which cuts misreads.
   pipeline. Hard to justify against a React frontend decision unless offline or
   scanner control forces it.
 
-### 3. Thin native shell around the web app
+### 3. React Native
 
-A wrapper (Capacitor or similar) hosting the React app, using the Intent API
-natively and handing scans to the web layer through a small bridge.
+A real native app with React as the programming model. **The Honeywell
+integration is well-trodden** — there are at least five community modules
+wrapping the intent API (Volst's `react-native-honeywell-scanner` and duytq94's
+fork being the most referenced), all doing essentially the same thing:
+registering a `BroadcastReceiver` for Honeywell's scan intents and emitting
+events to JS.
 
-- Keeps one UI codebase, gains real scanner control and better offline and
-  hardware access.
-- Costs a build and distribution pipeline, and MDM for updates.
+- Mature offline primitives (SQLite, background tasks), good long-list
+  performance, no browser quirks.
+- **But the "shared React codebase" is partly illusory.** React Native uses
+  `View`/`Text`, not `div`/`span`. The desktop packing station and the handheld
+  would share types, API client, validation and domain logic — but not
+  components. That sharing is achievable from a monorepo package regardless of
+  which option we pick, so it is not really an argument *for* RN.
 
-**Leaning:** start at option 1, because it is free and proves the workflows, but
-**design the scan input behind a small abstraction from day one** so moving to
-option 3 is a swap rather than a rewrite. Do not commit to native until
-something concrete forces it. The two things most likely to force it are below.
+### 4. Tauri v2 — the one that fits what we already do
+
+Tauri v2 targets Android, hosts the React app in a system webview, and exposes
+native capability through Rust plugins. **Nosdesk's mobile app is already Tauri
+v2, with hand-written plugins (`tauri-plugin-push`, `tauri-plugin-secure-store`).**
+
+- **Same React codebase as the packing station**, genuinely — it runs the web
+  app, so components are shared rather than merely conceptually similar.
+- **Rust end to end**, matching the backend and existing skills.
+- Offline via Rust-side SQLite and filesystem, which is a better story than
+  service workers and IndexedDB and comparable to RN.
+- The Honeywell bridge would be **a Tauri plugin we write** rather than an npm
+  install — but it is small: a `BroadcastReceiver` for the scan intent, forwarded
+  to the web layer. The React Native modules above are open-source references for
+  exactly which intents and extras to listen for. This is the third such plugin
+  in the stack, not the first.
+
+## Leaning
+
+**Options 1 then 4.** Start on keyboard wedge because it costs nothing and proves
+the workflows on real hardware, and move to Tauri when offline or scanner control
+forces it. Both run the same React app, so this is a packaging change rather than
+a rewrite — provided **scan input sits behind a small abstraction from day one**,
+which is the one thing worth doing now.
+
+React Native is a perfectly good answer and has the better off-the-shelf Honeywell
+story. It loses here on fit rather than merit: it would mean a second UI codebase
+and a JS-native stack sitting beside an otherwise Rust-and-web one, to solve a
+problem Tauri already solves in this codebase. Revisit if Tauri's Android webview
+turns out to be a problem on these specific devices — **[unverified: Honeywell
+handhelds can run older Android and older WebView; worth checking the OS version
+before committing, since it constrains options 1 and 4 equally.]**
 
 ## The two things that decide this
 
@@ -105,7 +141,7 @@ Open question 4 in the data model doc — whether a weigh/cube station exists to
 
 ## What runs where
 
-Rough shape, assuming option 1 or 3:
+Rough shape, assuming option 1 or 4:
 
 | Surface | Device | Notes |
 |---|---|---|
@@ -127,5 +163,7 @@ separate mobile product.
 3. Which workflows genuinely need offline, and how bad is wifi coverage in the
    racking? This is worth measuring rather than assuming, in both directions.
 4. What scale hardware exists, and does it have a Bluetooth or network interface?
-5. Is there an MDM in place? If so, option 3 is cheaper than it looks; if not,
+5. Is there an MDM in place? If so, option 4 is cheaper than it looks; if not,
    option 1 is worth more than it looks.
+6. What Android and WebView version do the handhelds run? Constrains options 1
+   and 4 equally, and is the main thing that would push us to React Native.
