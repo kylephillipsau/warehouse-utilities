@@ -1355,6 +1355,95 @@ needing a rule.
 access to what, when, is answerable historically. Access that was removed leaves
 evidence.
 
+### D20 — Capability is a property of the data, not a configuration mode
+
+**The principle.** Support as many operating models as possible without imposing
+any of them. An organisation with a streamlined process should never encounter
+the machinery that serves a complicated one — not because it is switched off in
+settings, but because **the dimension only exists on the records that need it.**
+
+This is the difference between "enable lot tracking" as a global mode that
+changes how the whole system behaves, and `item.tracking = lot` on the forty
+items that need it. The second is discoverable, per-item, reversible, and
+invisible to everyone else. It is also already how D14 works, so this decision
+generalises an existing pattern rather than inventing one.
+
+Four capabilities, one shape:
+
+| Capability | Carried by | Default | Cost to an org that does not need it |
+|---|---|---|---|
+| Lot / expiry / FEFO | `item.tracking`, `item.rotation_type` | `none` | Nothing |
+| Catch weight | `item.quantity_mode` | `count` | Nothing |
+| Third-party stock (3PL) | `stock.owner_id` | the site's own entity | Nothing |
+| Multiple legal entities | `site.legal_entity_id` | the tenant's own entity | Nothing |
+
+Every one defaults to the simple case. Nothing needs configuring to get the
+streamlined behaviour, and nothing needs "going deep into context options" to get
+the complicated one — you set a property on the product or the site.
+
+### `party` and `legal_entity` — the third axis
+
+3PL is confirmed as in scope, which requires an owner concept for stock. Once
+that exists, the corporate-group case comes free, so these are one decision:
+
+```
+party                        -- anyone we transact with or on behalf of
+  id, tenant_id, kind        -- legal_entity | customer | supplier | carrier
+  name, abn, active
+
+site
+  legal_entity_id            -- which of our entities operates this site
+
+stock
+  owner_id                   -- party; defaults to the site's legal entity
+```
+
+**Three axes, not one.** This is the distinction D18 started and did not finish:
+
+| Axis | Question it answers | Crossing it means |
+|---|---|---|
+| `tenant` | Who may see this? | Impossible |
+| `legal_entity` | Who owns it and who invoices? | An inter-company sale |
+| `site` | Where is it? | A transfer (D16) |
+
+**This de-risks question 49.** Whether the Australian states are one legal entity
+or several changes the *deployment* — one tenant or several — but **not the
+schema**, because `legal_entity` expresses a group either way. If they are
+several entities under one operational group, the right answer is almost
+certainly one tenant with several legal entities: operationally one warehouse
+network, legally several companies. That keeps D16's transfers working while
+letting them generate the inter-company paperwork they legally require.
+
+**`owner_id` joins the `stock` key**, making it (item, location, lot, status,
+owner). Six columns is wide, and it is the same shape Odoo reached. For an
+organisation that never holds third-party stock the column is a constant, so the
+index behaves as though it were not there. This is the migration D4 warned about,
+which is precisely why it is being done now rather than discovered later.
+
+### Catch weight, contained
+
+A catch-weight item is sold by actual weight but handled as discrete units — six
+cartons of beef weighing 47.3 kg in total. The trap is letting that turn
+`quantity` into two numbers everywhere.
+
+It does not have to. **The count stays primary**; the weight rides alongside as
+an observation captured at the same moment:
+
+```
+item.quantity_mode          -- count | catch_weight
+stock_movement.catch_weight_g   -- nullable; required when quantity_mode = catch_weight
+package_content.catch_weight_g
+```
+
+Picking, allocation, cubing and the ledger all keep working on counts unchanged.
+Weight is captured at pick and pack time, flows to `package_content`, and drives
+invoicing and freight. Enforcement follows the same pattern as `tracking = lot`
+(question 31): application-level, plus a periodic assertion.
+
+**What this does not do:** allocate by weight. "Give me 20 kg" rather than "give
+me 6 cartons" is a genuinely different allocation problem, and it is not solved
+here. If a customer orders by weight, that is question 55.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -1515,11 +1604,10 @@ Raised by D17:
 
 Raised by D18:
 
-48. **Will we ever hold third-party stock (3PL)?** Deferred by D18. If yes,
-    `owner_id` joins the `stock` key as its fifth column, which is the same class
-    of migration D4 was urgent to avoid. Worth an explicit answer even if that
-    answer is "never".
-49. **Are the Australian states one legal entity or several?** If several, they
+48. ~~Will we ever hold third-party stock (3PL)?~~ Yes — settled by D20.
+    `owner_id` joins the `stock` key now rather than as a later migration.
+49. *(De-risked by D20: this changes the deployment, not the schema.)*
+    **Are the Australian states one legal entity or several?** If several, they
     may be separate tenants that nonetheless move stock between each other —
     which D18 says is impossible, and would need an inter-tenant transfer concept
     (effectively an internal sale). This is the one thing that could invalidate
@@ -1544,3 +1632,20 @@ Raised by D19:
     shift crossing tenants would make `work_session_id` ambiguous on movements.
     Simplest answer is no — a session belongs to one site, therefore one tenant —
     but it should be stated rather than assumed.
+
+Raised by D20:
+
+55. **Can a customer order by weight rather than by count?** D20 contains catch
+    weight by keeping count primary, which works when the customer orders six
+    cartons and is billed for 47.3 kg. It does not work if they order 20 kg.
+    Allocating to a weight target is a genuinely different problem — closest-fit
+    rather than exact — and it would reach into D12 and D13.
+56. **Does an inter-company movement generate documents automatically?** D20 says
+    crossing `legal_entity` is a sale. Whether we raise the corresponding order,
+    purchase order and invoice, or merely flag it for the finance system, decides
+    how far this project reaches into accounting.
+57. **Is `party` one table or several?** Modelled as one with a `kind`, which is
+    the generic-document-model smell the project has otherwise avoided. The
+    counter-argument is that a customer can also be a supplier and the same
+    carrier can be both — real overlap that separate tables handle badly.
+    Worth revisiting before it is built.
