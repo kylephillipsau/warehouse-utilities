@@ -1103,6 +1103,134 @@ a reason to adopt it: we get the same answer from principle 2's categories
 instead of from a NULL-elimination trick that would add a `usage` predicate to
 every on-hand query.
 
+### D17 — `work_task`: one table for directed work, and a second fact table for work that moves nothing
+
+**Decision.** One `work_task` table across every kind of directed work, plus
+`activity_event` as a second append-only fact table. Tasks are **intentions**
+(principle 2); the movements and counts they produce are the facts.
+
+```
+work_task
+  id, site_id
+  purpose            -- pick | putaway | replenish | transfer | count | inspect
+  pick_batch_id      -- nullable; the work grouping (D15)
+  item_id            -- nullable: a count task is told a location, not an item
+  from_location_id
+  to_location_id     -- nullable: a count moves nothing
+  planned_quantity   -- nullable: a count's quantity is the question, not the input
+  sequence           -- travel order within the batch
+  state              -- pending | claimed | started | completed | failed | cancelled
+  claimed_by_id, claimed_at
+  started_at, completed_at
+  work_session_id    -- D11
+```
+
+**Why one table, when D15 warned about tables serving two masters.** The test is
+whether the concepts are genuinely one thing. Pick, putaway, replenish, transfer,
+count and inspect are all *directed work assigned to a person at a location, with
+a state*. That is one concept. What differs is the **fact they produce** — a
+movement, or a count — and those already live in separate tables. Manhattan
+reaches the same shape with a single unified task table, and the analysis was
+right to call it the principle-1-consistent answer.
+
+**Named `work_task`, not `move_task`, because a count moves nothing.** Calling it
+`move_task` and then filing counts and inspections in it is exactly the small
+dishonesty that accretes into a schema nobody can read. It also pairs with
+`work_session` (D11). Two nullable columns — `to_location_id` and
+`planned_quantity` — are the honest cost of covering non-moving work, and they
+are nullable *for a stated reason* rather than by drift.
+
+**Claiming is advisory, but coordination here is cheap.** D5 traded coordination
+away where it would block physical work. A task claim is the opposite case: it is
+low-stakes, and losing a race costs a moment rather than a pick. So the server
+takes a first-claim-wins lock and tells the loser immediately over the existing
+real-time channel.
+
+**The distinction worth stating: we avoid coordination where it would stop the
+floor, not everywhere.** Blocking a scan is unacceptable because the physical
+event already happened. Blocking a claim is fine because nothing has happened
+yet. If two people do the same task anyway — offline, or by ignoring the
+warning — both sets of movements are still facts, and the duplication is a
+finding under D8. The claim is a courtesy, not a guarantee.
+
+**Cluster picking needs no extra table.** One visit to a cell can serve several
+orders. `stock_allocation.work_task_id` (D12) links N allocations to one task, and
+each allocation already knows its `fulfilment_line` and therefore its destination
+receptacle. The task's `planned_quantity` is just the sum of its allocations. Pick
+once, distribute by allocation.
+
+```
+pick_batch                    -- the work grouping (D15)
+  id, site_id
+  kind                        -- wave | cluster | zone | single
+  state, created_at, released_at, completed_at, created_by_id
+
+receptacle_assignment         -- trolley slots and put-wall cells, one mechanism
+  id, pick_batch_id, fulfilment_id
+  package_id                  -- the tote, which is a container (D6)
+  position
+  opened_at, released_at
+```
+
+A partial unique index on `(pick_batch_id, position) WHERE released_at IS NULL`
+gives first-empty-wins allocation of slots and route-back-to-the-same-slot in one
+index. The tote being a `package` is D6 paying off — no parallel container
+concept was needed.
+
+**`activity_event`: the denominator.** Work that moves no stock currently has
+nowhere to live — a failed scan, a skip, a location found empty, a search that
+turned up nothing, time between tasks. Without it, productivity has counts but no
+denominators, and exception patterns are invisible.
+
+```
+activity_event                -- a fact (principle 2), append-only
+  id, occurred_at, recorded_at
+  client_event_id (unique), device_id      -- shares D5's idempotency columns
+  recorded_by_id, work_session_id
+  work_task_id, location_id                -- both nullable
+  kind          -- scan_ok | scan_mismatch | location_empty | skip
+                -- | search_failed | task_paused | idle
+  detail
+```
+
+Kept separate from `stock_movement` deliberately: mixing them would put a
+`WHERE` clause on the sum that defines stock, and D5 exists to keep that sum
+unconditional. It is also the natural home for the handheld's event stream, so
+the same idempotency machinery serves both.
+
+**A `location_empty` event is worth more than its size suggests** — it is D9's
+point-of-capture principle applied to picking. Somebody stood at a bin the system
+believed had stock and found none, which is a strong signal recorded at the
+moment it was cheapest to catch.
+
+**Not every movement has a task.** Ad-hoc work is real — a pallet moved because
+it was in the way. `work_task_id` is nullable on `stock_movement`.
+
+### Correction to D10
+
+D10 listed `move_task_id` as one of four **mutually exclusive** causes on
+`stock_movement`, with a CHECK that exactly one is set. That is wrong: a pick
+movement has *both* a `fulfilment_line_id` (why the stock moved) and a task (how
+the work was organised). They are orthogonal dimensions, not alternatives.
+
+Corrected:
+
+```
+stock_movement
+  fulfilment_line_id      -- cause
+  goods_receipt_line_id   -- cause
+  discrepancy_id          -- cause
+  CHECK (num_nonnulls(fulfilment_line_id, goods_receipt_line_id,
+                      discrepancy_id) <= 1)     -- AT MOST one, not exactly one
+
+  work_task_id            -- orthogonal: nullable, always permitted
+```
+
+**At most one**, because an internal move — a replenishment, or an ad-hoc
+relocation — has no demand-side cause at all. The existing `reason` enum already
+distinguishes what kind of movement it is; the cause FK says which document
+demanded it, when one did.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -1241,3 +1369,22 @@ Raised by D16:
 40. **Can a transfer be allocated before it arrives?** Committing inbound stock to
     outbound demand is normal practice, but our allocation is against a specific
     `stock` cell (D12), and in-transit stock is in no cell at all.
+
+Raised by D17:
+
+41. **Does a count task lock its location?** D8 computes variance against ledger
+    state at `counted_at`, which works without a freeze. But a picker taking
+    stock from a cell mid-count produces a variance that is a timing artefact,
+    not a finding. Either counts tolerate it (and D8's tolerance settings absorb
+    the noise), or count tasks block picking on that cell — which is
+    coordination, and needs justifying against D17's stated line.
+42. **How does `sequence` get computed before the survey?** Travel order within a
+    batch needs the same coordinates D13's scoring needs, and they do not exist
+    yet. The interim `location.sequence` proxy would serve both, which
+    strengthens the case for adding it now rather than waiting.
+43. **What closes a `pick_batch`?** All tasks terminal is the obvious rule, but a
+    batch with one permanently failed task would never close. Probably needs an
+    explicit abandon, which is itself a decision worth recording.
+44. **Are `activity_event` kinds an enum or a table?** An enum is honest and
+    typed; a table invites per-site custom kinds, which is a small step toward
+    the rules-engine-by-accretion D13 warned about. Leaning enum.
