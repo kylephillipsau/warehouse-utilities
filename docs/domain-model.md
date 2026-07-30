@@ -966,17 +966,82 @@ routing. That version is worth having when a customer asks for it.
 missing from the original list. `lot(item_id, expiry_date)` for FEFO candidate
 selection. `package_content(lot_id)` for recall-to-carton.
 
+### D15 — Three groupings, kept separate; `consignment.fulfilment_id` is dropped
+
+**Decision.** `fulfilment.order_id` stays singular. `consignment.fulfilment_id`
+is **removed** — the relationship already exists, through packages. No new join
+tables.
+
+**The mistake worth naming.** The competitor analysis said waves push
+`fulfilment.order_id` toward many-to-many and consolidated freight pushes
+`consignment.fulfilment_id` the same way, so both should become join tables. That
+reasoning conflates **three independent groupings** that happen to overlap in
+other systems:
+
+| Grouping | Question it answers | Where it belongs |
+|---|---|---|
+| **Demand** | What did a customer ask for? | `order` |
+| **Work** | How do we organise the picking? | `pick_batch` / `move_task` (intentions) |
+| **Freight** | How does it travel? | `consignment` |
+
+Every WMS with a bloated shipment model got there by making one table serve two
+of these. Keep them apart and each stays simple — principle 1.
+
+**Waves do not touch `fulfilment.order_id`.** A wave is a grouping of *work*, not
+of demand. It belongs in the intentions layer, where `pick_batch` spans
+fulfilments freely and nothing about the order structure has to bend. The
+pressure the analysis detected is real; it just lands on a different table.
+
+So a fulfilment stays "one order's commitment to ship from one site". One order
+can already have many fulfilments — partial shipment, multi-site, backorder
+release — because the FK is many-to-one. That was never the constraint.
+
+**Consolidated freight needs no change either, because packages already carry
+it.** The path exists today:
+
+```
+consignment → consignment_package → package → fulfilment → order
+```
+
+A consignment carries **physical things**, not abstract fulfilments. Two orders
+consolidating onto one truck is two fulfilments putting their packages on one
+consignment — which is exactly what physically happens. `consignment.fulfilment_id`
+was a second, weaker representation of a relationship the package path already
+expressed correctly, and it silently forbade the consolidation it looked like it
+was modelling.
+
+Dropping it also removes a consistency hazard: with both present, nothing stopped
+`consignment.fulfilment_id` disagreeing with the fulfilments reachable through
+its packages.
+
+**Both directions stay cheap**, with `package(fulfilment_id)` and
+`consignment_package(package_id)` indexed:
+
+- *Which fulfilments are on this consignment?* → two indexed joins.
+- *Which consignment carries this fulfilment?* → the same path, reversed.
+
+**What this buys, concretely.** Consolidating two orders for one customer onto a
+single pallet run — normal practice on the Swift and Direct pallet freight that
+is our highest volume — is now expressible. Under the old shape it was not, and
+the walkthrough's one-fulfilment-one-consignment flow would have hardened into a
+constraint rather than being simply what happens most of the time.
+
+**One loose end.** D6 made `package.fulfilment_id` nullable so a package can be a
+reusable tote or an LPN in racking. A package on a consignment should have a
+fulfilment — except possibly for an inter-site transfer, which is a shipment that
+fulfils no customer order. Worth deciding whether a transfer is a kind of
+fulfilment or its own thing (question 37).
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
    and FEFO are actually in scope, since that decides whether `tracking = lot` is
    the default or the exception.
-2. **Does a fulfilment ever span multiple orders?** Modelled as not. If
-   consolidated shipping is real, `fulfilment.order_id` becomes a join table and
-   that is much easier to decide now than later.
-3. **Does a consignment ever span multiple fulfilments?** Modelled as not
-   (`consignment.fulfilment_id`), which contradicts question 2's direction — one
-   of these should probably move. Worth settling deliberately.
+2. ~~Does a fulfilment ever span multiple orders?~~ Settled by D15: no. Waves are
+   a work grouping and belong in `pick_batch`, not in the order structure.
+3. ~~Does a consignment ever span multiple fulfilments?~~ Settled by D15: yes,
+   and it always could — via `consignment_package → package → fulfilment`.
+   `consignment.fulfilment_id` is dropped.
 4. **Is `order` ours, or a mirror of NetSuite's?** During coexistence it is a
    mirror. The field list above is deliberately thin so that the mirror is cheap
    and the eventual ownership is not painful.
@@ -1075,3 +1140,19 @@ Raised by D14:
     findings. But should the system also auto-release them so the demand
     re-allocates to good stock, or wait for a human? Auto-release is convenient
     and quietly discards the evidence of what the plan had been.
+
+Raised by D15:
+
+35. **What identifies a delivery to the customer?** With two orders consolidated
+    onto one consignment, the customer receives one delivery containing two
+    orders. Tracking is per-consignment and per-package, which works — but
+    packing lists, ASNs and customer notifications need an explicit answer about
+    whether they are per-order or per-consignment.
+36. **Can packages from different customers share a consignment?** Physically yes
+    for a milk run; commercially it depends on the carrier and the rate. Nothing
+    in the schema forbids it, which is correct, but the allocator and any
+    consolidation logic need a rule.
+37. **Is an inter-site transfer a fulfilment?** It is a shipment that fulfils no
+    customer order, so `package.fulfilment_id` would be null on a consignment.
+    Either transfers become a kind of fulfilment with no order, or they get their
+    own demand-side entity. Affects D15's loose end and the inbound subsystem.
