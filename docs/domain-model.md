@@ -523,6 +523,148 @@ balances are allowed, picks against them succeed, and the finding is raised
 asynchronously. That is what lets the warehouse proceed as intended while the
 investigation happens separately.
 
+### D9 — Discrepancies are caught at the point of capture, and the operator defines signal
+
+**Decision.** Detect variance **at the moment of recording**, while the observer
+is standing at the location and can look again. A fixed global tolerance is not
+the mechanism; the operator decides what is signal.
+
+**Why point-of-capture changes the value of the data.** The ledger already knows,
+cheaply, whether a location has had any movement since it was last counted. So
+when someone records a quantity for a location that **has not moved and has had
+nothing picked from it**, and the number disagrees, that is knowable instantly —
+and the person who can resolve it is right there.
+
+Prompting then — *"this location has not moved since the last count of 50, and
+you have entered 47. Are you sure?"* — produces one of two outcomes, and both are
+better than silence:
+
+- They look again and correct it. The bad data never enters the system.
+- They confirm. **That is now a much stronger signal than an unexplained
+  variance found in a batch reconciliation days later**, because a human was
+  challenged with the contradiction, at the location, and stood by the number.
+
+So confirmation-against-challenge is recorded as its own fact, not collapsed into
+an ordinary count:
+
+```
+stock_count
+  ...
+  challenged            -- did we contradict them at capture time
+  challenge_context     -- what we told them (expected qty, last movement at)
+  confirmed             -- did they stand by it after being challenged
+```
+
+A confirmed-against-challenge variance should sort to the top of any
+investigation queue. An unchallenged one is unremarkable by comparison. This is
+the `measurement.confidence` idea applied to quantities: **how an observation was
+obtained changes what it is worth.**
+
+**Tolerance is the operator's call.** A one-unit variance on a 10,000-unit line
+may be noise to one operator and a red flag to another, and only the data can
+tell them which. So we do not hard-code thresholds — we give managers the means
+to set, tune and change them, and we surface the distribution so those choices
+are informed rather than guessed. The engineering requirement is to make signal
+*attainable*, not to decide it.
+
+**Corollary for fulfilment.** Discrepancies raised against the work actually
+happening — a short pick, a location empty during a pick — are more directly
+actionable than variances surfaced by an unrelated stocktake later. They should
+be first-class in the same way, not a lesser kind.
+
+### D10 — Movements reference their cause with typed FKs, not a polymorphic pair
+
+**Decision.** Replace `reference_type`/`reference_id` on `stock_movement` with
+nullable typed foreign keys plus a CHECK that exactly one is set:
+
+```
+stock_movement
+  fulfilment_line_id      -- a pick
+  goods_receipt_line_id   -- a receipt
+  discrepancy_id          -- an adjustment from a finding (D8)
+  move_task_id            -- an internal transfer
+  CHECK (num_nonnulls(fulfilment_line_id, goods_receipt_line_id,
+                      discrepancy_id, move_task_id) = 1)
+```
+
+**The reasoning, since this one is not obvious.**
+
+A polymorphic pair is genuinely more convenient in one respect: adding a new cause
+never needs a migration. Against that, four costs — and the last two are decisive
+*for this model specifically*, rather than being general database advice.
+
+1. **No referential integrity.** The database cannot check a polymorphic
+   reference, so links can dangle. D8 makes investigation *follow* these links,
+   which turns a dangling reference from untidy into a dead end during exactly
+   the task the system exists to support.
+2. **No query-planner statistics**, and a `WHERE reference_type = …` on every
+   join. Minor, but it compounds on the hot path.
+3. **It silently defeats principle 6.** The stated N+1 defence is Diesel's
+   `belonging_to` + `grouped_by` batch loading. **That cannot be expressed over a
+   polymorphic reference** — there is no association to declare, so loading
+   movements for a set of fulfilment lines becomes either raw SQL or a loop. The
+   convenient choice quietly removes the mechanism we said would prevent the
+   problem you explicitly do not want.
+4. **Partial indexes get awkward.** With typed columns,
+   `CREATE INDEX … WHERE fulfilment_line_id IS NOT NULL` is natural and small.
+
+**What it costs.** A migration when a genuinely new cause appears, and a wider
+CHECK. The cause set is small and closed — pick, receipt, adjustment, transfer —
+and grows roughly never. Four nullable `bigint`s is ~32 bytes a row.
+
+**The same argument applies to `measurement`.** `subject_type`/`subject_id` is
+the identical pattern over (item, package_type, package). For consistency it
+should go the same way — see question 20, since there is a real counter-argument
+that `measurement` is append-only reference data on a cold path, where the
+batch-loading concern does not bite.
+
+### D11 — Attribution separates the operator, the workers, and the accountable
+
+**Decision.** Three distinct things, never collapsed into one `actor_id`:
+
+```
+stock_movement
+  recorded_by_id     -- the authenticated session. NEVER null, NEVER editable.
+  device_id
+  work_session_id    -- nullable: the crew this work belonged to
+  authorised_by_id   -- nullable: a supervisor standing behind an override
+
+work_session          -- declared at sign-on, not inferred
+  id, site_id, kind, started_at, ended_at
+
+work_session_member   -- append-only; joins and leaves are timestamped
+  work_session_id, person_id, role, joined_at, left_at
+```
+
+**The problem this solves.** In the simple case the person doing the work and the
+person recording it are the same, and one field would do. But shared and
+collaborative work is normal — someone managing counts across containers, a team
+on a large task without a scanner each — and that is an accountability question
+before it is an engineering one. The requirement is to let those situations be
+**expressed declaratively**, without letting anyone's accountability be
+misrepresented.
+
+**How misrepresentation is prevented.** `recorded_by_id` comes from the
+authenticated session, is never client-supplied, and is never editable. That is
+the non-repudiable floor: whatever else is claimed, we always know which person,
+on which device, recorded this. Everything else is a *claim made by that
+operator* and is stored as such.
+
+Crew membership is **declared at sign-on and append-only**, with `joined_at` and
+`left_at`. So "who was on this team when that movement happened" is answerable
+from history, and nobody can be retroactively added to a past window without it
+being visible as a later row.
+
+**Why a session rather than participants per movement.** At warehouse volumes a
+participant row per movement is heavy and mostly repeated. A session is declared
+once, is cheap to join, and expresses the real-world unit — a crew working
+together for a shift or a task.
+
+**`authorised_by_id` is deliberately separate.** A supervisor correcting a
+casual's recorded work should be visible *as* a supervisor override, not by
+overwriting who did the original work. The original stands (D8: the work event is
+the invariant); the authorisation sits beside it.
+
 ## Open questions
 
 1. **Lot/batch and expiry** — modelled provisionally as `lot_id`. If FEFO is a
@@ -560,18 +702,24 @@ Raised by D5–D7:
 
 Raised by D8:
 
-17. **How does a movement reference its cause?** `reference_type`/`reference_id`
-    is a polymorphic FK — no referential integrity, no cascade, and the database
-    cannot check it. The causes are a known, small set (`fulfilment_line`,
-    `goods_receipt_line`, `discrepancy`, `move_task`), so nullable typed FKs with
-    a CHECK that exactly one is set would be honest where the polymorphic version
-    is convenient. D8 makes this sharper: investigation follows these links, and
-    they should not be able to dangle.
-18. **Does `actor_id` on a movement mean who did it, or who is accountable?**
-    Usually the same. Not for a supervisor override, a system-generated
-    adjustment, or work done on a shared login. D8 depends on this being
-    unambiguous.
-19. **What is the tolerance policy?** Not every variance deserves a human. A
-    one-unit variance on a 10,000-unit line is noise; the same variance on a
-    controlled item is not. Without a threshold, D8 produces a queue nobody
-    reads, which is the same as not having it.
+17. ~~How does a movement reference its cause?~~ Settled by D10: typed FKs.
+18. ~~Does `actor_id` mean who did it or who is accountable?~~ Settled by D11:
+    `recorded_by_id`, `work_session_id` and `authorised_by_id` are separate.
+19. ~~What is the tolerance policy?~~ Settled by D9: operator-configurable, not
+    hard-coded, with point-of-capture challenge as the primary mechanism.
+
+Raised by D9–D11:
+
+20. **Does `measurement` get typed subject FKs too (D10)?** Consistency says yes.
+    The counter-argument is that `measurement` is append-only reference data on a
+    cold path, where the batch-loading argument does not apply — so this may be
+    a case where the polymorphic pair genuinely costs nothing.
+21. **Who configures tolerances, and at what grain?** Per item, item class, site,
+    or location kind? D9 says the operator decides, but not yet at what
+    resolution they express it.
+22. **What is a `work_session` in practice?** A shift, a task, a wave, or an
+    ad-hoc grouping someone opens and closes? The schema does not care; the floor
+    process does, and it determines whether sign-on is a habit or a chore.
+23. **Can a movement have no `work_session`?** Modelled as nullable, so solo work
+    just has `recorded_by_id`. Worth confirming that is right rather than forcing
+    everyone into a session of one.
