@@ -824,11 +824,115 @@ shape: code that scores, configuration that weights. If we ever find ourselves
 adding a table where *the logic itself* is rows, that is the line, and we should
 notice we are crossing it.
 
+### D14 — Lot, expiry and rotation
+
+**Decision.** Add `lot` as a real entity, carry `lot_id` to `package_content`,
+keep it *off* `fulfilment_line`, and store shelf-life **facts** on the lot while
+shelf-life **requirements** live with the customer.
+
+```
+lot
+  id
+  item_id                   -- a lot is always of exactly one item
+  code                      -- ours
+  supplier_lot_ref          -- theirs, often different; both are needed for a recall
+  supplier_id               -- nullable until inbound exists
+  manufactured_at
+  received_at
+  expiry_date               -- the hard date
+  best_before_date          -- nullable; differs from expiry for a lot of food
+
+item
+  ...
+  tracking                  -- none | lot | serial
+  shelf_life_days           -- expected, for validating a received expiry date
+  rotation_type             -- fifo | fefo | lifo | none
+```
+
+**Two dates, not Odoo's four — because the fourth is not a lot property.**
+Odoo carries `expiration_date`, `use_date`, `removal_date` and `alert_date`. The
+analysis is right that collapsing them naively makes *"don't ship with under 90
+days remaining"* unimplementable. But storing `removal_date` on the lot is the
+wrong fix, because **minimum remaining shelf life is a customer requirement, not
+a fact about the goods.** Grocery chains commonly demand a fixed proportion of
+shelf life remaining on delivery, and different customers demand different
+amounts for the same lot.
+
+So the requirement goes where it belongs:
+
+```
+customer
+  ...
+  min_shelf_life_days       -- or
+  min_shelf_life_pct        -- proportion of total shelf life that must remain
+```
+
+and shippability becomes a computation — `expiry_date - ship_date` against the
+customer's rule — rather than a date frozen at receipt against one customer's
+assumption. This is strictly more capable than Odoo's single `removal_date`, and
+it is the same shape as D13: **the model holds facts, the policy sits beside it.**
+
+`alert_date` is derivable from `expiry_date` and a lead time, so it is not
+stored. A lot pulled early for a quality reason is not a date problem at all —
+that is `inventory_status` (D4).
+
+**`lot_id` goes on `package_content`. It does not go on `fulfilment_line`.**
+Here I disagree with the competitor analysis, which recommended both.
+
+`fulfilment_line` is **demand** — "ship 100 of item X". The lot is chosen later,
+at allocation and pick time, and a line may legitimately ship from several lots.
+Putting a lot on the demand row either over-specifies the order or forces a
+second fulfilment line per lot, conflating what was asked for with what was sent.
+`stock_allocation` already carries `lot_id` (D12) and so does `stock_movement`,
+which is where supply decisions belong.
+
+`package_content` is different: it is a **fact about a physical carton**. Without
+`lot_id` there, a package holding two lots of the same item is unrepresentable,
+and the recall question dead-ends at exactly the table built to answer "what is
+in this box".
+
+Both recall directions then work:
+
+- *Which customers received lot L?* `stock_movement WHERE lot_id = L AND
+  fulfilment_line_id IS NOT NULL` → line → fulfilment → order → customer. This
+  query only exists because D10 made the cause a typed FK.
+- *Which cartons on which pallets hold lot L?* `package_content.lot_id`, walking
+  `parent_package_id` (D6).
+
+**Rotation slots into D13 with no new machinery.** `item.rotation_type` selects
+which date the scoring function uses as its rotation key — `expiry_date` for
+FEFO, `received_at` for FIFO — and `allocation_policy` supplies the weight and
+`rotation_tolerance_days`. Nothing about rotation is hard-coded; FEFO is a
+configuration of a general allocator, not a mode.
+
+**A recall writes movements; it is not a flag.** Holding a lot means writing
+status-change movements (`from_status = available`, `to_status = hold`, per D4)
+across its cells, referencing a `lot_hold` record that carries the reason and the
+decision-maker. It is a bulk write, and recalls are rare enough that this is
+fine. The alternative — a `lot.on_hold` boolean overriding cell status — creates
+a second answer to "is this available", which is how availability logic starts
+disagreeing with itself.
+
+The retroactive part falls out: stock of a held lot that is already allocated
+produces allocations against unavailable stock, which is a **finding** under D8
+rather than a special case anyone has to code.
+
+**Serial stays split, per the analysis.** `tracking = serial` reserves the enum
+value, but **unit-level serialised inventory remains out of scope** — a serial as
+a stock-bearing entity with its own custody chain would reshape `stock` the way
+containers do. Pack-time serial capture is a different, much cheaper thing: one
+table hanging off `package_content`, with no reach into stock, allocation or
+routing. That version is worth having when a customer asks for it.
+
+**Indexes.** `stock_movement(lot_id, occurred_at)` — the primary trace query, and
+missing from the original list. `lot(item_id, expiry_date)` for FEFO candidate
+selection. `package_content(lot_id)` for recall-to-carton.
+
 ## Open questions
 
-1. **Lot/batch and expiry** — modelled provisionally as `lot_id`. If FEFO is a
-   real requirement it needs to reach into picking logic and the route optimiser,
-   which is a bigger commitment than one nullable column. Needs confirming.
+1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
+   and FEFO are actually in scope, since that decides whether `tracking = lot` is
+   the default or the exception.
 2. **Does a fulfilment ever span multiple orders?** Modelled as not. If
    consolidated shipping is real, `fulfilment.order_id` becomes a join table and
    that is much easier to decide now than later.
@@ -913,3 +1017,23 @@ Raised by D13:
     weights directly affect spoilage and labour cost. Per D8's spirit, a policy
     change is exactly the kind of thing you want to correlate against a later
     change in findings — which argues for policy edits being facts too.
+
+Raised by D14:
+
+31. **How is `tracking = lot` enforced?** A CHECK cannot reach from
+    `stock_movement.lot_id` to `item.tracking`. Options are application-level
+    validation plus a periodic assertion (consistent with how `stock` is already
+    reconciled), or a trigger. The first fits the existing pattern; the second is
+    stricter. Worth deciding once, since putaway, receiving and adjustment all
+    need the same rule.
+32. **Can a lot exist before its goods arrive?** Supplier ASNs name lots ahead of
+    delivery. If yes, `lot` is created by inbound rather than by the first
+    movement, and `received_at` becomes nullable — which is fine, but it means
+    lots can exist with no stock, and expiry reporting must not count them.
+33. **Is `min_shelf_life` per customer, or per customer *and* item?** Modelled on
+    the customer. A single retailer often has different requirements by category,
+    which would push it to a customer-item-class pair.
+34. **What happens to allocations when a lot is held?** D14 says they become
+    findings. But should the system also auto-release them so the demand
+    re-allocates to good stock, or wait for a human? Auto-release is convenient
+    and quietly discards the evidence of what the plan had been.
