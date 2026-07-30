@@ -1286,6 +1286,75 @@ own goods, so this is not needed. Recorded rather than assumed, because if 3PL
 ever becomes a product direction this is the migration nobody wants: see
 question 48.
 
+### D19 — People span tenants; reference data can be shared, observations cannot
+
+**Decision.** `person` has no `tenant_id` — membership is a join table. Reference
+data takes a **nullable** `tenant_id` where NULL means shared. Observed and
+operational data is **always** tenant-scoped, even when it describes a shared
+item.
+
+```
+person                      -- global identity
+  id, name, email, active
+
+person_tenant               -- membership; append-only, timestamped
+  person_id, tenant_id, role, joined_at, left_at
+
+person_site                 -- site access within a tenant
+  person_id, site_id, joined_at, left_at
+```
+
+**The split that is not obvious.** "Companies with multiple tenants share similar
+product" is true, but it does not follow that an *item row* can simply be shared.
+An item carries two very different kinds of information:
+
+| | Example | Scope |
+|---|---|---|
+| **Intrinsic** — what the thing *is* | code, description, GTIN, DG class, UN number, packing group | Shareable |
+| **Operational** — how *we* handle it | measurements, packing config, internal barcodes, rotation type, shelf life | Never shareable |
+
+Two tenants stocking the same product may receive it from different suppliers, in
+different case packs, on different pallet configurations. **Their measurements
+legitimately differ, and neither is wrong.** So D14's `measurement` and
+`item_packing_config` stay tenant-scoped even when the `item` they describe is
+shared — otherwise one tenant's cubing corrections silently rewrite another
+tenant's autofill, which is the D9 confidence model quietly poisoned across an
+isolation boundary.
+
+The pleasant consequence: a shared item is **thin** — identity and intrinsic
+facts only. That is exactly the part that genuinely is the same everywhere, and
+it is also the part that is expensive to key in and easy to get wrong (UN numbers
+in particular). The valuable sharing happens without any of the risky sharing.
+
+```
+item
+  tenant_id            -- NULL = shared catalogue
+  code, description
+  dangerous_goods_class, un_number, packing_group
+  tracking
+
+item_barcode
+  tenant_id            -- NULL for a GTIN; set for an internal barcode
+
+measurement            -- tenant_id NOT NULL, always
+item_packing_config    -- tenant_id NOT NULL, always
+```
+
+**RLS follows the same shape.** Reference tables get
+`tenant_id IS NULL OR tenant_id = current_tenant()`; everything else gets
+`tenant_id = current_tenant()`. Two policy shapes, applied by category, not
+per-table judgement.
+
+**Accountability still works across the boundary.** `recorded_by_id` (D11) points
+at a global `person`, but the facts it appears on are tenant-scoped. So someone
+working in two tenants has one identity and two separate histories, and a manager
+in one cannot see their activity in the other. That falls out of RLS rather than
+needing a rule.
+
+**Membership is append-only**, matching `work_session_member` (D11): who had
+access to what, when, is answerable historically. Access that was removed leaves
+evidence.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -1455,10 +1524,23 @@ Raised by D18:
     which D18 says is impossible, and would need an inter-tenant transfer concept
     (effectively an internal sale). This is the one thing that could invalidate
     the site-not-tenant reading.
-50. **Is reference data per-tenant or shared?** Items, package types and carriers
-    are plausibly shared in a single-company deployment and must be isolated in a
-    product. Getting this wrong means either duplicating a catalogue per site or
-    leaking one between tenants.
-51. **Does `person` span tenants?** A support engineer or a group-level manager
-    might legitimately need access to several. If so, membership is a join table
-    rather than a column, and that is cheaper to decide now.
+50. ~~Is reference data per-tenant or shared?~~ Settled by D19: shareable when
+    intrinsic, tenant-scoped when observed or operational.
+51. ~~Does `person` span tenants?~~ Settled by D19: yes, via `person_tenant`.
+
+Raised by D19:
+
+52. **Who governs the shared catalogue?** If tenant A edits a shared item's
+    description, tenant B sees it. Either shared reference data is
+    operator-managed and read-only to tenants, or a tenant needing a change forks
+    it into a tenant-scoped copy. The fork is more flexible and quietly
+    reintroduces the duplication that sharing was meant to avoid.
+53. **Are carriers and `package_type` shared too?** A carrier looks intrinsic —
+    Swift is Swift — but `carrier_profile` (despatch times, caller values) and
+    account credentials emphatically are not. Probably the same intrinsic /
+    operational split applied again, which would be a good sign the split is real
+    rather than fitted to items.
+54. **Can a `work_session` span tenants?** A person may belong to two, but one
+    shift crossing tenants would make `work_session_id` ambiguous on movements.
+    Simplest answer is no — a session belongs to one site, therefore one tenant —
+    but it should be stated rather than assumed.
