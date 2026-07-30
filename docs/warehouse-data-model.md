@@ -151,6 +151,53 @@ It varies by carrier and materially affects the optimisation target.]**
 This also connects to the direct carrier integrations in D1 — once we hold
 accurate dimensions, we can validate what we are being charged.
 
+## Dimensional data is a living asset, not a data-entry project
+
+The SKU range only grows with scale. So any plan that reads "measure everything,
+then build on it" is wrong by construction: it finishes behind, and it makes the
+whole system's usefulness hostage to a backlog.
+
+The design principle instead: **dimensional data is captured and corrected by
+the workflows that already touch the product.** Four feeds, none of which is a
+project:
+
+**1. Capture at receipt.** A SKU's first physical contact with us is goods
+receipt and put-away. Measuring and weighing once at the dock, as part of that
+existing flow, means new SKUs arrive with dimensions already attached. This is
+the primary feed and the only one that needs new operator behaviour — and it
+scales with intake rather than with catalogue size.
+
+**2. Learn from fulfilment corrections.** Autofill computes a height and weight;
+the operator confirms or corrects. **A correction is a measurement.** If a SKU's
+computed weight is consistently under by the same amount, the record is wrong and
+the system should say so rather than being quietly corrected forever. This turns
+every one of the hundreds of daily orders into a data point.
+
+**3. Reconcile against carrier actuals.** Carriers re-weigh and re-cube
+consignments, and bill discrepancies back. Those figures are a free, independent
+measurement of what we shipped. Comparing predicted against carrier-measured
+does two useful things at once: it finds bad records, and it quantifies what
+inaccurate data is currently costing in discrepancy charges. Worth pulling as
+soon as we hold predictions to compare against.
+
+**4. Bootstrap from what exists.** NetSuite's prepack presets already encode
+packing configurations. Supplier data covers some dimensions. Neither will be
+complete or fully trustworthy, which is fine — they are a starting position, not
+a source of truth.
+
+**Confidence is a first-class field.** Every dimensional record carries how it
+was obtained (measured / supplier / derived / estimated), when, and how well it
+has held up against feeds 2 and 3. Autofill uses it to decide whether to present
+a value as confirmed or as a suggestion needing a look. This is what lets the
+system be useful on day one with partial data instead of waiting for
+completeness — an estimate flagged as an estimate is useful; an estimate
+presented as fact is worse than nothing.
+
+The consequence for sequencing: **step 2 below is not "populate the item
+catalogue" but "build the capture and confidence model".** Coverage then grows
+on its own, fastest for the SKUs that ship most, which are the ones where
+accuracy pays.
+
 ## Static reference vs live state
 
 Worth separating early, because they have completely different needs:
@@ -168,12 +215,9 @@ is an admin UI over slow-moving tables, not a real-time system.
 
 ## Risks
 
-**1. Data acquisition, not schema, is the project.** The schema here is a week's
-work. Getting accurate dimensions and packing configurations for the full SKU
-range is the actual effort, and it is physical: someone measures things. Options
-are to pull what NetSuite already holds, take supplier data, or measure — most
-likely all three, with confidence tracked per record so autofill can say "we are
-guessing" rather than silently being wrong.
+**1. Data acquisition is continuous, not a project.** See "Dimensional data is a
+living asset" below — this was originally written as a one-off measurement
+exercise gated on SKU count, which is the wrong shape.
 
 **2. Two sources of truth for inventory.** NetSuite is the ERP and the WMS
 Android scanner already syncs picking into it. If we stand up our own inventory
@@ -197,8 +241,9 @@ Reasoning, not a commitment:
 
 1. **Package presets** — small catalogue, immediately replaces a NetSuite lookup,
    validates the preset model against real use.
-2. **Items with dimensions and packing configuration** — unlocks WMS autofill,
-   which removes the only genuinely manual step in fulfilment.
+2. **The item model plus the capture and confidence machinery** — not a populated
+   catalogue. Unlocks WMS autofill for whatever is covered, degrading honestly to
+   a suggestion where it is not, and starts accumulating coverage from day one.
 3. **Fulfilment processing** on top of both, per the process doc.
 4. **Packing calculator** — same data as step 2, now used to decide rather than
    describe.
@@ -215,7 +260,11 @@ WMS proper.
 2. What does NetSuite already hold for item dimensions and packing
    configurations, and how complete and trustworthy is it?
 3. What is the actual pallet footprint in use, and are there several?
-4. How many SKUs are we talking about? Sets the scale of the measurement job.
+4. Is there a weigh/cube station at goods receipt today, or would capture at
+   receipt need equipment as well as a process change?
 5. Does the WMS Android scanner have an API or export we could read, or is
-   NetSuite the only way to see picking data?
+   NetSuite the only way to see picking data? (It is also the obvious device for
+   capture at receipt.)
 6. Cubic conversion factors for Swift and Direct.
+7. Do carrier invoices expose re-weigh/re-cube figures per consignment, and in
+   what form? Determines how quickly feed 3 can be switched on.
