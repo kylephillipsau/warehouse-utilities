@@ -16,10 +16,22 @@ compromise at a time.
 concepts that combine, not a concept per business noun. If a new feature needs a
 new table, that is a signal worth examining — most should be new *queries*.
 
-**2. Facts are append-only; state is a projection.** Two things actually happen
-in a warehouse: stock moves, and things get measured. Both are observations, both
-are recorded forever, and current state is derived from them. This gives audit,
-reconciliation and history for free rather than as three later projects.
+**2. Facts, intentions and findings are three different kinds of thing.**
+*(Restated 2026-07-30 — see D12. The original claimed only two things happen in a
+warehouse: stock moves and things get measured. That was wrong, and the
+competitor analysis was right to break it.)*
+
+- **Facts** are what happened. Append-only, immutable, never edited. They project
+  to current state. `stock_movement`, `measurement`, `stock_count`,
+  `activity_event`.
+- **Intentions** are what we plan. Mutable, cancellable, and reconciled against
+  facts as reality arrives. `stock_allocation`, `move_task`, `purchase_order`.
+- **Findings** are where the two disagree. `discrepancy` (D8).
+
+The rules differ by category, and keeping them apart is what stops an intention
+being quietly recorded as a fact. Facts give us audit, reconciliation and history
+for free. Intentions are allowed to be wrong — that is what makes them plans
+rather than lies. Findings are the most valuable output of the system.
 
 **3. No JSON for anything we query.** JSONB is permitted for exactly one thing:
 opaque third-party payloads retained for audit (a raw MachShip response, a
@@ -665,6 +677,79 @@ casual's recorded work should be visible *as* a supervisor override, not by
 overwriting who did the original work. The original stands (D8: the work event is
 the invariant); the authorisation sits beside it.
 
+### D12 — Allocation is an intention, and it is advisory
+
+**Decision.** Add `stock_allocation` as an **intention** (principle 2), not a
+lock. It expresses "we mean these units for this demand". It does **not** gate
+picking, and it is allowed to be wrong.
+
+**Why advisory, when every competitor enforces.** D5 traded coordination for
+convergence, and allocation-as-enforcement is coordination. More importantly, an
+enforcing allocation contradicts the founding observation: *the scanner is more
+authoritative than the database*. If the plan says pick lot A from bin 12 and the
+picker finds lot B, an enforcing system rejects the scan and stops the floor. Ours
+accepts it — the pick is a fact — and raises a finding that the plan was wrong.
+
+This is not a weaker allocation. It is allocation that cannot lie about physical
+reality, and it makes every plan-versus-actual divergence *visible* rather than
+suppressed at the point where the truth was available.
+
+**How this resolves the principle 2 tension.** The analysis said allocation
+cannot be a movement (nothing moved) and cannot live on `stock` without voiding
+the rebuildable invariant. Both true — because allocation is not a fact at all.
+It is a different category. `stock` therefore becomes a projection of **two
+sources**, each column named for its own:
+
+```
+stock
+  item_id, location_id, lot_id, status_id     -- the key (status per D4)
+  quantity            -- projection of stock_movement   (facts)
+  allocated_quantity  -- projection of stock_allocation  (intentions)
+  available_quantity  -- generated: quantity - allocated_quantity
+```
+
+The invariant is **widened, not broken**: each column is rebuildable from its own
+source, and the existing reconciliation job asserts both. Availability stays a
+single indexed read rather than an aggregate on the hot path.
+
+```
+stock_allocation
+  id
+  fulfilment_line_id                          -- the demand
+  item_id, location_id, lot_id, status_id     -- the supply cell
+  quantity
+  state          -- allocated | picking | fulfilled | short | released
+  allocated_at, released_at
+  allocated_by_id                             -- person, or null for the allocator
+  move_task_id                                -- nullable, the work carrying it out
+```
+
+**Backorder is not an entity — it emerges.** Demand that could not be allocated
+is `fulfilment_line.quantity - SUM(allocated)`, greater than zero. No backorder
+table, no backorder status to keep in sync, and partial backorder falls out for
+free. This is principle 1 doing its job.
+
+**No soft/hard split.** Most WMS have order-level soft allocation and then
+cell-level hard allocation. We allocate to a cell directly. Available-to-promise
+still works — it sums `available_quantity`, which does not care how specific the
+allocations were — and skipping the split removes a state, a transition, and a
+class of stuck-in-between bugs. The usual argument for soft allocation is that
+committing to a cell early is risky if stock moves; under D5 a moved cell simply
+means the plan was wrong, which we already handle.
+
+**FEFO lives here.** Rotation is an allocation decision, which is why it had
+nowhere to go before. `item.rotation_type` (fifo | fefo | lifo | none) selects
+which cells the allocator prefers. This is the real answer to open question 5.
+
+**Short picks are already handled.** D8 did the work: the allocation goes to
+`short`, a `discrepancy` of kind `short_pick` is raised with the picker, device
+and location attached, and the unfulfilled quantity returns to the pool — where
+it is either re-allocated or shows up as backorder by the same arithmetic. No
+special machinery.
+
+**Over-allocation is allowed**, consistently with D5. `available_quantity` may go
+negative. That is a finding, not a rejected write.
+
 ## Open questions
 
 1. **Lot/batch and expiry** — modelled provisionally as `lot_id`. If FEFO is a
@@ -723,3 +808,22 @@ Raised by D9–D11:
 23. **Can a movement have no `work_session`?** Modelled as nullable, so solo work
     just has `recorded_by_id`. Worth confirming that is right rather than forcing
     everyone into a session of one.
+
+Raised by D12:
+
+24. **FEFO versus travel — which wins?** The allocator has two objectives: take
+    the oldest stock, and minimise walking. They conflict routinely. This is a
+    business policy, not an engineering choice, and it needs an explicit answer
+    (strict rotation, rotation within a date tolerance, or travel-weighted).
+    Strict FEFO with scattered lots can cost far more in picking than it saves in
+    spoilage.
+25. **When are allocations released?** Explicit release on cancellation is
+    obvious. Less obvious: does an allocation expire? One held for a week is a
+    lie that suppresses availability for everything else. A sweep needs a rule.
+26. **Who allocates, and when?** At order import, on a schedule, at wave
+    creation, or on demand when picking starts? Allocating late reduces churn;
+    allocating early makes ATP meaningful. Probably late plus an explicit
+    "commit this order" action, but it is a real choice.
+27. **Does allocation cross sites?** Modelled as not — a cell belongs to one
+    location and therefore one site. Multi-site fulfilment of a single order
+    would change this, and relates to question 2.
