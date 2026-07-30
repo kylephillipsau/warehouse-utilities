@@ -340,6 +340,118 @@ Principle 7. Named so they are decisions rather than oversights:
 - **Serial-number tracking**, unless it turns out to be required. Lot/batch is
   modelled because food likely needs it; serials are a much heavier commitment.
 
+## Decisions
+
+Taken 2026-07-30 in response to [competitor-analysis.md](./competitor-analysis.md).
+
+### D4 — Inventory status joins the `stock` key
+
+Accepted as flagged. `inventory_status(id, name, is_available_for_allocation)`;
+`status_id` in the `stock` key; `from_status_id`/`to_status_id` on
+`stock_movement` mirroring the location pair. Everything defaults to `available`.
+
+Also fixes a live correctness bug: `reason = 'return'` currently restocks
+straight into pickable inventory with no inspection state.
+
+### D5 — The ledger is a CRDT. There is no offline mode.
+
+**Decision.** Real-time synchronisation, with the movement ledger given
+**operation-CRDT semantics** so that a dropout degrades gracefully instead of
+triggering a separate offline code path. We do **not** build an offline-first
+handheld app with a queue-and-replay design.
+
+**The reframe.** The scanner is observing physical reality; the database is a
+model of it. **When they disagree the scanner is usually right.** A scan is
+therefore not a request to be validated against system state — it is a
+*delta asserted at the place and time the physical event happened*.
+
+**`stock_movement` with `client_event_id` already is the right CRDT.** An
+append-only set of uniquely-identified signed deltas, projecting to a counter,
+is an op-based PN-Counter: commutative, associative, idempotent. Order of arrival
+does not matter and replay is a no-op. So gap 6 is not an idempotency bandaid
+bolted onto a ledger — **it is the column that makes the ledger convergent.**
+That reframing is why it is non-negotiable rather than nice-to-have.
+
+Columns: `client_event_id` (unique), `device_id`, `recorded_at` (server clock,
+distinct from `occurred_at` device clock).
+
+**Yjs/`yrs` is the wrong tool for stock, and we should not force it.** Nosdesk
+uses Yjs for collaborative documents, which is what Yjs is excellent at. But
+`Y.Map` fields are last-writer-wins registers: if two pickers concurrently pick
+the last unit, LWW **silently discards one pick**. That is the exact failure the
+ledger exists to prevent. Document CRDTs are for shared mutable state; a warehouse
+ledger is accumulated immutable facts. Different primitive, deliberately.
+
+What *is* reusable from Nosdesk is the layer underneath: the WebSocket sync
+transport, presence, reconnection and backpressure handling in `backend/src/sync`
+and `handlers/collaboration.rs`. That is transport, and it is CRDT-type-agnostic.
+
+**Convergence is not invariant preservation.** This is the honest limitation and
+it must be designed for, not discovered. A CRDT guarantees all replicas agree; it
+cannot guarantee `stock.quantity >= 0`, because enforcing that requires
+coordination and coordination is what we are giving up. Two pickers taking the
+last unit will converge on **-1**.
+
+**We allow it.** Negative stock is not corruption — it is a *discovered
+discrepancy*, and it is information: someone physically picked stock the model did
+not know about, so the model was wrong. Negative balances surface as exceptions
+for resolution rather than being rejected at write time. Rejecting the write would
+mean discarding a true observation about the physical world to protect a database
+invariant, which is precisely backwards.
+
+**The unsolved part: counts are assertions, not deltas.** A stocktake says "there
+are 47 here" — an absolute claim about state, a different CRDT class (a register,
+not a counter). Naively mixing assertions with deltas is where this design breaks:
+compute `delta = observed - system_at_observation_time` and any movement landing
+in between silently corrupts the adjustment.
+
+Approach, to be validated: record the count as an **observation with its
+`observed_at`**, and derive the adjusting delta against the ledger state *at that
+timestamp* rather than at write time. Late-arriving movements then reconcile
+correctly because the ledger is ordered by `occurred_at`, not arrival. This needs
+proving before cycle counting is built — see open question 13.
+
+### D6 — `package` becomes a container
+
+Accepted as flagged. `fulfilment_id` nullable; add `location_id`,
+`parent_package_id`, `is_mobile`, `sscc`; `package_type` gains `reusable`,
+`max_payload_g`, `max_cube_mm3`. Nesting constrained to depth 2 (pallet → carton)
+so `package_content` queries stay non-recursive.
+
+One primitive serves shipped parcels, pallets of cartons, picking totes, putaway
+LPNs and put-wall cells — principle 1 arguing for building it once, properly.
+
+### D7 — Warehouse tasks are not Nosdesk tickets, but exceptions are
+
+**Decision.** `move_task` is its own table in this system. We do **not** model
+warehouse work as Nosdesk tickets. But **Nosdesk is the escalation target**: when
+a task fails — short pick, damage found, location empty, count mismatch — that
+becomes a ticket, with the task as its origin.
+
+**Why not conflate.** They differ on every axis that matters:
+
+| | Warehouse task | Nosdesk ticket |
+|---|---|---|
+| Origin | Machine-generated | Human-authored |
+| Volume | Thousands/day | Tens/day |
+| Lifetime | Seconds to minutes | Hours to days |
+| Completion | Defined condition | Negotiated |
+| Shape | (item, from, to, qty) | Conversation |
+
+Forcing one table to be both means a ticket schema carrying warehouse columns and
+a warehouse hot path carrying comment threads. That is the accreted-complexity
+failure this project exists to avoid.
+
+**Why the seam is genuinely valuable.** Exceptions are exactly the warehouse
+events that *do* need conversation, assignment, history and SLA — which is what
+Nosdesk already is. A short pick that becomes a ticket, routed to the right
+person, with the pick task linked, is better than anything in the competitor set.
+None of them have a real exception-management surface; they have status codes.
+
+**What we share.** The platform, not the entity: Rust/Actix/Diesel/Postgres, auth,
+the sync transport (D5), and the plugin SDK. Whether that means a shared workspace
+or a service boundary is open — see question 14.
+
 ## Open questions
 
 1. **Lot/batch and expiry** — modelled provisionally as `lot_id`. If FEFO is a
@@ -355,4 +467,22 @@ Principle 7. Named so they are decisions rather than oversights:
    mirror. The field list above is deliberately thin so that the mirror is cheap
    and the eventual ownership is not painful.
 5. **Item base units.** `base_unit` assumes each item has one sensible base.
-   Anything sold by weight or length breaks that assumption.
+   Anything sold by weight or length breaks that assumption. *(Likely answered by
+   the `entered_quantity`/`entered_unit` change — see the competitor analysis.)*
+
+Raised by D5–D7:
+
+13. **Does the count-as-assertion approach hold?** Deriving the adjusting delta
+    against ledger state at `observed_at` rather than at write time is unproven.
+    It needs a worked example with a late-arriving movement before cycle counting
+    is built on it (D5).
+14. **Nosdesk: shared workspace, or service boundary?** Sharing the platform
+    could mean one Cargo workspace with shared crates, or two services with an
+    API between them. Affects deployment, migrations and blast radius (D7).
+15. **What is the reconciliation UI for negative stock?** D5 accepts negative
+    balances as discovered discrepancies rather than errors. That is only
+    defensible if there is a real surface where they get resolved — otherwise it
+    is just tolerated corruption with a nicer name.
+16. **Does anything here genuinely need a document CRDT?** D5 rules Yjs out for
+    stock. If nothing else needs it, the Nosdesk reuse is transport only, which
+    simplifies question 14 considerably.
