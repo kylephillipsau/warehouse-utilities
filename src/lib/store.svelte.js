@@ -14,7 +14,7 @@ export const store = $state({
     divisions: DEFAULT_DIVISIONS,
     margin: 0,   // page edge margin (mm) around the tiled labels
     gap: 0,      // gap (mm) between stacked label segments
-    orientation: 'portrait',  // 'portrait' | 'landscape' — landscape rotates the design (see size.resolveDesign)
+    orientation: 'portrait',  // 'portrait' | 'landscape' — rotates the ARTWORK inside each label; media/page size never changes (see size.resolveContent)
     showBorders: true,        // draw the label border / cut guide (screen + ZPL)
     output: { method: 'zebra', dpi: 203, saveFormat: 'json', copies: 1 },  // configurable print/output (see output.js)
 });

@@ -210,16 +210,15 @@ export async function buildZpl(store, dpi = 203) {
     const m = clampSpacing(store.margin);
     const g = clampSpacing(store.gap);
 
-    // The bitmap is always the native media (so ^PW/^LL match the loaded stock);
-    // in landscape the design layout is rotated 90° onto it, so it prints exact.
+    // The bitmap is always the native media, so ^PW/^LL match the loaded stock in
+    // BOTH orientations. Labels always stack down the feed; landscape rotates only
+    // each label's artwork inside its own box (see the group loop below).
     const pageW = Math.round(media.width * dpmm);
     const pageH = Math.round(media.height * dpmm);
-    const designW = landscape ? pageH : pageW;             // layout coords
-    const designH = landscape ? pageW : pageH;
     const marginD = Math.round(m * dpmm);
     const gapD = Math.round(g * dpmm);
-    const labelW = designW - 2 * marginD;
-    const labelH = Math.round((designH - 2 * marginD - (n - 1) * gapD) / n);
+    const labelW = pageW - 2 * marginD;
+    const labelH = Math.round((pageH - 2 * marginD - (n - 1) * gapD) / n);
 
     // only print non-empty labels (classic text/image OR template fields)
     const labels = store.labels.filter((l) => !labelIsEmpty(l));
@@ -245,23 +244,34 @@ export async function buildZpl(store, dpi = 203) {
         const ctx = canvas.getContext('2d');
         ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, pageW, pageH);
-        // Landscape: rotate the drawing frame 90° CW so the design (designW ×
-        // designH) maps exactly onto the native media canvas (pageW × pageH).
-        ctx.save();
-        if (landscape) { ctx.translate(pageW, 0); ctx.rotate(Math.PI / 2); }
-        const native = [];   // native barcode descriptors (design coords)
+        const native = [];   // native barcode descriptors (content coords + frame)
         group.forEach((l, idx) => {
             const x = marginD;
             const y = marginD + idx * (labelH + gapD);
-            drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image), showBorder, native);
+            // Landscape: rotate the frame 90° CW about the label's own box, so the
+            // artwork is laid out on a (labelH × labelW) content box and lands
+            // exactly on the label. Content point (cx,cy) -> canvas (ox−cy, oy+cx).
+            const frame = landscape ? { ox: x + labelW, oy: y } : { ox: 0, oy: 0 };
+            const from = native.length;
+            ctx.save();
+            if (landscape) {
+                ctx.translate(frame.ox, frame.oy);
+                ctx.rotate(Math.PI / 2);
+                drawLabel(ctx, l, 0, 0, labelH, labelW, imgCache.get(l.image), showBorder, native);
+            } else {
+                drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image), showBorder, native);
+            }
+            ctx.restore();
+            // Native barcodes are emitted outside the bitmap, so each carries the
+            // frame its content coords must be mapped through.
+            for (let k = from; k < native.length; k++) { native[k].frame = frame; }
         });
-        ctx.restore();
         const { hex, bytesPerRow, total } = canvasToGFA(canvas);
         // The GFA holds text/images/HRI; native barcode fields are appended after
         // it (they overprint the white bar area) with the landscape transform.
         let body = `^FO0,0^GFA,${total},${total},${bytesPerRow},${hex}^FS\n`;
         for (const d of native) {
-            body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { landscape, pageW, ecLevel: d.ecLevel }) + '\n';
+            body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { landscape, ox: d.frame.ox, oy: d.frame.oy, ecLevel: d.ecLevel }) + '\n';
         }
         const pq = copies > 1 ? `^PQ${copies},0,0,N\n` : '';
         zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n${body}${pq}^XZ\n`;

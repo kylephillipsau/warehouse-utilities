@@ -3,7 +3,7 @@
     import { store, hydrateStore } from '../lib/store.svelte.js';
     import { autoConnectPrinter } from '../lib/printer.svelte.js';
     import { loadAll, persistState } from '../lib/persistence.js';
-    import { applySize, resolveDesign } from '../lib/size.js';
+    import { applySize, resolvePage } from '../lib/size.js';
     import Toolbar from './Toolbar.svelte';
     import LabelList from './LabelList.svelte';
     import UndoToast from './UndoToast.svelte';
@@ -35,18 +35,18 @@
         document.documentElement.style.setProperty('--label-border-w', store.showBorders ? '2px' : '0');
     });
 
-    // Make the printed page EXACTLY the physical media (native width × height, no
+    // Make the printed page EXACTLY the physical media (native width × length, no
     // orientation swap) so a label printer maps it 1:1 with no scale-to-fit and
-    // no browser auto-rotation — kept in a raw <style> element.
+    // no browser auto-rotation — kept in a raw <style> element. Orientation is a
+    // rotation of the artwork inside each label, never a page size, so it does
+    // not appear here: a page wider than tall would be auto-rotated by Chrome.
     let pageStyleEl;
     $effect(() => {
         if (!pageStyleEl) {
             pageStyleEl = document.createElement('style');
             document.head.appendChild(pageStyleEl);
         }
-        // Browser print gets the DESIGN size (so landscape prints landscape on a
-        // sheet printer). ZPL ignores @page and rotates onto the native media.
-        const p = resolveDesign(store.page, store.orientation);
+        const p = resolvePage(store.page);
         pageStyleEl.textContent = `@page { size: ${p.width}mm ${p.height}mm; margin: 0; }`;
     });
 

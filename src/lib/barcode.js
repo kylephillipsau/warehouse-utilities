@@ -178,18 +178,20 @@ function fdTail(body) {
 }
 
 // Emit ONE native ZPL barcode field. `data` is the resolved value; `layout` is
-// from barcodeLayout (design coords). In landscape the whole design frame is
-// rotated 90° CW on the printer, so we map the symbol's design top-left through
-// P(dx,dy)=(pageW−dy,dx): a 1D field rotates via orientation R (its ^FO anchors
-// the top-right); QR scans at any angle so we leave it upright (orientation N) at
-// the mapped top-left. Printer dots throughout.
-export function barcodeZplField(enc, data, layout, symbology, { landscape = false, pageW = 0, ecLevel } = {}) {
+// from barcodeLayout (content coords, relative to the label's own content box).
+// In landscape each label's content box is rotated 90° CW into its label, so we
+// map the symbol's content top-left through P(cx,cy)=(ox−cy, oy+cx), where
+// (ox,oy) is that label's frame from zpl.buildZpl. A 1D field rotates via
+// orientation R (its ^FO anchors the top-right); QR scans at any angle so we
+// leave it upright (orientation N) at the mapped top-left. Printer dots
+// throughout. In portrait the frame is (0,0) and the coords pass straight through.
+export function barcodeZplField(enc, data, layout, symbology, { landscape = false, ox = 0, oy = 0, ecLevel } = {}) {
     const L = layout;
     if (enc.kind === '2d') {
         // 2D symbols scan at any angle, so we keep them upright (orient N) at the
         // landscape-mapped top-left rather than rotating the field.
-        const fox = landscape ? (pageW - L.sy - L.fh) : L.sx;
-        const foy = landscape ? L.sx : L.sy;
+        const fox = landscape ? (ox - L.sy - L.fh) : L.sx;
+        const foy = landscape ? (oy + L.sx) : L.sy;
         if (symbology === 'datamatrix') {
             // ^BX: module dot size = mag, quality 200 (ECC 200); columns/rows
             // auto (printer sizes the symbol from the data).
@@ -199,8 +201,8 @@ export function barcodeZplField(enc, data, layout, symbology, { landscape = fals
         const ec = ['L', 'M', 'Q', 'H'].includes(ecLevel) ? ecLevel : 'M';
         return `^FO${fox},${foy}^BQN,2,${L.mag},${ec}${fdTail(ec + 'A,' + data)}`;
     }
-    const fox = landscape ? (pageW - L.sy) : L.sx;
-    const foy = landscape ? L.sx : L.sy;
+    const fox = landscape ? (ox - L.sy) : L.sx;
+    const foy = landscape ? (oy + L.sx) : L.sy;
     const o = landscape ? 'R' : 'N';
     if (symbology === 'ean13' || symbology === 'upca') {
         // The printer computes and appends the check digit, so feed the data

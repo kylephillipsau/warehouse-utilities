@@ -1,10 +1,17 @@
 // The printable "page" is the physical label/media the printer feeds. Following
-// the thermal-printer convention (and CSS @page), every size is Width × Height
-// where WIDTH is across the print head and HEIGHT is the feed/length direction.
-// A label printer's head width is fixed, so media has ONE native orientation —
-// we never swap width/height (swapping is what made 4×3 stock print "too tall",
-// and Chrome auto-rotates any page wider than tall). The @page is emitted at the
-// exact media size; the media divides into N equal labels down its height.
+// the thermal-printer convention, every size is Width × Length where WIDTH is
+// across the print head (fixed by the hardware) and LENGTH is the feed
+// direction. A label printer's head width is fixed, so media has ONE native
+// orientation — we never swap width/height (swapping is what made 4×3 stock
+// print "too tall", and Chrome auto-rotates any page wider than tall). The
+// @page is emitted at the exact media size; the media divides into N equal
+// labels down its length, so cut guides always run across the feed.
+//
+// ORIENTATION is therefore never a page dimension — it is a property of the
+// ARTWORK, exactly as ^FW/field rotation is in ZPL. Portrait lays the content
+// out on the label as-is; landscape lays it out on a box with the label's width
+// and height swapped and rotates it 90° into place. The media, the @page and
+// ^PW/^LL are identical either way, which is what keeps output exact.
 // All dimensions resolve to millimetres; custom sizes may be entered in inches.
 
 const MM_PER_IN = 25.4;
@@ -27,9 +34,17 @@ export const DEFAULT_PAGE = { preset: 'zebra-4x6', width: '', height: '', unit: 
 export const DEFAULT_DIVISIONS = 5;
 export const MAX_DIVISIONS = 50;
 
-// Max printable width across a 4-inch/203-dpi thermal head (~832 dots). Wider
-// designs get clipped by the printer, so the UI can warn past this.
+// Max printable width across a 4-inch/203-dpi thermal head (~832 dots). Media
+// wider than this is clipped by the printer — there is no way to fit it, since
+// the head width is fixed hardware. Only meaningful for thermal output (an A4
+// sheet is legitimately 210 mm), so callers gate the warning on the method.
 export const MAX_PRINT_WIDTH_MM = 104;
+
+// True when the media is too wide for a 4-inch thermal head. Length is NOT
+// checked: the feed direction is unbounded in the same way ^LL is.
+export function exceedsPrintWidth(page) {
+    return resolvePage(page).width > MAX_PRINT_WIDTH_MM;
+}
 
 const round = (n) => Math.round(n * 1000) / 1000;
 
@@ -65,9 +80,9 @@ export function clampSpacing(v) {
     return round(Math.min(MAX_SPACING, n));
 }
 
-// The physical media size in mm — width (across head) × height (feed). The
-// printer's stock is fixed in this native orientation; ZPL uses it as the true
-// media so output is 1:1 regardless of the design orientation below.
+// The physical media size in mm — width (across head) × length (feed). The
+// printer's stock is fixed in this native orientation, and this is the ONE size
+// used for @page and for ^PW/^LL, so output is 1:1 in either orientation.
 export function resolvePage(page) {
     if (page.preset === 'custom') {
         return { width: clampMm(page.width, page.unit, 101.6), height: clampMm(page.height, page.unit, 152.4) };
@@ -76,15 +91,15 @@ export function resolvePage(page) {
     return { width: p.width, height: p.height };
 }
 
-// The DESIGN surface — what the user lays out on and what the screen + @page
-// show. Landscape swaps width/height so you design wide; at print time the
-// content is rotated back onto the native media (see zpl.buildZpl), which keeps
-// the physical output exact and stops Chrome from auto-rotating the page.
-export function resolveDesign(page, orientation = 'portrait') {
-    const p = resolvePage(page);
-    return orientation === 'landscape'
-        ? { width: p.height, height: p.width }
-        : { width: p.width, height: p.height };
+// The CONTENT box inside one label — the surface the artwork is actually laid
+// out on. Portrait is the label itself; landscape swaps the label's width and
+// height, and the result is rotated 90° back into the label (by CSS on screen,
+// by a canvas transform in zpl.buildZpl). The LABEL and the MEDIA never change
+// shape, so this is a pure artwork rotation — the ZPL analogue of ^FW, not a
+// different page size.
+export function resolveContent(page, divisions, margin = 0, gap = 0, orientation = 'portrait') {
+    const l = resolveLabel(page, divisions, margin, gap);
+    return orientation === 'landscape' ? { width: l.height, height: l.width } : l;
 }
 
 // Build a store.page spec from a device media query (browserPrint.queryMedia).
@@ -103,10 +118,12 @@ export function pageFromMedia(media, currentPage) {
     };
 }
 
-// A label fills the design width inside the page margin; its height is the
-// remaining height (after margins + the gaps between labels) divided by N.
-export function resolveLabel(page, divisions, margin = 0, gap = 0, orientation = 'portrait') {
-    const p = resolveDesign(page, orientation);
+// A label fills the media width inside the page margin; its length is the
+// remaining length (after margins + the gaps between labels) divided by N.
+// Orientation is deliberately not a parameter: labels always stack down the
+// FEED, so the cut guides between them are always cross-feed cuts.
+export function resolveLabel(page, divisions, margin = 0, gap = 0) {
+    const p = resolvePage(page);
     const n = clampDivisions(divisions);
     const m = clampSpacing(margin);
     const g = clampSpacing(gap);
@@ -122,19 +139,24 @@ export function tiling(divisions) {
 }
 
 // Push resolved dimensions into root CSS custom properties. The screen shows the
-// DESIGN surface (portrait or landscape-swapped), so a landscape design renders
-// as a wide page here; print rotates it back onto the native media.
+// NATIVE media at its true size in both orientations — only --content-w/h differ,
+// and the stylesheet rotates that box into the label (see .label-rotate).
+// `data-orientation` on <html> is what the CSS keys the rotation off.
 export function applySize(page, divisions, margin = 0, gap = 0, orientation = 'portrait') {
-    const p = resolveDesign(page, orientation);
-    const label = resolveLabel(page, divisions, margin, gap, orientation);
+    const p = resolvePage(page);
+    const label = resolveLabel(page, divisions, margin, gap);
+    const content = resolveContent(page, divisions, margin, gap, orientation);
     const n = clampDivisions(divisions);
     const root = document.documentElement.style;
     root.setProperty('--page-w', p.width + 'mm');
     root.setProperty('--page-h', p.height + 'mm');
     root.setProperty('--label-w', label.width + 'mm');
     root.setProperty('--label-h', label.height + 'mm');
+    root.setProperty('--content-w', content.width + 'mm');
+    root.setProperty('--content-h', content.height + 'mm');
     root.setProperty('--tile-cols', '1');
     root.setProperty('--tile-rows', String(n));
     root.setProperty('--page-margin', clampSpacing(margin) + 'mm');
     root.setProperty('--gap', clampSpacing(gap) + 'mm');
+    document.documentElement.dataset.orientation = orientation === 'landscape' ? 'landscape' : 'portrait';
 }

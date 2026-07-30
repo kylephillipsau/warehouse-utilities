@@ -108,19 +108,24 @@
     ondrop={onDrop}
     onfocusout={onFocusOut}
 >
-    {#if isTemplate}
-        <FieldsLabel {label} editable />
-    {:else}
-        <LabelCanvas
-            editable
-            image={label.image}
-            bind:text={label.text}
-            adjust={label.adjust}
-            showCaption={captionOpen}
-            onImageClick={() => openAdjust(label.id)}
-            onAdjust={(partial) => patchAdjust(label.id, partial)}
-        />
-    {/if}
+    <!-- The artwork lives in its own layer so orientation can rotate it inside the
+         label without touching the label's (or the media's) shape — see
+         .label-rotate in app.css and resolveContent in size.js. -->
+    <div class="label-rotate">
+        {#if isTemplate}
+            <FieldsLabel {label} editable />
+        {:else}
+            <LabelCanvas
+                editable
+                image={label.image}
+                bind:text={label.text}
+                adjust={label.adjust}
+                showCaption={captionOpen}
+                onImageClick={() => openAdjust(label.id)}
+                onAdjust={(partial) => patchAdjust(label.id, partial)}
+            />
+        {/if}
+    </div>
 
     <div class="label-tools">
         <button type="button" class="label-tool tool-drag" title="Drag to reorder" aria-label="Drag to reorder" use:draggable={{ id: label.id }} onkeydown={onDragKey}>&#10495;</button>

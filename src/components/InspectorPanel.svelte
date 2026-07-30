@@ -2,7 +2,8 @@
     import { store } from '../lib/store.svelte.js';
     import {
         MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing, clampCopies,
-        MAX_DIVISIONS, MAX_SPACING, MAX_COPIES, resolveDesign, resolveLabel, pageFromMedia,
+        MAX_DIVISIONS, MAX_SPACING, MAX_COPIES, MAX_PRINT_WIDTH_MM,
+        resolvePage, resolveLabel, pageFromMedia, exceedsPrintWidth,
     } from '../lib/size.js';
     import { ui, closeInspector } from '../lib/ui.svelte.js';
     import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
@@ -42,20 +43,43 @@
     function onGap(event) { store.gap = clampSpacing(event.target.value); }
 
     // Live readout of the computed geometry (always mm — the canonical unit).
-    const pageDims = $derived(resolveDesign(store.page, store.orientation));
-    const labelDims = $derived(resolveLabel(store.page, store.divisions, store.margin, store.gap, store.orientation));
+    // Both are native media dimensions: orientation rotates the artwork inside a
+    // label, so it changes neither the page nor the label shape.
+    const pageDims = $derived(resolvePage(store.page));
+    const labelDims = $derived(resolveLabel(store.page, store.divisions, store.margin, store.gap));
 
-    // Seed sensible custom defaults when switching to a custom size.
+    // A cleared number input binds to null, not '' — so test for "blank", and do
+    // it in two places for two different reasons.
+    const isBlank = (v) => v === '' || v == null || isNaN(parseFloat(v));
+    const seedFor = (key) => (store.page.unit === 'in' ? (key === 'width' ? 4 : 6) : (key === 'width' ? 101.6 : 152.4));
+
+    // 1. Seed sensible defaults on ENTERING custom mode. Guarded so it runs once
+    //    per switch and never re-fills a field mid-edit while you retype it.
+    let seeded = false;
     $effect(() => {
-        if (isCustom(store.page)) {
-            if (store.page.width === '') { store.page.width = store.page.unit === 'in' ? 4 : 101.6; }
-            if (store.page.height === '') { store.page.height = store.page.unit === 'in' ? 6 : 152.4; }
-        }
+        if (!isCustom(store.page)) { seeded = false; return; }
+        if (seeded) { return; }
+        seeded = true;
+        if (isBlank(store.page.width)) { store.page.width = seedFor('width'); }
+        if (isBlank(store.page.height)) { store.page.height = seedFor('height'); }
     });
+
+    // 2. Restore a real value when a field is LEFT blank. Otherwise the box looked
+    //    empty while resolvePage silently fell through to its 4x6 fallback, so the
+    //    printed size was not the size on screen.
+    function onSizeBlur(key) {
+        if (isBlank(store.page[key])) { store.page[key] = seedFor(key); }
+    }
 
     // ----- Output -----
     const method = $derived(getMethod(store.output.method));
     const methodOptions = OUTPUT_METHODS.map((m) => ({ value: m.id, label: m.label }));
+
+    // The printhead width is fixed hardware: media wider than it gets clipped, and
+    // no orientation can fix that (rotating the artwork does not widen the head).
+    // Only warn for thermal output — an A4 sheet is legitimately 210 mm wide.
+    const thermal = $derived(method.controls === 'zebra' || method.controls === 'zebraDpi');
+    const tooWide = $derived(thermal && exceedsPrintWidth(store.page));
     const dpiOptions = ZPL_DPIS.map((d) => ({ value: d.value, label: d.label }));
     const saveFormatOptions = [
         { value: 'json', label: 'Label file (.json)' },
@@ -140,11 +164,21 @@
             <Select id="page-size" ariaLabel="Page / media size" class="w-full" options={pageOptions} bind:value={store.page.preset} />
             {#if isCustom(store.page)}
                 <div class="mt-1 flex flex-wrap items-center gap-[0.4rem] text-[0.85rem]">
-                    <input type="number" id="page-width" class="w-[9ch]" min="5" max="1000" step="0.1" aria-label="Page width" bind:value={store.page.width} />
+                    <input type="number" id="page-width" class="w-[9ch]" min="5" max="1000" step="0.1" aria-label="Media width, across the print head" bind:value={store.page.width} onblur={() => onSizeBlur('width')} />
                     <span aria-hidden="true">&times;</span>
-                    <input type="number" id="page-height" class="w-[9ch]" min="5" max="1000" step="0.1" aria-label="Page height" bind:value={store.page.height} />
+                    <input type="number" id="page-height" class="w-[9ch]" min="5" max="1000" step="0.1" aria-label="Label length, in the feed direction" bind:value={store.page.height} onblur={() => onSizeBlur('height')} />
                     <Select ariaLabel="Page size unit" class="w-[4.75rem]" options={unitOptions} bind:value={store.page.unit} />
                 </div>
+                <!-- Which number is which is the single most common way to get label
+                     media wrong, so name the two axes rather than "width × height". -->
+                <p class="m-0 mt-1 text-[0.75rem] leading-[1.45] text-ink/60">
+                    <strong>Width</strong> across the print head &times; <strong>length</strong> in the feed direction — the way label stock is sized. A 100 &times; 150 mm roll feeds its 100 mm edge first.
+                </p>
+            {/if}
+            {#if tooWide}
+                <p class="m-0 mt-1 text-[0.78rem] leading-[1.45] font-bold text-orange" role="alert">
+                    ⚠ {pageDims.width} mm is wider than a 4-inch printhead ({MAX_PRINT_WIDTH_MM} mm) — the printer will clip the right edge. Check the width is across the head, not the feed.
+                </p>
             {/if}
         </div>
 
@@ -154,6 +188,9 @@
                 <button type="button" id="orient-portrait" class="btn flex-1" class:btn-active={store.orientation === 'portrait'} aria-pressed={store.orientation === 'portrait'} onclick={() => (store.orientation = 'portrait')}>Portrait</button>
                 <button type="button" id="orient-landscape" class="btn flex-1" class:btn-active={store.orientation === 'landscape'} aria-pressed={store.orientation === 'landscape'} onclick={() => (store.orientation = 'landscape')}>Landscape</button>
             </div>
+            <p class="m-0 mt-1 text-[0.75rem] leading-[1.45] text-ink/60">
+                Rotates the artwork within each label. The media size never changes — the printhead is fixed, so the stock has only one way to feed.
+            </p>
         </div>
 
         <div class="flex flex-wrap gap-x-5 gap-y-3">
@@ -186,8 +223,14 @@
         </label>
 
         <div id="size-readout" class="rounded-md border-2 border-ink bg-highlight px-3 py-2 text-[0.8rem] leading-[1.5] tabular-nums" role="status" aria-live="polite">
-            Each label = <strong>{labelDims.width} × {labelDims.height} mm</strong><br />
-            Page {pageDims.width} × {pageDims.height} mm · <strong>{store.divisions} up</strong>
+            Each label = <strong>{labelDims.width} × {labelDims.height} mm</strong>
+            {#if store.orientation === 'landscape'}<span class="text-ink/70">, artwork rotated</span>{/if}<br />
+            Media {pageDims.width} × {pageDims.height} mm · <strong>{store.divisions} up</strong>
+            <!-- Divisions, not orientation, is what makes a label wider than it is
+                 tall; say so where the number that caused it is visible. -->
+            {#if store.divisions > 1}
+                <br /><span class="text-ink/70">Split down the feed into {store.divisions} — set <strong>Divide into 1</strong> for one full-size label.</span>
+            {/if}
         </div>
     </section>
 

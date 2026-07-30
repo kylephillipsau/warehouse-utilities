@@ -240,6 +240,29 @@ li {
     border: var(--label-border-w, 2px) solid;
     margin: 0;
     position: relative;
+    /* Artwork never bleeds past the cut guide (matters once it is rotated). */
+    overflow: hidden;
+}
+
+/* The artwork layer. Portrait: it simply fills the label. Landscape: the content
+   is laid out on a box with the label's width and height swapped (--content-w/h,
+   from resolveContent) and rotated 90° CW about the label centre. The label and
+   the media keep their native shape either way — this is an artwork rotation,
+   the CSS analogue of ZPL's ^FW, not a page-size change. */
+.label-rotate {
+    position: absolute;
+    inset: 0;
+}
+
+:root[data-orientation='landscape'] .label-rotate {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    /* --content-w/h are border-box label dimensions (swapped); the artwork sits
+       inside the cut-guide border, so subtract it on both edges as inset:0 does. */
+    width: calc(var(--content-w, 22mm) - 2 * var(--label-border-w, 2px));
+    height: calc(var(--content-h, 100mm) - 2 * var(--label-border-w, 2px));
+    transform: translate(-50%, -50%) rotate(90deg);
 }
 
 /* Keep the box at its true print size while editing so live text fitting

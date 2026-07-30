@@ -5,6 +5,7 @@
     // surface. Modeled on AdjustDialog.
     import { ui, closeFields } from '../lib/ui.svelte.js';
     import { store, addField, removeField, moveField, patchField } from '../lib/store.svelte.js';
+    import { resolveContent } from '../lib/size.js';
     import { SIZE_OPTIONS, ALIGN_OPTIONS } from '../lib/fields.js';
     import { SYMBOLOGY_OPTIONS, QR_EC_OPTIONS, SYMBOLOGY_META, validate } from '../lib/barcode.js';
     import { TOKEN_PRESETS, resolveTemplate } from '../lib/tokens.js';
@@ -34,15 +35,17 @@
         return () => document.removeEventListener('pointerdown', onDoc, true);
     });
 
-    // Size the preview to the label's real aspect when the dialog opens.
+    // Size the preview to the artwork's real aspect when the dialog opens. That is
+    // the CONTENT box, not the label: in landscape the artwork is laid out on the
+    // label's swapped dimensions before being rotated into place, so previewing
+    // the label's own aspect would edit the fields at the wrong shape.
     $effect(() => {
         const id = ui.fieldsTargetId;
         if (id === lastId) { return; }
         lastId = id;
         if (id == null) { return; }
-        const el = document.querySelector(`[data-id="${id}"]`);
-        const rect = el ? el.getBoundingClientRect() : null;
-        const aspect = rect && rect.width && rect.height ? rect.width / rect.height : 100 / 40;
+        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.orientation);
+        const aspect = c.width && c.height ? c.width / c.height : 100 / 40;
         const avail = (window.innerWidth || 360) - 32 - 40;
         const maxW = Math.min(360, avail), maxH = 220;
         let w = maxW, h = w / aspect;

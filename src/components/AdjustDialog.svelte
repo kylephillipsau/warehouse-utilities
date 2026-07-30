@@ -3,6 +3,7 @@
     import { store, setAdjust, setImage, removeImage } from '../lib/store.svelte.js';
     import { DEFAULT_ADJUST, normalizeAdjust, adjustStyle, zoomAtPoint, FIT_OPTIONS, ALIGN_CELLS, ZOOM_MIN, ZOOM_MAX } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
+    import { resolveContent } from '../lib/size.js';
     import { dialogSync } from '../actions/dialogSync.js';
     import LabelCanvas from './LabelCanvas.svelte';
 
@@ -26,9 +27,11 @@
         const l = store.labels.find((x) => x.id === id);
         if (!l) { return; }
         working = normalizeAdjust(l.adjust);
-        const el = document.querySelector(`[data-id="${id}"]`);
-        const rect = el ? el.getBoundingClientRect() : null;
-        const aspect = rect && rect.width && rect.height ? rect.width / rect.height : 100 / 22;
+        // The CONTENT box's aspect, not the label's: in landscape the image is
+        // fitted to the label's swapped dimensions and then rotated into place, so
+        // cropping against the label's own aspect would place it wrongly.
+        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.orientation);
+        const aspect = c.width && c.height ? c.width / c.height : 100 / 22;
         // Never exceed the dialog's inner width on small screens: dialog is
         // min(40rem, 100vw - 2rem) with 1.25rem padding each side.
         const avail = (window.innerWidth || 360) - 32 - 40;
