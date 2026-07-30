@@ -99,10 +99,29 @@ which is the one thing worth doing now.
 React Native is a perfectly good answer and has the better off-the-shelf Honeywell
 story. It loses here on fit rather than merit: it would mean a second UI codebase
 and a JS-native stack sitting beside an otherwise Rust-and-web one, to solve a
-problem Tauri already solves in this codebase. Revisit if Tauri's Android webview
-turns out to be a problem on these specific devices — **[unverified: Honeywell
-handhelds can run older Android and older WebView; worth checking the OS version
-before committing, since it constrains options 1 and 4 equally.]**
+problem Tauri already solves in this codebase.
+
+**Resolved 2026-07-30 (see D3): the fleet runs modern Android, and legacy
+hardware is explicitly not supported.** The WebView-age concern that was the main
+argument for React Native does not apply, so options 1 and 4 stand.
+
+### One caveat on "same React app"
+
+Moving from option 1 to option 4 is *mostly* a packaging change, but not entirely:
+**Chrome for Android and Android System WebView do not expose the same hardware
+APIs.** Most relevantly, **Web Bluetooth works in Chrome but not in WebView**
+(Chromium issue 1100993 — blocked on an embedder-controlled chooser API), so it
+is unavailable to Tauri on Android.
+
+This matters for exactly one thing today: a **Bluetooth scale** at goods receipt
+would work from a browser PWA with no native code, but under Tauri needs a
+Rust/Kotlin plugin. That is the same effort class as the Honeywell scanner
+plugin, so it is a cost rather than a blocker — and it disappears entirely if
+receiving uses a fixed networked weigh station, which is likely the more robust
+answer anyway.
+
+The general point stands: **anything touching hardware is a per-option question,
+not a free carry-over.** Scanner and scale are the two that matter here.
 
 ## The two things that decide this
 
@@ -154,6 +173,31 @@ Rough shape, assuming option 1 or 4:
 One React codebase, responsive, with handheld-specific views — rather than a
 separate mobile product.
 
+## D3 — Modern Android baseline, no legacy hardware support (2026-07-30)
+
+**Decision.** Target a modern Android and WebView baseline. Some devices in the
+field run older Android; **we are not going to encourage the use of legacy
+hardware** by designing around it.
+
+**Why.** Building to the oldest device in the fleet means every feature is capped
+by hardware that should be retired anyway, and the cap is permanent — old devices
+do not get newer as the system grows. Skating to where the puck is going costs a
+hardware refresh; skating to where it is costs every feature, forever.
+
+**What it settles.**
+
+- The WebView-age risk that was the main argument for React Native is gone.
+  Options 1 and 4 (keyboard wedge, then Tauri) are both viable; RN is not needed.
+- Modern WebView means we can use current CSS and JS without a compatibility
+  layer, which matters for a UI whose entire premise is being faster than
+  NetSuite's.
+- It does **not** grant Web Bluetooth under Tauri — that is a WebView-versus-
+  Chrome capability gap, not an Android-version one. See the caveat above.
+
+**What it costs.** A device refresh, eventually, for whatever is too old. Worth
+naming as a real cost rather than assuming attrition covers it, and worth knowing
+which devices those are before a rollout rather than during one.
+
 ## Open questions
 
 1. What is the current picking app, exactly? Determines what displacing it costs
@@ -163,7 +207,11 @@ separate mobile product.
 3. Which workflows genuinely need offline, and how bad is wifi coverage in the
    racking? This is worth measuring rather than assuming, in both directions.
 4. What scale hardware exists, and does it have a Bluetooth or network interface?
+   A **network** interface sidesteps the WebView Bluetooth gap entirely and is
+   probably the better answer for a stationary receiving bench regardless.
 5. Is there an MDM in place? If so, option 4 is cheaper than it looks; if not,
    option 1 is worth more than it looks.
-6. What Android and WebView version do the handhelds run? Constrains options 1
-   and 4 equally, and is the main thing that would push us to React Native.
+6. ~~What Android and WebView version do the handhelds run?~~ Settled by D3:
+   modern baseline, legacy hardware not supported.
+7. Which devices in the fleet fall below the modern baseline, and what is the
+   refresh cost? Better known before a rollout than during one (D3).
