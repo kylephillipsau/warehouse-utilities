@@ -399,17 +399,15 @@ for resolution rather than being rejected at write time. Rejecting the write wou
 mean discarding a true observation about the physical world to protect a database
 invariant, which is precisely backwards.
 
-**The unsolved part: counts are assertions, not deltas.** A stocktake says "there
-are 47 here" — an absolute claim about state, a different CRDT class (a register,
-not a counter). Naively mixing assertions with deltas is where this design breaks:
-compute `delta = observed - system_at_observation_time` and any movement landing
-in between silently corrupts the adjustment.
+**Counts are assertions, not deltas** — a stocktake says "there are 47 here",
+which is an absolute claim about state, a different CRDT class (a register, not a
+counter). Mixing assertions with deltas naively is where this design breaks: any
+movement landing mid-count silently corrupts a computed adjustment.
 
-Approach, to be validated: record the count as an **observation with its
-`observed_at`**, and derive the adjusting delta against the ledger state *at that
-timestamp* rather than at write time. Late-arriving movements then reconcile
-correctly because the ledger is ordered by `occurred_at`, not arrival. This needs
-proving before cycle counting is built — see open question 13.
+**Resolved by D8**: a count does not adjust anything. It is recorded as an
+observation, and the variance against the ledger becomes a *finding* that a human
+resolves. The adjusting movement is then written by the resolution, carrying a
+reason. See D8.
 
 ### D6 — `package` becomes a container
 
@@ -452,6 +450,79 @@ None of them have a real exception-management surface; they have status codes.
 the sync transport (D5), and the plugin SDK. Whether that means a shared workspace
 or a service boundary is open — see question 14.
 
+### D8 — Discrepancy is a designed output, not a failure mode
+
+**Decision.** The system does not try to prevent physical reality from diverging
+from the model. It **surfaces divergence with enough context to investigate**,
+while the warehouse keeps running. Discrepancy is a first-class entity with an
+owner, evidence and a resolution — not an error state, not a silent correction.
+
+**The reasoning.** D5 framed negative stock as an unfortunate consequence of
+choosing convergence over coordination. That framing was too defensive. In a
+system that records **what was actually done**, a discrepancy is not a flaw in
+the design — it is the most valuable thing the system produces. A mismatch means
+something physical happened that nobody recorded: stock damaged and not reported,
+stock never delivered, a mis-pick, a mislabelled pallet. Every competitor treats
+these as adjustments to be reconciled away. Making them *findings to be
+investigated* is a capability none of them offer.
+
+**Three consequences.**
+
+**1. The work event is the invariant.** What stock was taken, from where, by
+whom, for which order is created by the person doing the work and is **never
+rewritten**. Reconciliation does not edit or delete movements. A correction is a
+*new* movement carrying `reverses_movement_id` and a reason. If a balance goes
+negative we do not undo the pick — the pick happened; the model was wrong.
+
+**2. Accountability is a schema requirement, not a nice-to-have.** Investigation
+needs to reach a person, so every movement and every scan carries an individual
+`actor_id`, plus `device_id`, `occurred_at` (device) and `recorded_at` (server).
+
+This makes the current practice a data-quality defect to fix rather than mirror:
+NetSuite's `Picked By: Casual Melbourne` is a **crew**, not a person, and against
+a crew-level actor every accountability and labour column is decorative. Owning
+the pick path (per floor-devices.md) is what makes individual attribution
+possible, so it is a prerequisite for this decision paying off.
+
+**3. Counts create findings, not adjustments.** A stocktake asserts "this much
+exists here". Comparing it to the ledger produces a **variance**, and a variance
+has candidate explanations worth surfacing — damaged and unreported, not yet
+delivered, mis-picked, put away in the wrong bin. Auto-adjusting throws that
+information away at the exact moment it is most recoverable.
+
+```
+stock_count            -- the assertion, preserved forever
+  id, location_id, item_id, lot_id, status_id
+  counted_quantity, counted_at, actor_id, device_id, blind
+
+discrepancy            -- the finding
+  id, kind              -- negative_balance | count_variance | short_pick
+                        -- | damage | unexpected_stock | receipt_variance
+  item_id, location_id, lot_id, status_id
+  expected_quantity, observed_quantity, variance
+  detected_at, detected_by_id
+  source_type, source_id            -- the count, movement or task that raised it
+  state                 -- open | investigating | resolved | accepted
+  resolution_reason_id, resolved_at, resolved_by_id
+  resolving_movement_id             -- the adjustment, if one was needed
+  ticket_id                         -- escalation, per D7
+```
+
+The ledger stays pure: the count never writes to it. The resolution does, with an
+explanation attached and a link back to the finding that caused it.
+
+**Why this is the payoff of the whole design.** The append-only spine means a
+finding can be investigated against the exact state at the moment it was
+observed. `measurement` already does this for dimensions; `discrepancy` does it
+for quantities. And D7 gives it somewhere to go — a discrepancy escalates to a
+Nosdesk ticket with the originating movement, actor, device and timestamp
+attached, so a warehouse manager can follow it up without stopping the floor.
+
+**Non-blocking by default.** A discrepancy never halts operations. Negative
+balances are allowed, picks against them succeed, and the finding is raised
+asynchronously. That is what lets the warehouse proceed as intended while the
+investigation happens separately.
+
 ## Open questions
 
 1. **Lot/batch and expiry** — modelled provisionally as `lot_id`. If FEFO is a
@@ -472,10 +543,10 @@ or a service boundary is open — see question 14.
 
 Raised by D5–D7:
 
-13. **Does the count-as-assertion approach hold?** Deriving the adjusting delta
-    against ledger state at `observed_at` rather than at write time is unproven.
-    It needs a worked example with a late-arriving movement before cycle counting
-    is built on it (D5).
+13. ~~Does the count-as-assertion approach hold?~~ Resolved by D8: counts do not
+    adjust, they create findings. Remaining detail — a variance is computed
+    against ledger state *at `counted_at`*, so a movement arriving late but
+    dated before the count should re-open a resolved finding. Needs a rule.
 14. **Nosdesk: shared workspace, or service boundary?** Sharing the platform
     could mean one Cargo workspace with shared crates, or two services with an
     API between them. Affects deployment, migrations and blast radius (D7).
@@ -486,3 +557,21 @@ Raised by D5–D7:
 16. **Does anything here genuinely need a document CRDT?** D5 rules Yjs out for
     stock. If nothing else needs it, the Nosdesk reuse is transport only, which
     simplifies question 14 considerably.
+
+Raised by D8:
+
+17. **How does a movement reference its cause?** `reference_type`/`reference_id`
+    is a polymorphic FK — no referential integrity, no cascade, and the database
+    cannot check it. The causes are a known, small set (`fulfilment_line`,
+    `goods_receipt_line`, `discrepancy`, `move_task`), so nullable typed FKs with
+    a CHECK that exactly one is set would be honest where the polymorphic version
+    is convenient. D8 makes this sharper: investigation follows these links, and
+    they should not be able to dangle.
+18. **Does `actor_id` on a movement mean who did it, or who is accountable?**
+    Usually the same. Not for a supervisor override, a system-generated
+    adjustment, or work done on a shared login. D8 depends on this being
+    unambiguous.
+19. **What is the tolerance policy?** Not every variance deserves a human. A
+    one-unit variance on a 10,000-unit line is noise; the same variance on a
+    controlled item is not. Without a threshold, D8 produces a queue nobody
+    reads, which is the same as not having it.
