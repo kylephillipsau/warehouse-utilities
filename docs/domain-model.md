@@ -750,6 +750,80 @@ special machinery.
 **Over-allocation is allowed**, consistently with D5. `available_quantity` may go
 negative. That is a finding, not a rejected write.
 
+### D13 — The model holds the inputs; the policy belongs to a manager
+
+**Decision.** The allocator does **not** encode a rotation policy. The model holds
+the facts that make *any* policy computable, the allocator is a scoring function
+over those facts, and the weights and thresholds are **configuration a manager
+owns**. We ship defaults, not hard-coded behaviour.
+
+**Why this way round.** A flexible model with a policy applied on top can always
+become strict. A strict model built around one policy cannot be made flexible
+without surgery. Baking FEFO into the allocator would mean travel-awareness could
+not be added later without reopening the core of the system — so the asymmetry
+decides it, independently of which policy is currently right.
+
+And the policy genuinely varies by product and by situation. Grabbing the next
+best thing from another bay at ground level is often correct. The same
+substitution is a different decision when the alternative needs a forklift to
+bring stock down — which may mean waiting for equipment, a second person, or a
+safety consideration. **The software should not make that trade on a manager's
+behalf.** It should make the trade *visible* and let them set the rule.
+
+This is D9's principle applied to planning rather than to findings: the
+engineering job is to make the information attainable, not to decide what it
+means.
+
+**Access cost becomes first-class.** Distance alone does not capture the
+difference the example describes, because the cost is a step change in *method*,
+not a longer walk:
+
+```
+equipment_class
+  id, name                       -- ground, ladder, order_picker, reach_truck, forklift
+  relative_cost                  -- a ground pick is 1; a forklift retrieval is not
+  requires_second_person
+  is_shared_resource             -- can this become a queue
+
+location
+  ...
+  reachable_by                   -- FK to equipment_class (already present)
+```
+
+Height is already derivable from `location.level` and `z_mm`, so the continuous
+part of the cost is computable. `equipment_class` supplies the discontinuity.
+
+**The policy surface, kept small.** Scalar configuration, scoped — the same shape
+as `carrier_profile`, deliberately not a rules engine:
+
+```
+allocation_policy
+  id, scope_kind                 -- site | item_class | item
+  scope_id
+  weight_rotation, weight_travel, weight_access
+  rotation_tolerance_days        -- "oldest first, but treat within N days as equal"
+  max_equipment_class_id         -- beyond this, prefer an alternative or ask
+```
+
+`rotation_tolerance_days` is the field that does most of the work: it turns strict
+FEFO into "take the oldest, unless a much cheaper pick is within tolerance", which
+is what most operations actually mean.
+
+**Ranked candidates, not a single answer.** Scoring produces an ordered list, so
+the allocator commits the top candidate but the `move_task` can carry alternates.
+A picker who finds the bin empty gets the next option immediately instead of a
+dead stop — and, per D8, the empty bin is still recorded as a finding. This
+capability falls out of ranking rather than being built.
+
+**What keeps this from becoming a rules engine.** The competitor analysis warned
+that declining an engine while accepting five small rule tables is how you get an
+engine you never designed. The discipline here: **the scoring function is code —
+one implementation, testable, versioned.** Only its weights are data. When
+putaway, replenishment and disposition need the same treatment, they get the same
+shape: code that scores, configuration that weights. If we ever find ourselves
+adding a table where *the logic itself* is rows, that is the line, and we should
+notice we are crossing it.
+
 ## Open questions
 
 1. **Lot/batch and expiry** — modelled provisionally as `lot_id`. If FEFO is a
@@ -811,12 +885,8 @@ Raised by D9–D11:
 
 Raised by D12:
 
-24. **FEFO versus travel — which wins?** The allocator has two objectives: take
-    the oldest stock, and minimise walking. They conflict routinely. This is a
-    business policy, not an engineering choice, and it needs an explicit answer
-    (strict rotation, rotation within a date tolerance, or travel-weighted).
-    Strict FEFO with scattered lots can cost far more in picking than it saves in
-    spoilage.
+24. ~~FEFO versus travel — which wins?~~ Settled by D13: neither, in code. The
+    model holds expiry, travel and access cost; a manager sets the weights.
 25. **When are allocations released?** Explicit release on cancellation is
     obvious. Less obvious: does an allocation expire? One held for a week is a
     lie that suppresses availability for everything else. A sweep needs a rule.
@@ -827,3 +897,19 @@ Raised by D12:
 27. **Does allocation cross sites?** Modelled as not — a cell belongs to one
     location and therefore one site. Multi-site fulfilment of a single order
     would change this, and relates to question 2.
+
+Raised by D13:
+
+28. **Does the allocator run before the location survey exists?** Travel and
+    access scoring need coordinates and `reachable_by`, and neither is populated
+    yet. Until then the weights collapse to rotation only — which is fine, but it
+    means the survey gates allocation *quality*, not just the map. A nullable
+    `location.sequence` as an interim travel proxy would soften this.
+29. **Is `relative_cost` on `equipment_class` enough**, or does access cost need
+    to account for equipment *availability* (one forklift, three people wanting
+    it)? Queueing is a scheduling problem, and modelling it properly is a much
+    larger commitment than a scalar.
+30. **Who may change an `allocation_policy`, and is the change audited?** These
+    weights directly affect spoilage and labour cost. Per D8's spirit, a policy
+    change is exactly the kind of thing you want to correlate against a later
+    change in findings — which argues for policy edits being facts too.
