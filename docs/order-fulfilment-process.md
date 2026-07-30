@@ -207,10 +207,20 @@ else changes something. Taking that on would also put the warehouse's ability to
 ship behind our own integration work, on top of an already large NetSuite
 replacement.
 
-**Revisit when.** We have volume-by-carrier data showing concentration, and a
-conversation with Direct and Swift about direct integration. Going direct for the
-top one or two carriers while leaving the long tail on MachShip is a reasonable
-end state — as an optimisation against measured volume, not as a foundation.
+**Revisit when.** We have made contact with Direct and Swift about direct
+integration. **Confirmed 2026-07-30: Swift and Direct are our highest volume
+routes, and are the two to go direct with.** The end state is therefore direct
+integrations for Swift and Direct Transport, with MachShip retained for the long
+tail — not MachShip everywhere, and not MachShip nowhere.
+
+**Consequence for the design.** Because two named carriers are a stated
+requirement rather than a hypothetical, the freight layer gets a **carrier
+abstraction from day one**: quote, create consignment, produce labels, manifest.
+MachShip is the first implementation (an aggregator covering many carriers behind
+one interface); Swift and Direct become sibling implementations later. This is
+worth building up front only because the second and third implementations are
+committed — retrofitting the seam afterwards is the expensive path. Keep the
+interface thin until there is a second implementation to check it against.
 
 **Note on rates.** MachShip appears to return the rate **calculated by the
 freight company** rather than computing from an uploaded rate card
@@ -219,13 +229,51 @@ value is orchestration rather than pricing, and a future direct integration woul
 not inherit rate-card maintenance, which lowers the cost of going direct. Worth
 confirming before costing that work.
 
+### D2 — NetSuite's data model does not constrain ours (2026-07-30)
+
+**Decision.** Build the domain model that is correct for the work, not the one
+that maps cleanly onto NetSuite. Where NetSuite cannot represent something we
+need, that is a NetSuite shortcoming to be improved upon, not a constraint to
+inherit. NetSuite write-back is a **degradable adapter** used during coexistence,
+not the shape of the system.
+
+**Why.** The goal is to surpass NetSuite, not to reimplement it. The walkthrough
+already surfaced one place where NetSuite is simply wrong for the job — the box
+count (see observation 2) — and a model built to mirror NetSuite would inherit
+that defect permanently.
+
+**What this changes.**
+
+- The **WMS Transaction reachability question is no longer a blocking design
+  fork.** It drops from "decides the schema" to "decides how much fidelity we can
+  write back to NetSuite during coexistence". We still want the answer, but the
+  Rust models do not wait on it.
+- **Packages become first-class**: a fulfilment has N packages, each with a type,
+  dimensions, weight and barcode. The count is a real field, not something typed
+  into MachShip at the last moment.
+- **Package presets become a real, versioned catalogue** rather than a list
+  buried in a NetSuite tab.
+- **Route rules become data**: Swift's 07:00 next-business-day despatch, its
+  `Foodcare` caller value, Direct's two-labels-on-a-pallet rule. Config, not
+  operator memory.
+- **The fulfilment lifecycle becomes one explicit state machine** instead of
+  statuses spread across several records and views.
+
+**Quality bar.** The stated problem with NetSuite is not that it lacks features,
+it is "many interface views, loading states, and extremely poor application UX
+design". So the bar is concrete and testable: **one screen, no page loads,
+scanner/keyboard driven, sub-second interactions.** If the replacement needs as
+many views as NetSuite, it has failed even if it is functionally complete.
+
 ## Open questions
 
-Blocking, in rough priority order:
+In rough priority order. Note that per **D2** none of these block the domain
+model any more — they shape the NetSuite adapter and the migration path.
 
-1. **Is the WMS Transaction record reachable via REST or SuiteQL?** If not, this
-   whole stage needs a RESTlet, or the replacement has to own package data
-   outright. This determines the shape of everything else.
+1. **Is the WMS Transaction record reachable via REST or SuiteQL?** Decides how
+   much package fidelity we can write back to NetSuite while it is still the ERP.
+   If not reachable, the options are a RESTlet or accepting that NetSuite holds a
+   lower-fidelity copy than we do. No longer a schema fork (see D2).
 2. **Is `IF263824` the Item Fulfilment internal ID?** If yes, we have a join key
    and stage 6's manual matching disappears.
 3. **Can manifesting be triggered via the MachShip API?** Not in the public docs.
