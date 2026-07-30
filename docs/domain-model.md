@@ -1032,6 +1032,77 @@ fulfilment — except possibly for an inter-site transfer, which is a shipment t
 fulfils no customer order. Worth deciding whether a transfer is a kind of
 fulfilment or its own thing (question 37).
 
+### D16 — A transfer is its own demand, sharing the fulfilment machinery
+
+**Decision.** Inter-site transfers get their own demand entity. `fulfilment`
+references demand through **typed FKs** (D10), not through a widened `order`.
+
+```
+transfer_order
+  id, from_site_id, to_site_id
+  requested_at, required_by, status
+
+transfer_order_line
+  id, transfer_order_id, item_id, quantity
+
+fulfilment
+  order_id             -- customer demand
+  transfer_order_id    -- internal demand
+  CHECK (num_nonnulls(order_id, transfer_order_id) = 1)
+```
+
+`fulfilment_line` gains the same treatment against `order_line` /
+`transfer_order_line`.
+
+**Why not just add a `kind` and a nullable customer to `order`.** That is the
+generic document model already on the deliberately-not-building list. It would
+mean `customer_id` nullable on every customer order, shelf-life rules (D14)
+reaching for a customer that may not exist, and every query carrying a `WHERE
+kind = …` that the database cannot help with. Two honest tables beat one
+apologetic one.
+
+**Why this is the same insight as D15.** A transfer differs from a customer order
+on the **demand** side only — no customer, a destination site, no revenue. The
+**work** and **freight** sides are identical: it is allocated, picked, packed,
+consigned, labelled and tracked exactly like anything else. So the demand entity
+forks and everything downstream is shared. Splitting `fulfilment` too would
+duplicate the entire outbound machinery for no gain.
+
+**D15's loose end dissolves.** A transfer's packages *do* have a fulfilment — one
+pointing at a `transfer_order` instead of an `order`. So the rule holds without
+exception: **every package on a consignment has a fulfilment.** No nullable
+special case, and D6's nullable `package.fulfilment_id` goes back to meaning only
+what it was introduced for — totes and LPNs that are not shipping anywhere.
+
+**The inbound side is symmetric.** A transfer arriving at the destination is a
+goods receipt, so `goods_receipt` takes the same typed pair:
+
+```
+goods_receipt
+  purchase_order_id     -- from a supplier
+  transfer_order_id     -- from another site
+  CHECK (num_nonnulls(purchase_order_id, transfer_order_id) = 1)
+```
+
+One entity, two demand sources, on both ends. A transfer is simply the case where
+our own outbound feeds our own inbound.
+
+**Stock in transit is derivable — no virtual location needed.** Between despatch
+from A and receipt at B, the goods are in neither site's stock: the despatch
+movement has `to_location_id = NULL` and the receipt has `from_location_id =
+NULL`, per the existing convention. That makes in-transit stock invisible in
+`stock` — but it is not unanswerable:
+
+> transfer orders despatched and not yet fully received → their fulfilment lines
+> minus their receipt lines.
+
+The intention (the transfer order) plus the facts at each end give the answer
+without inventing a location to park it in. This is the concrete reason the
+analysis's admiration for Odoo's virtual-location model does not translate into
+a reason to adopt it: we get the same answer from principle 2's categories
+instead of from a NULL-elimination trick that would add a `usage` predicate to
+every on-hand query.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -1152,7 +1223,21 @@ Raised by D15:
     for a milk run; commercially it depends on the carrier and the rate. Nothing
     in the schema forbids it, which is correct, but the allocator and any
     consolidation logic need a rule.
-37. **Is an inter-site transfer a fulfilment?** It is a shipment that fulfils no
-    customer order, so `package.fulfilment_id` would be null on a consignment.
-    Either transfers become a kind of fulfilment with no order, or they get their
-    own demand-side entity. Affects D15's loose end and the inbound subsystem.
+37. ~~Is an inter-site transfer a fulfilment?~~ Settled by D16: it is a fulfilment
+    against a `transfer_order` rather than an `order`. Every package on a
+    consignment has a fulfilment, with no exception.
+
+Raised by D16:
+
+38. **Does a transfer's receipt reconcile against its despatch automatically?**
+    Shipped 100, received 98 is a discrepancy (D8) — but which site owns it, and
+    at what point does in-transit shrinkage become someone's finding rather than
+    a timing difference? Needs a rule, since transfers will otherwise generate
+    noise every time a truck is mid-journey at a reporting boundary.
+39. **Do shelf-life rules apply to transfers?** D14 puts `min_shelf_life` on the
+    customer, and a transfer has none. If site B serves a customer who demands 90
+    days, sending them stock with 30 days left is a real failure that the current
+    model would not catch.
+40. **Can a transfer be allocated before it arrives?** Committing inbound stock to
+    outbound demand is normal practice, but our allocation is against a specific
+    `stock` cell (D12), and in-transit stock is in no cell at all.
