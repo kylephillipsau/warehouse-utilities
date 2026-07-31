@@ -1689,9 +1689,23 @@ Raised by D20:
 
 55. ~~Can a customer order by weight rather than by count?~~ Settled by D20's
     revision: yes, as unit conversion. Allocation plans on nominal weight;
-    closest-fit happens at pick time where the scale is. Remaining detail — who
-    sets `quantity_tolerance_pct`, and at what grain (order line, customer,
-    item)? Probably the same three-level shape as tolerances in question 21.
+    closest-fit happens at pick time where the scale is.
+
+    **Tolerance is a policy object, not a scalar** *(2026-07-31)*. It resolves
+    like every other policy here — most specific wins across site, item class,
+    item, customer and order line — but the *shape* stays open too, because
+    `± 2%` is only one of the models an operation might need:
+
+    - symmetric percentage or absolute
+    - asymmetric (`never under, up to 5% over` is common in food)
+    - stepped by order size, where small orders need looser proportional limits
+
+    So `tolerance` is its own small typed entity rather than a column on
+    `order_line`, and which one applies is resolved the same way `allocation_policy`
+    is (D13). This keeps the environment and the product each able to express what
+    they actually need, without a tolerance column sprouting on five tables.
+    Consistent with D20: the capability exists where it is needed and is invisible
+    where it is not.
 56. **Does an inter-company movement generate documents automatically?** D20 says
     crossing `legal_entity` is a sale. Whether we raise the corresponding order,
     purchase order and invoice, or merely flag it for the finance system, decides
