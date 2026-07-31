@@ -1587,10 +1587,29 @@ shuffling arrival order is a property test. A losing placement raises
 `depth` become projections of `package_event`, maintained by the same
 rebuild-and-assert job that guards `stock`. Nothing writes them directly.
 
-**D6's nesting cap goes from two levels to three, and becomes enforced**
-(`CHECK (depth <= 2)`, depth 0 = root). Overwrap → pallet → carton is physically
-real. The resolution fold stays a fixed three-step join, which is all the cap was
-protecting.
+**D6's nesting cap goes from two levels to three** (depth 0 = root). Overwrap →
+pallet → carton is physically real.
+
+**It is not a CHECK, and that matters.** `depth` is a *projection* column. A CHECK
+on it would mean a `contained` event creating a four-level chain is a valid fact
+the projection cannot represent — and since the projection must be rebuildable
+from the log in any arrival order (D5), rebuild fails too. The result is not a
+rejected event but an **unprojectable log and a wedged projection**, which is
+worse than either alternative.
+
+So the cap is enforced the way every other physical impossibility in this model
+is — as a **finding**:
+
+- `depth` records whatever the log implies, without limit.
+- Depth greater than 2 raises `discrepancy.kind = 'nesting_too_deep'`.
+- The resolution fold stays a **fixed three-hop join** — which is what D6's cap
+  was actually protecting — and returns NULL beyond it.
+- A NULL `resolved_location_id` on stock with quantity then raises
+  `stock_without_location` through the existing invariant, so an over-deep chain
+  surfaces twice rather than silently resolving to the wrong place.
+
+The event is always accepted (D5), the fold stays non-recursive, and the
+impossible state is visible rather than prevented.
 
 #### The rule that decides which fact gets written
 
@@ -1972,11 +1991,10 @@ Raised by D24 (adopted 2026-08-01):
     reapable. `stock_allocation.stock_id` is the obvious reference; historical
     reporting that joins `stock.id` is the non-obvious one. If anything holds a
     `stock_id` long-term, reaping breaks it.
-92. **Is `depth <= 2` enforced on write or on projection?** The cap is on
-    `package`, which is a projection — so a `contained` event creating a
-    four-level chain is a valid fact producing an invalid projection. Either the
-    event is rejected (coordination, which D5 resists) or the projection raises a
-    finding. Probably the latter, but it should be stated.
+92. ~~Is `depth <= 2` enforced on write or on projection?~~ Settled 2026-08-01:
+    neither. It cannot be a CHECK on a projection without making the log
+    unprojectable, so it is a finding (`nesting_too_deep`) with a fixed three-hop
+    fold returning NULL beyond. See D24.
 
 *Numbering note: D21, D22, D23, D25 and D26 remain proposed in
 [mechanism-design.md](./mechanism-design.md) and are not adopted. Their open
