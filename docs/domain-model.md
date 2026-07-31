@@ -1496,6 +1496,248 @@ non-catch-weight items the column is null and nominal weight is derived from
 satisfied differently even when they pick the same stock: one is judged against a
 weight tolerance, the other against a count.
 
+### D24 — Containment joins the `stock` key; a package's placement is a fact
+
+*Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with the
+three amendments from [containment-review.md](./containment-review.md) applied.
+Numbering is kept stable across both documents: **D21, D22, D23, D25 and D26
+remain proposed and are not adopted here.** Where this decision references them,
+that is marked.*
+
+**Scope.** The containment half of the proposed D24 is adopted. The supply-side
+half (`expected_supply`, `stock_allocation`'s two supply arms) is **not** — it
+depends on D21 and D23 and was not part of the review.
+
+**Decision.** `package_id` joins the `stock` key as an **exclusive alternative to
+`location_id``. `package_content` becomes a view over `stock`. A package's own
+placement is a projection of a new append-only `package_event`.
+
+```
+stock                         -- PROJECTION
+  id                          -- surrogate; stable
+  tenant_id, item_id
+  holder_location_id          -- \ exactly one
+  holder_package_id           -- /
+  lot_id, status_id, owner_id
+  CHECK (num_nonnulls(holder_location_id, holder_package_id) = 1)
+  UNIQUE NULLS NOT DISTINCT (tenant_id, item_id, holder_location_id,
+                             holder_package_id, lot_id, status_id, owner_id)
+  quantity, weight_g, allocated_quantity
+  available_quantity          GENERATED (quantity - allocated_quantity) STORED
+  resolved_location_id        -- @projection: holder location, or the holder's
+  site_id                     -- @projection from resolved_location_id
+  INDEX (tenant_id, item_id, site_id) INCLUDE (available_quantity)
+        WHERE quantity <> 0
+
+CREATE VIEW package_content AS
+  SELECT id, holder_package_id AS package_id, item_id, lot_id,
+         quantity, weight_g AS catch_weight_g
+    FROM stock WHERE holder_package_id IS NOT NULL;
+```
+
+**Why an exclusive arm rather than a seventh dimension.** `location_id` and
+`package_id` answer the same question at two resolutions, and a package's location
+is a property of the package. Carrying both on a stock row is two independently
+writable representations of one fact — the drift question 59 named as the default
+outcome. As an exclusive arm the drift becomes **unrepresentable** rather than
+detected, which is the stronger form. The key is six dimensions in seven columns.
+
+Every capability D6 claimed for `package_content` survives, and two improve: it
+gains `item_id`, `status_id` and `owner_id`, which it never had; and a sealed
+carton's manifest acquires history, because it is the movements that put stock
+into it up to `sealed_at`.
+
+```
+package_event                 -- FACT. Append-only.
+  id, tenant_id, site_id
+  occurred_at                 -- device clock; orders the register
+  recorded_at                 -- server clock; first tiebreak
+  recorded_by_id, work_session_id, authorised_by_id, device_id, work_task_id
+  package_id                  -- THE SUBJECT. Always exactly one.
+  kind        -- created | placed | contained | observed | identified
+              -- | sealed | opened | relabelled | despatched | voided
+  parent_package_id, location_id
+  sscc, barcode
+  source      -- operator_scan | label | asn | derived | correction
+  asserts_placement           -- GENERATED: kind IN (created, placed, contained)
+  CHECK (parent_package_id IS NULL OR location_id IS NULL)
+  CHECK (kind <> 'contained' OR parent_package_id IS NOT NULL)
+  CHECK (kind <> 'placed'    OR location_id IS NOT NULL)
+```
+
+Idempotency columns follow D5 until the `client_event` registry (D25, proposed)
+is adopted.
+
+**Placement is a register, not a counter — a different CRDT class from stock.**
+D5 ruled out last-writer-wins because it silently discards a pick. That is right,
+and it is about *quantities*. Two concurrent picks are both true; two concurrent
+claims that a carton is on P1 and on P2 cannot both be true, and choosing a winner
+is not data loss. **Quantities are counters; relationships are registers**, and we
+implement the register over the same append-only log. Yjs stays ruled out — we
+need the loser retained, ordered by device clock, and raised as a finding, none of
+which `Y.Map` does.
+
+Maintenance is **compare-and-set**, ordered by `(occurred_at, recorded_at, id)`,
+so a late event with an earlier `occurred_at` loses without touching the current
+value. The projection update is therefore commutative and idempotent, and
+shuffling arrival order is a property test. A losing placement raises
+`discrepancy.kind = 'containment_conflict'`.
+
+`package.parent_package_id`, `location_id`, `resolved_location_id`, `status` and
+`depth` become projections of `package_event`, maintained by the same
+rebuild-and-assert job that guards `stock`. Nothing writes them directly.
+
+**D6's nesting cap goes from two levels to three, and becomes enforced**
+(`CHECK (depth <= 2)`, depth 0 = root). Overwrap → pallet → carton is physically
+real. The resolution fold stays a fixed three-step join, which is all the cap was
+protecting.
+
+#### The rule that decides which fact gets written
+
+*(Amendment 1. The proposal said "custody changes" — not decidable, because a
+carton is both a holder and a thing with a holder.)*
+
+> - **`stock_movement`** — a stock cell's **key** changed: holder, lot, status or
+>   owner; or quantity entered or left the system.
+> - **`package_event`** — a package's **placement** changed: its parent, or its
+>   location.
+
+The two are disjoint **by subject**: a movement is about a quantity of an item, an
+event is about a container. No act qualifies for both; none falls between.
+
+| Physical act | What changed | Fact |
+|---|---|---|
+| Pick loose units from a bin into a tote | stock's holder | `stock_movement` |
+| Pick 6 of 12 units out of a carton | stock's holder | `stock_movement` |
+| Pick a whole carton onto an outbound pallet | the carton's parent | `package_event` |
+| Move a pallet, bay A → bay B | the pallet's location | `package_event` |
+| Goods arrive / leave | stock enters / leaves | `stock_movement` |
+| Quarantine a pallet's contents | stock's status | `stock_movement` |
+| Re-key a mis-recorded lot | stock's lot | `stock_movement` |
+| Count a bin | nothing observed to change | `stock_count` |
+
+**A whole-carton pick writes no movement, and that is the point.** Nothing
+happened to the goods — they never left the container, nobody counted them,
+nobody saw them. A movement would assert an inspection that did not occur. The
+alternative writes forty movements for a pallet move, each a claim about goods
+nobody touched, which is the lie D8 exists to prevent. **The fact recorded is the
+fact observed.**
+
+Work questions are asked at the **act** layer, not by unioning consequence
+tables: one physical act inserts one act row plus all its facts in one
+transaction, so *"what did this person do today"* joins out to whichever facts
+resulted. That is D8's work-event invariant implemented properly rather than
+scattered across the tables recording its effects.
+
+**Fan-out is confined to the system boundary.** Receiving and despatching an
+ASN'd pallet genuinely writes per-line movements, because goods entered or left
+custody and both PO variance and D14's recall trace require it. Internal moves
+are O(1) facts regardless of contents.
+
+#### Package minting is a policy
+
+*(Amendment 2.)* A `package` row exists **when something identifies it** — an
+SSCC, a licence plate, a scan. Cartons sitting in bulk on a pallet are not
+individually identified and do not become packages until labelled or picked.
+
+This matters because LPN grain is **not** inherently larger than location grain —
+five SKUs on a mixed pallet is five `stock` rows, exactly as five SKUs in a bin
+is. Cardinality multiplies only if we mint a package per carton. The failure mode
+to guard against is minting per-carton at receipt "for completeness" and
+discovering the cost later. Minting granularity is configurable, and the default
+is never per-carton.
+
+#### Dead cells are reapable
+
+*(Amendment 3. The proposal said `stock` rows are never deleted.)* `stock` is a
+**projection** and rebuildable from the ledger by definition. A zero-quantity cell
+with no allocation referencing it holds nothing the ledger does not. Rows are
+**not deleted while referenced**; unreferenced dead cells are reaped by a
+maintenance job. This removes the unbounded-growth concern rather than indexing
+around it.
+
+#### Movements become two-sided in space
+
+The spine said `quantity` is "signed" *and* gave a from/to pair. Those are not
+compatible, and "stock on hand is the sum of these" is then not a well-defined
+fold. Corrected: **`quantity` is strictly positive and every movement folds into
+two cells** — `−quantity` at the from-cell, `+quantity` at the to-cell. A receipt
+has an empty from-side; a despatch an empty to-side. D5's CRDT property is
+untouched. This is two-sidedness in *space*, not double-entry in *value*; the
+financial ledger stays on the not-building list.
+
+#### The cell key travels — and two dimensions were missing their pair
+
+| Dimension | On `stock_movement` | Verdict |
+|---|---|---|
+| `item_id` | single | Correct. Changing item is a transformation: two movements. |
+| `location_id` | pair | ✓ |
+| `status_id` | pair (D4) | ✓ |
+| `owner_id` | **absent** | The known D20 breakage. Pair added. |
+| `lot_id` | **single** | **The same breakage, undetected.** Pair added. |
+| `package_id` | new | pair by construction |
+| `tenant_id` | single | Correct (D18); both sides must resolve to one tenant. |
+
+```
+stock_movement                -- amended
+  item_id, quantity (> 0), catch_weight_g
+  from_location_id, from_package_id, from_lot_id, from_status_id, from_owner_id
+  to_location_id,   to_package_id,   to_lot_id,   to_status_id,   to_owner_id
+  lot_id GENERATED ALWAYS AS (COALESCE(to_lot_id, from_lot_id)) STORED
+  CHECK (num_nonnulls(from_location_id, from_package_id) <= 1)
+  CHECK (num_nonnulls(to_location_id,   to_package_id)   <= 1)
+  -- a populated side must carry the WHOLE key, not just a holder:
+  CHECK (num_nonnulls(from_location_id, from_package_id) = 0
+         OR (from_status_id IS NOT NULL AND from_owner_id IS NOT NULL))
+  CHECK (num_nonnulls(to_location_id, to_package_id) = 0
+         OR (to_status_id IS NOT NULL AND to_owner_id IS NOT NULL))
+  CHECK (ROW(from_*) IS DISTINCT FROM ROW(to_*))
+```
+
+The whole-key CHECKs matter more than they look: under `NULLS NOT DISTINCT` a
+NULL owner is a *different cell* from the site's entity, so an omitted column
+would not error — it would silently fork the balance.
+
+#### Re-lotting is a correction only
+
+The generated `lot_id` preserves D14's recall index and query verbatim, but it
+preserves the *index* while changing the *trace*: lot A re-lotted to B and then
+shipped means the despatch carries `from_lot_id = B`, so *"which customers
+received lot A"* returns nothing.
+
+**Whether that is right depends on why the re-lot happened, so the answer is to
+permit only one reason.**
+
+- **Correction** — "we keyed A, it was always B". Permitted. The trace must
+  **not** follow: those goods were never lot A, and following would produce a
+  false recall.
+- **Transformation** — a genuine merge or split. **Forbidden.** Lot merging is
+  already unacceptable in food traceability, and forbidding it keeps D14's recall
+  query exactly as written with no chain-walking to remember. A genuine split, if
+  ever needed, is two movements through a transformation — the same treatment
+  `item_id` already gets.
+
+`adjustment_reason_id` records the correction on the row, and the partial index on
+`WHERE from_lot_id IS DISTINCT FROM to_lot_id` becomes a correction audit rather
+than a required leg of every recall.
+
+#### Amendments to earlier decisions
+
+- **D5** — registers clause added (relationships are registers, quantities are
+  counters); `quantity` is positive with a two-sided fold.
+- **D6** — `package_content` retired as a base table; containment columns demoted
+  to projections; nesting cap raised to three levels and enforced.
+- **D12** — `owner_id` and `lot_id` pairs restore the broken invariant.
+  `stock_allocation` references `stock_id`.
+- **D14** — `lot_id` pair; re-lotting is correction-only; recall query unchanged.
+- **D20** — `owner_id` pair; the key re-framed as six dimensions in seven columns.
+
+#### Index correction
+
+Inbound Tier-0 asked for `stock(location_id, item_id)`. It must be
+**`stock(resolved_location_id, item_id)`** — on `holder_location_id` it would make
+container-held stock invisible to every commingling and putaway check.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -1715,3 +1957,27 @@ Raised by D20:
     counter-argument is that a customer can also be a supplier and the same
     carrier can be both — real overlap that separate tables handle badly.
     Worth revisiting before it is built.
+
+Raised by D24 (adopted 2026-08-01):
+
+89. **Does a failed container scan need an `activity_event`?** A carton scanned
+    onto the wrong pallet and corrected leaves a `containment_conflict` finding,
+    but a scan that resolved to nothing leaves no trace at all. D17's
+    `location_empty` reasoning applies verbatim.
+90. **What mints a package at receipt when the supplier sends no SSCC?** We
+    generate one so the stock has a holder — but D24 says minting is a policy, so
+    the default for an unlabelled pallet needs stating rather than defaulting to
+    one-per-carton by accident.
+91. **When does the reaper run, and what is "unreferenced"?** D24 makes dead cells
+    reapable. `stock_allocation.stock_id` is the obvious reference; historical
+    reporting that joins `stock.id` is the non-obvious one. If anything holds a
+    `stock_id` long-term, reaping breaks it.
+92. **Is `depth <= 2` enforced on write or on projection?** The cap is on
+    `package`, which is a projection — so a `contained` event creating a
+    four-level chain is a valid fact producing an invalid projection. Either the
+    event is rejected (coordination, which D5 resists) or the projection raises a
+    finding. Probably the latter, but it should be stated.
+
+*Numbering note: D21, D22, D23, D25 and D26 remain proposed in
+[mechanism-design.md](./mechanism-design.md) and are not adopted. Their open
+questions (73–88) live there until they are.*
