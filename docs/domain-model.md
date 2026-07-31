@@ -1440,9 +1440,61 @@ Weight is captured at pick and pack time, flows to `package_content`, and drives
 invoicing and freight. Enforcement follows the same pattern as `tracking = lot`
 (question 31): application-level, plus a periodic assertion.
 
-**What this does not do:** allocate by weight. "Give me 20 kg" rather than "give
-me 6 cartons" is a genuinely different allocation problem, and it is not solved
-here. If a customer orders by weight, that is question 55.
+### Ordering by weight is unit conversion, not a different allocator
+
+*(Revised — I first called this "a genuinely different allocation problem". It is
+not, and the simpler reading is better.)*
+
+Weight is a **property of the stock**, and a kilogram is a unit that converts
+through the weight per unit we already hold. So ordering in kg is the same
+mechanism as ordering in pallets: `entered_quantity` + `entered_unit`, converted
+to the base unit for everything downstream.
+
+```
+order_line
+  entered_quantity, entered_unit     -- 240, 'kg'
+  quantity                           -- 12, base units (derived)
+  quantity_tolerance_pct             -- how close is close enough
+```
+
+Two cases, one mechanism:
+
+- **Fixed weight** — a box of screws is always 12 kg. `240 kg → 20 boxes`
+  exactly. Pure unit conversion; catch-weight machinery never engages.
+- **True catch weight** — a box of beef is *about* 20 kg. `240 kg → ~12 boxes` is
+  a **planning estimate**, which is all allocation ever needed. The real numbers
+  arrive when the boxes are actually picked and weighed.
+
+**Allocation stays on counts, unchanged.** It plans against nominal weight because
+at planning time nominal weight is the only weight that exists — the actual boxes
+have not been chosen yet. Trying to solve closest-fit in the allocator means
+optimising against numbers we have not observed, which is exactly the mistake D5
+exists to avoid.
+
+**Closest-fit belongs at pick time, where the scale is.** The picker has real
+weights, so the handheld can guide: *"241.3 kg picked, target 240 ± 2%, within
+tolerance."* Under or over tolerance is a decision made with actual numbers in
+hand, and if it ships outside tolerance that is a finding (D8), not a rejected
+pick.
+
+**Stock in kilograms becomes a projection, not a calculation.** Because actual
+weights land on movements, weight-on-hand sums the same way count does:
+
+```
+stock
+  quantity        -- projection of stock_movement.quantity
+  weight_g        -- projection of stock_movement.catch_weight_g
+```
+
+So *"how many kilograms of beef do we have"* is a single indexed read, exactly
+like the count — and it is **actual** weight rather than an estimate. For
+non-catch-weight items the column is null and nominal weight is derived from
+`measurement` on demand.
+
+**What still needs differentiating** is what the customer *asked for*, which
+`entered_unit` records. An order for 240 kg and an order for 12 boxes are
+satisfied differently even when they pick the same stock: one is judged against a
+weight tolerance, the other against a count.
 
 ## Open questions
 
@@ -1635,11 +1687,11 @@ Raised by D19:
 
 Raised by D20:
 
-55. **Can a customer order by weight rather than by count?** D20 contains catch
-    weight by keeping count primary, which works when the customer orders six
-    cartons and is billed for 47.3 kg. It does not work if they order 20 kg.
-    Allocating to a weight target is a genuinely different problem — closest-fit
-    rather than exact — and it would reach into D12 and D13.
+55. ~~Can a customer order by weight rather than by count?~~ Settled by D20's
+    revision: yes, as unit conversion. Allocation plans on nominal weight;
+    closest-fit happens at pick time where the scale is. Remaining detail — who
+    sets `quantity_tolerance_pct`, and at what grain (order line, customer,
+    item)? Probably the same three-level shape as tolerances in question 21.
 56. **Does an inter-company movement generate documents automatically?** D20 says
     crossing `legal_entity` is a sale. Whether we raise the corresponding order,
     purchase order and invoice, or merely flag it for the finance system, decides
