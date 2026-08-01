@@ -2522,7 +2522,8 @@ That is now the register's own first lesson.
 expected_supply               -- role: PROJECTION. Folds intentions, assertions
   id, tenant_id, site_id      --   and facts.
   item_id (NOT NULL)          -- unresolvable content produces a finding, not a row
-  owner_id, status_id         -- what the goods will be on arrival
+  owner_id, status_id         -- @projection from the source line: what the goods
+                              --   will be ON ARRIVAL. Not a mid-flight claim.
 
   purchase_order_line_id      \
   transfer_order_line_id       |  exactly one — D23's discriminated-union rule:
@@ -2566,10 +2567,72 @@ that, so it is stated here rather than implied across three sections.
 `allocated_quantity` from intentions. The real distinction is **column grain
 versus row grain**: D12 separated by column, and `expected_supply` cannot.
 
+#### Ownership in transit is out of scope, and the boundary is stated
+
+*(Settling question 107.)* `owner_id` is a **projection of the source line**
+describing the arrival state, so it stays correct when a PO is amended to change
+the receiving entity — which is the case that would actually have gone stale. It
+is not, and does not attempt to be, a statement about who held title mid-flight.
+
+> **We model custody — who holds the goods — and allocatable ownership — whose
+> goods we may promise. Legal title timing, meaning when an asset moved between
+> entities for tax, insurance and revenue recognition, is the finance system's
+> record.** NetSuite remains the financial system (D20, q56).
+
+Incoterms allocate risk and cost and explicitly do **not** transfer title; title
+passes per the sales contract. That is a contract fact, not a warehouse fact, and
+a warehouse system that models it will be wrong in a way nobody notices until an
+audit.
+
+The cases that look like they need it do not:
+
+- **Consignment stock and VMI** work at rest (`stock.owner_id` = the supplier) and
+  at consumption (a movement carrying `from_owner_id`/`to_owner_id`, D24).
+- **Loss in transit** is a `discrepancy` with `counterparty_party_id`. We record
+  who to pursue without recording who held title at the moment it vanished.
+- **Inter-company transfer** crosses `legal_entity`, which D20 already says is a
+  sale. The sale's documents and their timing belong to whoever raises them.
+
+If this is ever needed it is a `supply_custody_change` fact with owner and
+custodian pairs, and `owner_id` becomes its projection. Recorded as a **refusal
+with a mechanism**, not an open question.
+
 *(Amendment 2: the proposed scoping of S3 — "`<= 1` on grouping tables, `= 1` on
 projections" — is **dropped**. D23's discriminated-union rule already gives `= 1`
 here, and a second test reaching the same answer is the accretion this model
 exists to refuse.)*
+
+#### Multi-PO ASNs are supported, and the scalar FK is why
+
+*(Settling question 109, which was recorded as an omission on a misreading.)*
+
+The concern was that one `asserted_unit_content` line cannot draw on two purchase
+order lines, and that widening it to an association table would invalidate J8's
+partition identity. Both halves are true. Neither is needed.
+
+**The X12 ORDER hierarchy level exists precisely to partition advised content by
+purchase order.** As the inbound analysis established, `S-O-T-P-I` is not five
+containers — S and O are *documents*, and the physical depth is pallet → carton.
+So an ORDER-level split does not need a new structure: it becomes content lines
+each naming one PO line, which is exactly what
+`asserted_unit_content.resolved_purchase_order_line_id` holds.
+
+**A content line never legitimately spans two POs, because the ORDER level
+separates them.** Therefore:
+
+- Multi-PO ASNs are **in scope and supported**. The scalar FK is correct rather
+  than a limitation, and `refines_expected_supply_id` stays scalar.
+- **J8 is safe**: each content line produces one `expected_supply` row refining
+  one parent, so the partition identity holds per row.
+- A content line that genuinely names two POs is **malformed** under GS1 and X12
+  semantics and raises `assertion_unresolvable` — D8 behaving as designed.
+
+The residual case is a loose channel — a CSV or portal with no ORDER grouping and
+no per-line PO reference — where a shipment spans POs and nothing states the
+split. That is unresolvable, and correctly so: **we cannot invent an allocation
+the supplier did not state.** Which is also why the Australian grocery mandate
+(Metcash and Coles both forbidding multi-PO ASNs) is the sane position rather
+than a constraint we are working around.
 
 #### Allocation gains a second supply arm
 
@@ -3332,25 +3395,21 @@ Raised by D24 (supply side), adopted 2026-08-01:
 106. ~~Does `fulfilment_line` get a maintained `allocated_quantity`?~~ Settled:
     **yes**, with a generated `uncovered_quantity` and a partial index. Justified
     by symmetry with D12's supply-side fold rather than as an exception to it.
-107. **Does title change while in transit, and do we need to record it?**
-    Incoterms allocate risk and cost and explicitly do *not* transfer title; GS1
-    CBV makes owning and possessing party independent. `expected_supply.owner_id`
-    is a static copy of the source line, which is not rebuildable from anything if
-    title can move mid-flight. The mechanism would be a `supply_custody_change`
-    fact. Deferred, not designed — but D24's new `stock_movement` CHECK is added
-    now so the wrong answer is a constraint violation rather than a wedged rebuild.
+107. ~~Does title change while in transit, and do we need to record it?~~
+    Settled: **out of scope, with the boundary stated** — we model custody and
+    allocatable ownership; legal title timing belongs to the finance system. The
+    rebuildability concern was misplaced: `owner_id` is a projection of the source
+    line describing the arrival state, now marked as such. See D24 (supply side).
 108. **Are intermediate re-points reconstructable?** `origin_expected_supply_id`
     gives the first binding and the current arm gives the last; the middle is
     gone. Irrelevant for recall (D14 traces over `stock_movement.lot_id`);
     possibly relevant for a chargeback over which PO a cross-docked unit came
     from. If yes, it is an explicit exception to D25's refusal of an event log for
     intentions, argued in writing.
-109. **Multi-PO ASN — in or out?** `refines_expected_supply_id` as a scalar FK
-    cannot express one advised content line drawing on two PO lines, and
-    `asserted_unit_content.resolved_purchase_order_line_id` is already singular.
-    Metcash and Coles both forbid an ASN spanning more than one PO; US and 3PL 856
-    traffic does not. Recorded as an explicit omission — widening it to an
-    association table would invalidate J8's partition identity.
+109. ~~Multi-PO ASN — in or out?~~ Settled: **in, and already supported.** The
+    X12 ORDER hierarchy level partitions advised content by PO, so a content line
+    names exactly one PO line and the scalar FK is correct. Recorded as an
+    omission on a misreading. See D24 (supply side).
 
 *Numbering note: D26 remains proposed in
 [mechanism-design.md](./mechanism-design.md) and is not adopted. Its open
