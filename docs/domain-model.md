@@ -1723,6 +1723,291 @@ that policy state is rebuildable from it reduces to rebuilding the value rows fr
 the value rows. The guarantee is carried entirely by a bidirectional anti-join:
 every value version has a matching `policy_change` and vice versa.
 
+### D23 — Observations generalise; the subject set opens on a registry
+
+*Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with the
+`stock_count` boundary stated and the projection-under-policy rule lifted in.
+D21, D25 and D26 remain proposed; references to them are marked.*
+
+**Decision.** `measurement` is replaced by a two-level fact pair —
+`observation_event` (the act) and `observation` (one result of it) — over three
+reference primitives: an `observable` subject registry, a data-defined `metric`
+vocabulary whose *result kinds* are code-defined, and a `dimension`/`unit` pair
+carrying exact rational conversion to one canonical integer per dimension.
+
+**Three welds, not one.** `metric` is closed by an enum — widening it alone fails
+on the first temperature, because an affine unit cannot be an integer in an
+implied canonical unit, an ETA is not an integer at all, and a quality grade is an
+ordinal term. `subject_type` is closed by an enum. And `source` conflates three
+orthogonal things: `carrier_actual` bundles *a carrier asserted it* with *an
+instrument produced it*; `operator_correction` is not a source at all but a
+lifecycle event about a different row.
+
+#### The subject is typed once, in a registry
+
+```
+observable                    -- REFERENCE. The ONLY place the subject set widens.
+  id, tenant_id (NOT NULL)
+  kind                        -- GENERATED: which arm is set
+  item_id, packaging_level, item_packing_config_id   -- each|inner|carton|layer|pallet
+  package_type_id, package_id, lot_id, location_id, consignment_id
+  device_id, vehicle_arrival_id
+  asserted_unit_id, asserted_unit_content_id         -- [D21, proposed]
+  CHECK (num_nonnulls(<arms>) = 1)
+  CHECK ((item_id IS NOT NULL) = (packaging_level IS NOT NULL))
+  CHECK (item_id IS NULL OR packaging_level = 'each'
+         OR item_packing_config_id IS NOT NULL)
+  UNIQUE (id, tenant_id)
+  ... one partial unique index per arm ...
+```
+
+Every arm is a real FK, so an investigation cannot dead-end, and batch loading is
+two hops with no N+1. **The fact tables are permanently stable in shape**: adding
+"we now observe pallet-pooling accounts" is one column on a table of ~10⁵ rows and
+zero change to anything holding 10⁷. This is the answer to question 20 — typed
+subject FKs, but on the registry rather than on the fact, which is what stops the
+subject set being frozen at the moment inbound opens it.
+
+**`item` carries a `packaging_level`**, so "the carton, not the each" is
+expressible. The identity is `(item_id, packaging_level, item_packing_config_id)`,
+with the config NULL only at `each` — a carton is only a definite physical object
+relative to a case pack, and because `item_packing_config` is versioned, a
+corrected case pack cannot silently rewrite the dimensions of cartons shipped last
+year. `packaging_level` is a **subject qualifier, never a unit**: a carton is not
+commensurable with a millimetre.
+
+#### The discriminated-union boundary rule
+
+*(Amends the four-arm limit from the cross-cutting review.)*
+
+> Typed nullable FKs with a mutual-exclusion CHECK are correct when the arms are
+> **alternative identities of one referent** — a discriminated union where exactly
+> one is structurally required and "none" is meaningless. They strain when the
+> arms are **distinct relationships that merely happen to be exclusive today** —
+> causes, demands, sources — because there exclusivity is a *policy*, and policies
+> turn out to be wrong.
+
+That explains both prior failures: `stock_movement`'s cause CHECK and
+`goods_receipt`'s demand CHECK both had to relax to `<= 1`. Nobody will ever
+discover an observation about no thing, or about two things at once. The rule
+licenses `observable`'s arms and **constrains** cause sets, which stay at `<= 1`.
+
+#### The boundary with `stock_count`
+
+*(Stated on adoption. A `stock` cell is deliberately not an `observable`.)*
+
+Admitting it would drag D4, D12, D20 and D24 into this decision for a case
+`stock_count` already serves, and D24 gives `stock` a surrogate id that would make
+it tempting. The line:
+
+> **Quantities of cells are `stock_count`. Quantities of identified things are
+> `observation`.**
+
+Counting bin A3 is a `stock_count` — a cell is a coordinate, not a thing. A
+supplier claiming "this pallet holds 40 cartons" is an `observation` about a
+package, because a pallet is a thing with an identity. Counterparty-asserted
+quantities therefore work without exception, because they are always properties of
+an identified object.
+
+#### Units, dimensions and metrics
+
+```
+dimension        id, code, canonical_unit_id      -- length|mass|volume|temperature
+                 UNIQUE (id, canonical_unit_id)   -- |count|ratio|time_interval
+                 -- shipped by us; no tenant_id, ever
+
+unit             id, dimension_id, code, ucum_code, uncefact_code
+                 factor_num, factor_den           -- EXACT rational. in = 254/10 mm
+                 offset_num, offset_den           -- affine; degC = +273150 mK
+                 display_decimals
+                 UNIQUE (id, dimension_id), UNIQUE (dimension_id, code)
+
+metric           id, tenant_id                    -- NULL = shipped (D19)
+                 code, label
+                 result_kind                      -- quantity|instant|code|boolean|text
+                 dimension_id                     -- NOT NULL iff quantity
+                 reserved                         -- only code may name these
+                 applies_to                       -- which observable arms are legal
+                 higher_is_better
+                 UNIQUE (id, result_kind), UNIQUE (id, dimension_id)
+                 UNIQUE NULLS NOT DISTINCT (tenant_id, code)
+                 CHECK ((result_kind='quantity') = (dimension_id IS NOT NULL))
+                 CHECK (NOT reserved OR tenant_id IS NULL)
+
+metric_code      id, metric_id, code, label, ordinal
+```
+
+**`metric.aggregation` is removed; `higher_is_better` stays.** Aggregation
+(last|min|max|mean) is a per-row data value selecting which fold a projection
+performs — that is semantics, and semantics belong in the Rust type, the same
+argument that refused a `combine` column in D22. `higher_is_better` is a display
+and scorecard hint, not a fold.
+
+**Why this is not a custom-field framework.** EAV is deferring *type* decisions to
+runtime; its signature is one `value text` column, an arbitrary attribute name, an
+untyped subject, and a schema that cannot be read. This has none of them: the
+subject is an FK; the value is one of five typed columns chosen by the metric's
+declared `result_kind` and enforced per row by a composite FK plus a CHECK; the
+unit is enforced commensurable by a second composite FK, so recording a length in
+grams is a constraint violation rather than a code-review finding; nothing
+queryable is in JSONB; and a metric cannot add a column elsewhere or make the
+system branch. **The result types are code; only the vocabulary is data** — D13
+one level up.
+
+Enforced two ways: reserved metrics ship with `tenant_id IS NULL, reserved = true`,
+and **application code may name only reserved codes**, which is a grep in CI. The
+day someone writes `if metric.code == "customer_special_thing"`, the build fails.
+
+**Gross, net and tare are three metrics, not one with a modifier.** GS1 settled
+this (AI 310n net, AI 330n gross). The single `weight` metric is genuinely
+ambiguous today, and gross-versus-net is exactly what a carrier re-weigh surfaces.
+
+#### The facts
+
+```
+observation_event             -- THE ACT. Append-only.
+  id, tenant_id, observable_id
+  observed_at                 -- VALID time (device clock, D5)
+  recorded_at                 -- TRANSACTION time (server clock, D5)
+  device_id                   -- the RECORDING device. Unconditional (D11).
+  instrument_device_id        -- the MEASURING instrument; set only when
+                              --   method IN ('instrument','scan')
+  recorded_by_id / automation_key      -- CHECK num_nonnulls(...) = 1
+  work_session_id, authorised_by_id, work_task_id, goods_receipt_id
+  asserted_by_party_id        -- WHO claims it. NULL = us.
+  method                      -- HOW: instrument|scan|keyed|derived|estimated
+                              --      |transcribed|asserted
+  ingestion_channel           -- THROUGH WHAT: edi|portal|csv|email|api|keyed
+                              --               |scale|scanner|derived
+  derived_from_event_id
+  party_message_id, attachment_id       -- [D21 / inbound, proposed]
+  challenged, challenge_context, confirmed        -- D9, generalised
+  UNIQUE (id, observable_id), UNIQUE (id, observed_at), UNIQUE (id, tenant_id)
+
+observation                   -- ONE RESULT. Append-only. Never UPDATEd.
+  id, tenant_id, observation_event_id
+  observable_id, observed_at             -- denormalised, composite-FK'd
+  metric_id, result_kind, dimension_id   -- denormalised, composite-FK'd
+  value_numeric bigint        -- ALWAYS the dimension's canonical unit.
+                              --   NO unit column: non-canonical storage is
+                              --   structurally unrepresentable.
+  value_instant, value_code_id, value_boolean, value_text
+  uncertainty_dimension_id, uncertainty_numeric   -- half-width
+  absent_reason               -- not_measured|not_applicable|unreadable|retracted
+  entered_value numeric, entered_unit_id          -- as the counterparty gave it
+  confidence smallint
+  corrects_observation_id     -- the target was NEVER true (retroactive)
+  retracts_observation_id     -- the target should not exist
+  FK (metric_id, result_kind) -> metric(id, result_kind)
+  FK (metric_id, dimension_id) -> metric(id, dimension_id)
+  FK (entered_unit_id, dimension_id) -> unit(id, dimension_id)
+  FK (value_code_id, metric_id) -> metric_code(id, metric_id)
+```
+
+`uncertainty_dimension_id` is separate from `dimension_id` because an ETA has no
+dimension but "± 2 hours" is a real answer.
+
+**Provenance is three deliberately uncorrelated columns.** A carrier re-weigh is
+`(carrier, instrument)`. A supplier ASN is `(supplier, asserted)`. Our own eyeball
+is `(NULL, estimated)`. The old enum could express the first and third only by
+having a value per combination, which is why it ran out.
+
+**The five-channel test.** The same fact — pallet SSCC 393123… weighs 412.5 kg —
+arriving over EDI, a portal, a CSV, a dock scale and a keyboard produces five rows
+that are **byte-identical in `(observable_id, metric_id, value_numeric,
+entered_value, entered_unit_id)`**, differing only in provenance. One CI fixture
+per channel, one assertion. If a new adapter ever needs a content column the
+others do not have, the test fails on the day it is introduced. **That is the
+interoperability requirement made testable instead of asserted.**
+
+**Supersession, correction and retraction are three different things.**
+Supersession needs no mechanism — a pallet weighed 400 kg Monday and 380 kg
+Tuesday because a carton came off; both are true at their own times. Correction is
+an explicit link because the old row was *never* true and must stop influencing
+the projection **retroactively**. Retraction is an explicit link with no
+replacement. All three are observations, so the table stays append-only with no
+mutable status on a fact.
+
+With both clocks and corrections distinguished from supersessions, two genuinely
+different questions get different answers: *what did the pallet actually weigh on
+Monday* (`observed_at <= Monday`, excluding corrected and retracted) and *what did
+we believe on Monday* (`recorded_at <= Monday`, including rows later corrected).
+The second is what a chargeback dispute needs, and it is unanswerable if
+correction and supersession are the same thing.
+
+#### The projection, and a general rule
+
+```
+observation_current           -- PROJECTION, keyed (observable_id, metric_id)
+  observation_id, value_*, observed_at, recorded_at
+  method, confidence, uncertainty_numeric, asserted_by_party_id
+  observation_precedence_policy_id      -- WHICH policy row chose this (D22)
+  in_breach                             -- against the resolved specification_policy
+  cube_numeric                          -- COMPUTED here; never stored
+```
+
+**Precedence is a policy, not a number** — `observation_precedence`, one of D22's
+eleven kinds. That makes *"trust supplier dimensions for items we have never
+measured, but never trust their weight over our scale"* a configuration a manager
+owns rather than a branch in our code.
+
+> **General rule, lifted in on adoption: any projection maintained under a policy
+> must record the policy row that produced it.** Otherwise the rebuild-and-assert
+> job reports every policy change as drift — the projection was correct under the
+> old policy and correct under the new one, and a rebuild cannot tell the
+> difference without knowing which applied.
+
+This is not specific to observations. It binds every projection D22 governs, and
+it is why `observation_current` carries `observation_precedence_policy_id` and
+`stock_allocation` carries `allocation_policy_id` (D22).
+
+**A derived value is stored only when the derivation was a captured act with its
+own provenance; otherwise it is computed.** `cube` is computed. A supplier
+*asserting* a cube is an assertion and stays expressible.
+
+**`package` dimensions are frozen at seal, not live projections.** Making them
+projections of `observation_current` would break the stated invariant that *a
+shipped package's dimensions are a historical fact about that consignment and must
+never change* — a retroactive correction would rewrite the number a freight
+invoice was computed against. Same argument as `goods_receipt_line.expected_quantity`.
+The projection assertion applies to unsealed packages only.
+
+#### Amendments to earlier decisions
+
+- **Principle 5** — restated from a census of three conventions to a rule: every
+  dimension has exactly one canonical unit; that unit is a **ratio scale**; stored
+  values are integers in it; conversion is **exact rational**, never a float
+  factor; affine units carry an offset that never reaches storage, so canonical
+  temperature is **millikelvin** and `AVG`, differences and ranges are meaningful
+  while cold-chain values never go negative. `numeric` is permitted for the
+  preserved entered value — the prohibition is on floating point, not on exact
+  decimal.
+- **Principle 3** — the observation family is JSONB-free, asserted.
+- **D5** — extended, not amended: both clocks carry their stated meanings.
+- **D8** — `discrepancy.observation_id`; kinds `specification_breach`,
+  `uncalibrated_instrument`. We do not reject the reading; we record it and raise
+  the finding.
+- **D9** — `challenged`/`challenge_context`/`confirmed` promoted to
+  `observation_event`; **`stock_count` loses its copies**. One mechanism, and the
+  policy deciding *when* to challenge is `count_tolerance_policy` (D22).
+- **D13** — extended one level up: result types are code, vocabulary is data.
+- **D19** — `dimension`/`unit` are global; `metric`/`metric_code` are shared
+  reference; everything else tenant-scoped.
+- **D20** — `measurement` **replaced**; `package.dimensions_source` deleted as a
+  weaker private copy of `method`; `package_type.tare_weight_g` becomes an
+  observation.
+
+**Rejects.** Widening the enums in place. A polymorphic `(subject_type,
+subject_id)`. Typed subject FKs on the observation row itself — correct goal,
+wrong location: a ten-arm CHECK on the second-largest table plus ~80 bytes of
+nulls per row forever. A join table between observation and subject (permits zero
+and two subjects, both meaningless). One `value text` column or a JSONB result.
+`metric` as an enum — it must carry attributes, unlike `activity_event.kind` where
+code branches and an enum is honest. Statistical aggregates on the row. FHIR-style
+comparators. Folding in `stock_count`. Money as a dimension. Storing `cube`.
+`confidence` as the sole ranker. A float `factor` column. Milli-degrees-Celsius as
+canonical. A separate lifecycle table for corrections.
+
 ### D24 — Containment joins the `stock` key; a package's placement is a fact
 
 *Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with the
@@ -1997,7 +2282,8 @@ container-held stock invisible to every commingling and putaway check.
 4. **Is `order` ours, or a mirror of NetSuite's?** During coexistence it is a
    mirror. The field list above is deliberately thin so that the mirror is cheap
    and the eventual ownership is not painful.
-5. **Item base units.** `base_unit` assumes each item has one sensible base.
+5. *(Vocabulary supplied by D23's `dimension`/`unit`; the catch-weight case is
+   settled by D20.)* **Item base units.** `base_unit` assumes each item has one sensible base.
    Anything sold by weight or length breaks that assumption. *(Likely answered by
    the `entered_quantity`/`entered_unit` change — see the competitor analysis.)*
 
@@ -2028,7 +2314,9 @@ Raised by D8:
 
 Raised by D9–D11:
 
-20. **Does `measurement` get typed subject FKs too (D10)?** Consistency says yes.
+20. ~~Does `measurement` get typed subject FKs too (D10)?~~ Settled by D23: yes,
+    but on the `observable` registry rather than on the fact, which is what keeps
+    the subject set open. ~~Consistency says yes.
     The counter-argument is that `measurement` is append-only reference data on a
     cold path, where the batch-loading argument does not apply — so this may be
     a case where the polymorphic pair genuinely costs nothing.
@@ -2247,6 +2535,27 @@ Raised by D22 (adopted 2026-08-01):
     temperature metrics" is a plausible near-term ask, and adding a tree later
     changes existing depth vectors — the same class of hazard as q78.
 
-*Numbering note: D21, D23, D25 and D26 remain proposed in
+Raised by D23 (adopted 2026-08-01):
+
+97. **`observable` has ten arms and one partial unique index each, and it grows
+    monotonically with the domain.** The discriminated-union rule licenses it, but
+    the growth path should be acknowledged: at what count does the CHECK and the
+    index set stop being reasonable? Probably never in practice, but it should be
+    a noticed threshold rather than a surprise.
+98. **`observation` denormalises five columns** (`observable_id`, `observed_at`,
+    `metric_id`, `result_kind`, `dimension_id`) from its event and metric, with
+    composite FKs enforcing agreement. That is the price of database-enforced type
+    safety on the typed value columns, and it is roughly 40 bytes a row on the
+    second-largest table. Deliberate, but worth measuring before it is 10⁷ rows.
+99. **`device` is now referenced by four adopted decisions and defined by none.**
+    D5, D11, D23 and D24 all name `device_id`. It is where an instrument's
+    calibration date and approval number live, and a billing dispute becomes a
+    question about the instrument. Inbound Tier-0 flagged it; it is now blocking.
+100. **Does `metric.applies_to` belong in data?** It constrains which `observable`
+    arms a metric is legal against — arguably a type rule, which D23's own
+    reasoning would put in code. It reads as the one place the vocabulary/type
+    line is blurred.
+
+*Numbering note: D21, D25 and D26 remain proposed in
 [mechanism-design.md](./mechanism-design.md) and are not adopted. Their open
 questions (73–88) live there until they are.*
