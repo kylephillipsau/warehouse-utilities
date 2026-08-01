@@ -1559,9 +1559,11 @@ project into `stock.allocated_quantity` while an ASN must not.
 1. **Immutable.** No UPDATE, no DELETE, ever. A revision is a new assertion.
 2. **Always names its author party.** `author_party_id NOT NULL` — an
    access-control boundary, not metadata.
-3. **Never projects into `stock` or into commitment.** *(Negative half only. The
-   positive half — that assertions project into an expectation projection —
-   depends on D24's supply-side, which is not adopted.)*
+3. **Never projects into `stock`, and never into a commitment that survives
+   withdrawal of the claim.** *(Narrowed by D24 (supply side) — assertions project
+   into `expected_supply`, and demand may bind to it. This is a policy change, not
+   a schema one: a counterparty's claim can now reach a customer promise. See
+   D24's rule-3 section.)*
 4. **Exists to be compared.** A claim never checked is itself a finding.
 5. **Recorded in the author's vocabulary.** Resolution into ours is a separate,
    fallible, recorded step.
@@ -2487,6 +2489,312 @@ Inbound Tier-0 asked for `stock(location_id, item_id)`. It must be
 **`stock(resolved_location_id, item_id)`** — on `holder_location_id` it would make
 container-held stock invisible to every commingling and putaway check.
 
+### D24 (supply side) — expected supply, netting and pre-receipt allocation
+
+*Adopted 2026-08-01 from [supply-side-design.md](./supply-side-design.md), which
+corrected four defects and two false claims in the sketch deferred at D24's
+adoption. Four further amendments applied on adoption, marked below.*
+
+**Decision.** Supply that has not arrived is a projection, `expected_supply`, over
+purchase order lines, transfer order lines, advised ASN content and return
+authorisation lines. `stock_allocation` gains a second supply arm so demand can be
+bound to a promise. Netting between a promise and its refinement is a **transient
+suppression released as the refinement is consumed**, not a subtraction.
+
+#### The bug the sketch had, and the invariant that encoded it
+
+`quantity_available GENERATED (expected − refined − received − allocated)`
+**double-subtracts**. A PO promising 100, an ASN advising 60, 58 arriving reads
+`100 − 60 − 58 = −18`: the same 58 units subtracted once as suppression and once
+as consumption.
+
+`J8` in the invariant register — *"`quantity_refined` = the sum of refining
+rows"* — **was the bug**, not the check for it. The replacement is a partition
+identity that holds by construction, including under over-refinement
+(`100 = 120 + 0 + 0 + (−20)`):
+
+> `quantity_expected = quantity_refined + quantity_received + quantity_closed_short + quantity_outstanding`
+
+**A wrong invariant is worse than a missing one**, because it confers confidence.
+That is now the register's own first lesson.
+
+```
+expected_supply               -- role: PROJECTION. Folds intentions, assertions
+  id, tenant_id, site_id      --   and facts.
+  item_id (NOT NULL)          -- unresolvable content produces a finding, not a row
+  owner_id, status_id         -- what the goods will be on arrival
+
+  purchase_order_line_id      \
+  transfer_order_line_id       |  exactly one — D23's discriminated-union rule:
+  asserted_unit_content_id     |  these are alternative identities of one promise's
+  return_authorisation_line_id/  origin, and "none" is meaningless for a projection
+  CHECK (num_nonnulls(<the four>) = 1)
+
+  refines_expected_supply_id  -- an ASN row refining a PO row. ONE LEVEL ONLY.
+  CHECK (refines_expected_supply_id IS NULL OR asserted_unit_content_id IS NOT NULL)
+
+  advised_lot_code            -- RAW supplier string. Never resolved to lot_id.
+  advised_expiry_date         -- RAW. What FEFO cross-dock sorts on.
+  expected_from, expected_to  -- a window: a dock appointment has two ends
+  date_confidence             -- advised | ordered | inferred | none
+
+  quantity_expected           -- @projection, per arm
+  quantity_refined            -- @projection: SUM of OPEN children's OUTSTANDING
+  quantity_received           -- @projection: receipts naming this row or a child
+  quantity_closed_short       -- @projection: the source line's agreed release
+  quantity_allocated          -- @projection: active allocations naming this row
+  quantity_outstanding  GENERATED (expected - refined - received - closed_short)
+  quantity_promisable   GENERATED (outstanding - allocated)
+
+  closed_at, closed_reason    -- received_in_full | short_closed | superseded
+                              -- | cancelled | expired | withdrawn
+  derived_from_assertion_id, receiving_policy_id, allocation_policy_id
+  UNIQUE (tenant_id, purchase_order_line_id)      -- one partial unique per arm;
+  UNIQUE (tenant_id, transfer_order_line_id)      --   the idempotency guard for
+  UNIQUE (tenant_id, asserted_unit_content_id)    --   message reprocessing
+  UNIQUE (tenant_id, return_authorisation_line_id)
+```
+
+**The arm determines which rules apply to the row.** *(Amendment 3.)* This table
+is a discriminated union whose branches carry different obligations: rule 3 (D21)
+binds `asserted_unit_content_id` rows and not the others; the transfer arm derives
+from our own despatch movements and has **zero exposure to rule 3**, which is why
+it is the arm to build first. Anyone querying `expected_supply` needs to know
+that, so it is stated here rather than implied across three sections.
+
+`stock` was always multi-provenance too — `quantity` from facts,
+`allocated_quantity` from intentions. The real distinction is **column grain
+versus row grain**: D12 separated by column, and `expected_supply` cannot.
+
+*(Amendment 2: the proposed scoping of S3 — "`<= 1` on grouping tables, `= 1` on
+projections" — is **dropped**. D23's discriminated-union rule already gives `= 1`
+here, and a second test reaching the same answer is the accretion this model
+exists to refuse.)*
+
+#### Allocation gains a second supply arm
+
+```
+stock_allocation              -- INTENTION (amended)
+  fulfilment_line_id          -- the demand. Unchanged, single arm.
+  stock_id                    -- \ exactly one
+  expected_supply_id          -- /
+  CHECK (num_nonnulls(stock_id, expected_supply_id) = 1)
+  origin_expected_supply_id   -- set once at binding, never cleared
+  binding_kind    GENERATED   -- on_hand | pre_receipt | in_transit
+  bound_at, expires_at
+  firm, firmed_at, firmed_by_id, firmed_reason   -- what the re-allocator may not steal
+  allocation_policy_id
+  state -- allocated | picking | picked | packed | fulfilled | short | released
+```
+
+**Allocations are never migrated by an ingestion event.** Every vendor rebinds a
+PO-bound allocation when the ASN lands; we do not, and the reason is rule 3 — *an
+ASN arriving must not rewrite one of our commitment rows*, because that is the
+supplier's message authoring our intention. The ASN is an **input to the
+allocator**, and the allocator's output is our own act with a fresh `bound_at` and
+`allocation_policy_id`. No rebinding mechanism, no event log for intentions.
+
+**Partial receipt splits the allocation, and the movements commit regardless.** An
+allocation of 100 against an ASN row where 60 arrives becomes two rows — 60
+cell-bound, 40 still expectation-bound — with `origin_expected_supply_id` on both.
+**Rolling back a receipt because an intention could not be rewritten would be the
+clearest D5 violation in the model.** A failed re-point raises a finding; the goods
+are on the dock either way.
+
+#### Demand-side coverage — the symmetric fold
+
+*(Amendment 4, settling question 106.)*
+
+```
+fulfilment_line               -- amended
+  quantity
+  allocated_quantity          -- @projection: active allocations, either arm
+  uncovered_quantity    GENERATED (quantity - allocated_quantity) STORED
+  INDEX (tenant_id, site_id, uncovered_quantity) WHERE uncovered_quantity > 0
+```
+
+`stock.allocated_quantity` and `fulfilment_line.allocated_quantity` are **the same
+sum folded two ways** — one groups allocations by supply, the other by demand.
+D12 already accepted the supply-side fold; having one materialised and not the
+other means every *"is this demand covered"* question takes a different shape from
+every *"is this supply committed"* question, for no reason but which we needed
+first. **The asymmetry was the anomaly, not the column.**
+
+D12's *"backorder is not an entity"* stands untouched: backorder is still derived,
+now from a materialised sum rather than a live aggregate — exactly as
+`stock.allocated_quantity` already was.
+
+The payoff is the generated companion, not the column. *"Find every line not fully
+covered"* stops being a join across all open lines and all allocations and becomes
+a partial-index scan — the same move D24 made with `WHERE quantity <> 0`.
+
+**The cost, named:** a `stock_allocation.state` transition now moves **two**
+projections (one supply-side, one demand-side — not three, because the supply arms
+are mutually exclusive), making it the model's hottest projection trigger.
+
+#### Cross-dock adds no policy kinds
+
+The capability needs a supply window, a shelf-life tolerance and a statement of
+which arms may be allocated against. All are typed scalars folding into the
+existing `allocation_policy` — `consider_expected_supply`, one
+`allow_supply_*` boolean per arm, `window_before`/`window_after`,
+`crossdock_min_window`/`max_window`, `crossdock_expiry_tolerance_days`,
+`revalidate_on_receipt`, `rotation_key_expected`.
+
+**Not an ordered supply-source child table.** D365's cross-dock template has one
+and it fails S11 twice: `sequence` is an ordering of steps and `supply_source` is
+a column whose value names an arm. The contrast worth recording:
+`fill_sequence ∈ {inventory_only, crossdock_only, prioritize_inventory,
+prioritize_crossdock}` names four **code-implemented strategies** and passes
+cleanly. An enum naming columns does not.
+
+**Revalidation at receipt may refuse, and refusal never blocks.** Window missed,
+goods still land: the cross-dock allocation releases, putaway proceeds, a finding
+is raised.
+
+#### Supersession, short arrival, and never arriving
+
+| Event | Mechanism |
+|---|---|
+| **ASN replaced or cancelled** | Derived rows close (`superseded`/`cancelled`); the parent's `quantity_refined` releases by the closed rows' outstanding in the **same transaction**. Replacement rows are created by **identity-preserving upsert** keyed on `(tenant_id, asserted_unit_content_id)` — never truncate-and-regenerate, because live allocations hold these ids. Allocations are **not** auto-released: `supply_withdrawn` is raised and a human decides. A counterparty's retraction must not silently un-promise a customer order. |
+| **Arrives short** | The residual stays outstanding until the row closes or the fence passes. |
+| **Arrives over** | `quantity_promisable` goes negative; `over_receipt`. Tolerance is an instance agreement (D22). |
+| **Blind receipt** | Names no `expected_supply` row, so it nets **nothing**. The PO stays open and the overdue sweep raises it, rather than a matching heuristic quietly closing the wrong row. `receipt_unmatched` makes it countable. |
+| **Never arrives** | The gap the whole comparison set gets wrong — D365's scheduled supply simply stops appearing, projected on-hand drops with no event, and commitments become unbacked invisibly. Here a sweep past `expected_to + receiving_policy.supply_overdue_hours` closes the row `expired` and raises `supply_overdue`, plus `commitment_unbacked` if allocations reference it. Both carry `counterparty_party_id` so they aggregate into the supplier scorecard. |
+
+`expected_supply` rows are **retained after `closed_at`**. D24's dead-cell reaper
+applies to `stock` only.
+
+#### The availability read path
+
+**Two index-only range scans, and D12's guarantee needs restating because the
+version in the document was never true.** Availability was never a single row
+read — it is a fold over the cells of one item at one site across lot × status ×
+owner × holder. What was actually load-bearing survives intact:
+
+> **No join, and no aggregate over a fact table, on the availability path.**
+
+Two corrections to the adopted schema make that true:
+
+- **`owner_id` and `status_id` join the index key.** D24's adopted index is
+  `(tenant_id, item_id, site_id) INCLUDE (available_quantity) WHERE quantity <> 0`
+  — neither owner nor status is in it, so every candidate needs a heap fetch and
+  the `INCLUDE` buys nothing. **The failure mode is silence, not slowness:** a
+  single-owner tenant never notices, and a 3PL tenant promises a vendor's units.
+  D20 argued the column is a constant for single-owner tenants; D24 then wrote the
+  index without it. Both go in, and `owner_id` becomes a **mandatory** argument of
+  the availability function so the defaulting bug is unrepresentable.
+- **`inventory_status.is_available_for_allocation` is never joined.** The
+  allocatable status set is resolved once per request in code and passed as
+  `= ANY`.
+
+**Date-qualified ATP is deliberately not built.** The sketch claimed *"ATP over
+future supply is one indexed read"*, which is false: ATP is a **running minimum
+over a forward horizon**, and a PO for 100 landing day 30 against demand for 100
+due day 5 nets to zero per row and the promise gets made. No vendor computes it
+from row-per-supply storage. Building it needs a third projection hop (breaking
+J24's two-hop cap) **and** the async escape D25 refuses by name — two exceptions
+argued, not one. Until then the floor never asks *"when can I promise"*.
+
+The column is therefore `quantity_promisable`, not `quantity_available`. Two
+near-identical names with different meanings on two same-shaped tables is how
+availability logic starts disagreeing with itself.
+
+#### Rule 3 is narrowed, and that is a policy decision
+
+*(Amendment 1. Stated here as what it is, rather than as a schema detail.)*
+
+D21 rule 3 as adopted: *"Never projects into `stock` or into commitment."*
+Restated:
+
+> **Never projects into `stock`, and never into a commitment that survives
+> withdrawal of the claim.**
+
+**In plain terms: we now let a counterparty's claim reach a customer promise.**
+Allocate against advised supply, the supplier retracts, and we hold a commitment
+with nothing behind it. That is the price of cross-dock, and cross-dock is worth
+it — but it is a change in what we allow, not a change in how we store it.
+
+The compensating guarantees are real and both are asserted. Nothing silently
+changes a balance, because an assertion-sourced allocation never touches a cell —
+the test is **J19**: truncate every assertion table, and `stock` plus
+`stock.allocated_quantity` rebuild byte-identical. And a withdrawal never silently
+un-promises: it raises `supply_withdrawn` and leaves the commitment standing for a
+human.
+
+#### Invariants created
+
+| # | Invariant |
+|---|---|
+| J3 *(restated)* | `stock.allocated_quantity` = active allocations **with `stock_id` set**, state ∈ `{allocated, picking, picked, packed}`. Enumerated, not adjectival. |
+| J4 | `expected_supply.quantity_allocated` = the same fold over `expected_supply_id` allocations |
+| J8 *(replaced)* | `quantity_expected = refined + received + closed_short + outstanding`. **The check that catches the double-subtraction; the old formulation was the bug.** |
+| J9 *(restated)* | `parent.quantity_refined = SUM(child.quantity_outstanding)` over **open** children — never over children's `quantity_expected` |
+| J25 | `refines_expected_supply_id` is acyclic and of depth exactly 1; violations raise `refinement_too_deep`. **Asserted by a job, never a CHECK** — a CHECK on a projection column wedges the rebuild (D24's own q92 ruling) |
+| J26 | `expected_supply.quantity_received` = the fold of `goods_receipt_line` rows naming this row or any row refining it |
+| J27 | Transfer arm: **no unit is simultaneously counted in origin `stock.available_quantity` and destination `quantity_promisable`** |
+| J28 | No open row with `quantity_outstanding > 0` past `expected_to + grace` → `supply_overdue` |
+| J29 | No active allocation references a closed or overdue row → `supply_withdrawn` / `commitment_unbacked`. The allocation is **not** released by the job |
+| J30 | Rebuilding `expected_supply` preserves row identity. Truncate-and-regenerate is forbidden while any allocation holds an `expected_supply_id` |
+| J31 | `fulfilment_line.allocated_quantity` = active allocations against that line, **either arm** |
+| J19 *(scoped)* | `expected_supply` and `stock_allocation.expected_supply_id` are exempt and named — that is what rule 3's narrowing permits |
+| S25 | Availability indexes on `stock` and `expected_supply` both carry `owner_id` and `status_id` in the key; no availability query joins `inventory_status` |
+| S26 | `expected_supply` carries at most five maintained quantity columns; a sixth requires a recorded decision |
+
+#### Amendments to earlier decisions
+
+- **D21** — rule 3 narrowed, above. **Freeze-on-first-use gains a fourth
+  referencer**: `expected_supply` references `asserted_unit_content.resolved_*`,
+  and a late re-resolution must not re-key a projection row a live allocation is
+  bound to.
+- **D12** — `stock.allocated_quantity` narrowed by an enumerated predicate; the
+  allocation lifecycle gains `picked` and `packed`, without which picked-but-not-
+  despatched stock reads as available again — the `usage`-predicate cost D16
+  refused, reintroduced by the back door. `fulfilment_line.allocated_quantity`
+  added as the symmetric fold.
+- **D16** — **q40 answered: yes**, a transfer can be allocated from despatch,
+  against a destination-site row. In-transit stays off `stock`, reinforced.
+- **D22** — no new policy kinds. Cross-dock scalars fold into `allocation_policy`.
+  Incoterms and title-transfer triggers, if ever needed, are **instance
+  agreements** on the order, not a policy kind.
+- **D25** — `discrepancy` gains its **sixth** source arm, `expected_supply_id`,
+  which is the recorded decision the cap demanded. Knowingly a *subject standing
+  in for an absent cause* — the cause of "nothing arrived" is the absence of a
+  movement — so D23's boundary rule is stretched deliberately rather than quietly.
+- **D8** — `discrepancy.kind +=` `supply_withdrawn` (reinstated),
+  `supply_overdue`, `supply_over_refined`, `commitment_unbacked`,
+  `advised_lot_mismatch`, `refinement_too_deep`, `receipt_unmatched`,
+  `over_receipt`. `discrepancy` gains `counterparty_party_id`, without which none
+  of the supplier-facing kinds aggregate.
+- **D24 (containment)** — the availability index gains `owner_id, status_id`. And
+  `stock_movement` gains `CHECK (num_nonnulls(from_location_id, from_package_id) +
+  num_nonnulls(to_location_id, to_package_id) >= 1)`: today a movement with both
+  sides empty **passes every CHECK and is insertable**, but folds into two cells
+  with no holder, which `stock`'s own CHECK forbids. Insertable but unprojectable
+  — the wedged-rebuild failure D24 refused for `depth`.
+- **D14 / q32 answered: no.** A lot is not created before its goods arrive. The
+  advised code and expiry ride on `expected_supply` as raw, non-authoritative
+  strings.
+
+**Rejects.** `expected_supply` as a view or UNION — netting computed once beats a
+rule every query remembers, *and* the FK target is the gate row Postgres needs to
+serialise concurrent allocations without gap locks. A signed-adjustment ledger
+with caller-supplied compensation (D365's, where the vendor documents that
+avoiding double-count is the integrator's job). Depleting the parent (NetSuite,
+Oracle) — it conflates *"the supplier promised 100"* with *"the supplier has told
+me about 60"*, and supplier-promise accuracy becomes unanswerable. The movement
+graph as the supply binding (Odoo's chained moves) — `stock_movement` has no
+UPDATE grant, and a status predicate on the fold is a WHERE clause on the sum D5
+keeps unconditional. **A transit location or transit warehouse** — no `transit`
+value on `location.kind`, ever, recorded as a named refusal rather than left
+protected by reasoning. A reservation as a ledger row with a zero physical delta
+(OFBiz) — attractive, refused three ways independently, recorded so it is refused
+once rather than re-proposed by everyone who has seen OFBiz. A `quantity_short`
+column on `stock_allocation`. A stepped `stock_by_item_site` rollup (ERPNext's
+`Bin`) — its `projected_qty` has no date, so a PO due in six months and a pallet
+on the floor contribute identically. Quota / allocated ATP as a column —
+entitlement is not supply, and consumption windows make it many-to-many.
+
 ### D25 — Status is derived, declared or forbidden; projections are enforced by the database
 
 *Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with the
@@ -2791,7 +3099,9 @@ Raised by D14:
     reconciled), or a trigger. The first fits the existing pattern; the second is
     stricter. Worth deciding once, since putaway, receiving and adjustment all
     need the same rule.
-32. **Can a lot exist before its goods arrive?** Supplier ASNs name lots ahead of
+32. ~~Can a lot exist before its goods arrive?~~ Settled by D24 (supply side):
+    **no**. The advised code and expiry ride on `expected_supply` as raw,
+    non-authoritative strings. ~~Supplier ASNs name lots ahead of
     delivery. If yes, `lot` is created by inbound rather than by the first
     movement, and `received_at` becomes nullable — which is fine, but it means
     lots can exist with no stock, and expiry reporting must not count them.
@@ -2821,7 +3131,11 @@ Raised by D15:
 
 Raised by D16:
 
-38. **Does a transfer's receipt reconcile against its despatch automatically?**
+38. ~~Does a transfer's receipt reconcile against its despatch automatically?~~
+    Settled by D24 (supply side): yes, through the destination-site
+    `expected_supply` row. The **destination owns the variance**, and it is
+    suppressed as a timing difference until `expected_to + supply_overdue_hours`.
+    ~~Original:~~
     Shipped 100, received 98 is a discrepancy (D8) — but which site owns it, and
     at what point does in-transit shrinkage become someone's finding rather than
     a timing difference? Needs a rule, since transfers will otherwise generate
@@ -2832,7 +3146,10 @@ Raised by D16:
     customer, and a transfer has none. If site B serves a customer who demands 90
     days, sending them stock with 30 days left is a real failure that the current
     model would not catch.
-40. **Can a transfer be allocated before it arrives?** Committing inbound stock to
+40. ~~Can a transfer be allocated before it arrives?~~ Settled by D24 (supply
+    side): **yes**, from the moment of despatch, against a destination-site
+    `expected_supply` row. The transfer arm has zero exposure to rule 3 and is the
+    arm to build first. ~~Committing inbound stock to
     outbound demand is normal practice, but our allocation is against a specific
     `stock` cell (D12), and in-transit stock is in no cell at all.
 
@@ -2992,7 +3309,9 @@ Raised by D25 (adopted 2026-08-01):
 
 Raised by D21 (adopted 2026-08-01):
 
-103. **Rule 3's positive half has no target.** Assertions must never project into
+103. ~~Rule 3's positive half has no target.~~ Settled by D24 (supply side):
+    assertions project into `expected_supply`, and rule 3 is narrowed in writing
+    rather than stretched. ~~Assertions must never project into
     `stock` or commitment, which is settled — but where they *do* project depends
     on D24's supply-side (`expected_supply`), which is not adopted. Until it is,
     an ASN informs nothing downstream, which makes cross-dock and pre-receipt
@@ -3007,6 +3326,31 @@ Raised by D21 (adopted 2026-08-01):
     assertion-ingestion facts, but nothing says whether an automation key is a
     row in a table, a config value, or a service identity. Accountability under
     D8 reaches a person; it needs to reach *something* auditable here.
+
+Raised by D24 (supply side), adopted 2026-08-01:
+
+106. ~~Does `fulfilment_line` get a maintained `allocated_quantity`?~~ Settled:
+    **yes**, with a generated `uncovered_quantity` and a partial index. Justified
+    by symmetry with D12's supply-side fold rather than as an exception to it.
+107. **Does title change while in transit, and do we need to record it?**
+    Incoterms allocate risk and cost and explicitly do *not* transfer title; GS1
+    CBV makes owning and possessing party independent. `expected_supply.owner_id`
+    is a static copy of the source line, which is not rebuildable from anything if
+    title can move mid-flight. The mechanism would be a `supply_custody_change`
+    fact. Deferred, not designed — but D24's new `stock_movement` CHECK is added
+    now so the wrong answer is a constraint violation rather than a wedged rebuild.
+108. **Are intermediate re-points reconstructable?** `origin_expected_supply_id`
+    gives the first binding and the current arm gives the last; the middle is
+    gone. Irrelevant for recall (D14 traces over `stock_movement.lot_id`);
+    possibly relevant for a chargeback over which PO a cross-docked unit came
+    from. If yes, it is an explicit exception to D25's refusal of an event log for
+    intentions, argued in writing.
+109. **Multi-PO ASN — in or out?** `refines_expected_supply_id` as a scalar FK
+    cannot express one advised content line drawing on two PO lines, and
+    `asserted_unit_content.resolved_purchase_order_line_id` is already singular.
+    Metcash and Coles both forbid an ASN spanning more than one PO; US and 3PL 856
+    traffic does not. Recorded as an explicit omission — widening it to an
+    association table would invalidate J8's partition identity.
 
 *Numbering note: D26 remains proposed in
 [mechanism-design.md](./mechanism-design.md) and is not adopted. Its open
