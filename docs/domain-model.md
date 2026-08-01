@@ -33,13 +33,15 @@ being quietly recorded as a fact. Facts give us audit, reconciliation and histor
 for free. Intentions are allowed to be wrong — that is what makes them plans
 rather than lies. Findings are the most valuable output of the system.
 
-**There is a second, orthogonal axis: role.** *(Lifted in with D25. The
-provenance axis above may gain a fourth value — assertions, what a counterparty
-claims — under D21, still proposed.)*
+**Assertions are a fourth provenance value** *(D21)* — a statement of record
+exchanged with another party, stored exactly as exchanged, which neither side may
+unilaterally revise.
+
+**There is a second, orthogonal axis: role** *(lifted in with D25)*.
 
 | Axis | Values | Decides |
 |---|---|---|
-| **Provenance** | fact \| intention \| finding | mutability, who may author, what may project from it |
+| **Provenance** | fact \| intention \| assertion \| finding | mutability, who may author, what may project from it |
 | **Role** | reference \| projection \| policy \| grouping | how it is read, indexed, rebuilt, and who may write it |
 
 Every table registers exactly one value on each axis. This is what stops the
@@ -47,11 +49,31 @@ category list growing: `goods_receipt` is a **grouping**, `stock` is a
 **projection**, `allocation_policy` is **policy** — none of them is a new kind of
 thing, and each kept looking like one only because the role axis was missing.
 
-**3. No JSON for anything we query.** JSONB is permitted for exactly one thing:
-opaque third-party payloads retained for audit (a raw MachShip response, a
-webhook body). If we would ever filter, join, sort or aggregate on it, it is a
-column or a table. "We'll make it flexible with JSON" is the first step toward
-the mess we are replacing.
+**The provenance axis is not declared closed — it has an admission test.** The
+count has gone two, three, four, and each time completeness was asserted rather
+than argued. Four is defensible (what we observed, what we plan, what someone else
+stated, where those disagree) but it is not proved, and findings sit awkwardly:
+ours and mutable, like intentions. So, as with every other limit here:
+
+> A fifth provenance value is admitted only if it changes **who may write the row,
+> whether the row may be revised, and what may project from it** — all three. If
+> it changes none of those, it is a role value or a `kind` column. If it changes
+> only one, argue it explicitly rather than adding a category.
+
+That is the test the role axis passes and `goods_receipt` fails.
+
+**3. Nothing we query is opaque, and the model contains no `jsonb` column.**
+*(Restated with D21.)* Payloads that crossed a party boundary are retained
+verbatim for audit and are never queried structurally — but they are retained as
+**`bytea`**, not JSONB, with `content_type` saying what they are. EDIFACT is
+bytes; a photographed docket is bytes; JSON is bytes. Anything queryable is
+promoted to a column.
+
+The point of the type change is that it converts a judgement into an assertion:
+**CI checks the schema contains no `jsonb` column at all**, rather than a reviewer
+deciding per column whether this one is "really" opaque. "We'll make it flexible
+with JSON" is the first step toward the mess we are replacing, and an enumerated
+exception list erodes by exception.
 
 **4. No entity-attribute-value, no custom-field framework.** Adding a column is
 cheap and migrations are routine. A generic attribute system is how you get a
@@ -274,17 +296,17 @@ consignment
 consignment_package            -- packages on this consignment
   consignment_id, package_id
 
-provider_exchange              -- raw request/response, audit only
-  id, consignment_id, direction, payload jsonb, occurred_at
 ```
+
+*(`provider_exchange` was replaced by `party_message` in D21 — one table for every
+payload that crossed a party boundary, inbound or outbound, stored as `bytea`.
+`consignment.status`, `.eta` and `.price_minor` became projections of the in-force
+carrier advice at the same time.)*
 
 **Separating `carrier` from `freight_provider` is the whole trick.** Swift is a
 carrier today reached via MachShip; tomorrow it is the same carrier reached
 directly. Consignment history stays coherent across the switch, and "what did
 Swift cost us this quarter" is one query that spans both eras.
-
-`provider_exchange.payload` is the *only* JSONB in the model, and it is
-write-only audit — never queried structurally (principle 3).
 
 ### Carrier rules, without a rules engine
 
@@ -1510,6 +1532,188 @@ non-catch-weight items the column is null and nominal weight is derived from
 satisfied differently even when they pick the same stock: one is judged against a
 weight tolerance, the other against a count.
 
+### D21 — Assertions: statements of record neither side may revise
+
+*Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with the
+provenance closure test replacing the closure claim, rule 3 stated as its
+negative half only, and principle 3 restated to `bytea`. D26 remains proposed.*
+
+**Decision.** An **assertion** is a statement of record exchanged with another
+party, stored exactly as exchanged, which neither side may unilaterally revise.
+
+**The cut is control, not authorship.** The property that generates every rule is
+not *who wrote it* — it is that **a copy exists outside our control**. Our own
+outbound despatch advice is as unrevisable as a supplier's inbound one, because
+they hold a copy and will quote it back. Taking the symmetric version costs one
+`direction` column and buys outbound EDI, proof of delivery and quotations on
+machinery we build once.
+
+**Why "intentions have an author" fails.** Three decisive reasons: mutability is
+the intention category's *defining* rule and must be disabled for every
+counterparty claim; assertions arrive in the author's vocabulary and are normally
+unresolvable, where an intention with dangling FKs is a defect; and intentions
+project into `stock.allocated_quantity` while an ASN must not.
+
+**The five rules.**
+
+1. **Immutable.** No UPDATE, no DELETE, ever. A revision is a new assertion.
+2. **Always names its author party.** `author_party_id NOT NULL` — an
+   access-control boundary, not metadata.
+3. **Never projects into `stock` or into commitment.** *(Negative half only. The
+   positive half — that assertions project into an expectation projection —
+   depends on D24's supply-side, which is not adopted.)*
+4. **Exists to be compared.** A claim never checked is itself a finding.
+5. **Recorded in the author's vocabulary.** Resolution into ours is a separate,
+   fallible, recorded step.
+
+```
+party_message                 -- FACT. Replaces provider_exchange.
+  id, tenant_id, party_id
+  direction                   -- inbound | outbound
+  channel                     -- edi | portal | csv | email | api | webhook | print
+  transport_ref, content_type
+  payload bytea               -- verbatim. NEVER jsonb (principle 3).
+  byte_count, content_hash
+  occurred_at, recorded_at, client_event_id
+  parse_status                -- pending | parsed | partial | failed | unsupported
+  parser_version
+  UNIQUE (tenant_id, party_id, content_hash, transport_ref)
+
+assertion                     -- ASSERTION. Envelope.
+  id, tenant_id, kind         -- despatch_advice | carrier_status | equipment_docket
+                              -- | delivery_receipt | order_response | price_advice
+  direction, author_party_id (NOT NULL), transmitted_by_party_id
+  owner_party_id, site_id
+  author_reference, author_version, message_function
+  asserted_at                 -- their clock
+  received_at                 -- ours. NEVER null.
+  party_message_id            -- the artefact, when one exists
+  captured_by_id              -- the person, when keyed from paper
+  client_event_id
+  supersedes_assertion_id     -- THEIR claim that this replaces that
+  correction_of_assertion_id  -- OUR transcription fix
+  CHECK (party_message_id IS NOT NULL OR captured_by_id IS NOT NULL)
+  CHECK (correction_of_assertion_id IS NULL OR party_message_id IS NULL)
+  UNIQUE (id, kind)                              -- composite FK target for bodies
+  UNIQUE (id, tenant_id, author_party_id, kind)  -- target for supersession
+  -- NO unique on (author_reference, author_version): a duplicate resend must be
+  --   STORABLE and raise a finding (D5), not be refused at the write.
+  -- NO status column: our position is assertion_stance (D25).
+
+assertion_stance              -- FACT: our position on a claim
+  id, tenant_id, assertion_id
+  stance                      -- pending | in_force | rejected | superseded
+                              -- | withdrawn_by_author | expired
+  reason_code, note, successor_assertion_id
+  CHECK (stance <> 'superseded' OR successor_assertion_id IS NOT NULL)
+  occurred_at, recorded_at, client_event_id
+  recorded_by_id / automation_key, authorised_by_id
+
+assertion_check               -- FACT: a claim was checked against reality
+  id, tenant_id, assertion_id
+  asserted_unit_id, asserted_unit_content_id
+  metric_id                   -- FK metric (D23). NOT a second vocabulary.
+  outcome                     -- agreed | disagreed | unverifiable
+                              -- | unchecked_at_close
+  asserted_numeric, observed_numeric        -- canonical units (D23)
+  asserted_text, observed_text
+  variance_numeric GENERATED
+  discrepancy_id
+  CHECK (outcome <> 'disagreed' OR discrepancy_id IS NOT NULL)
+  checked_at, recorded_at, client_event_id, recorded_by_id / automation_key
+```
+
+**Typed bodies, one per kind**, joined by a composite FK on `(assertion_id, kind)`
+with the body's `kind` a stored generated constant — so "this body belongs to an
+assertion of the matching kind" is declarative rather than a trigger.
+
+```
+despatch_advice               -- body for kind = 'despatch_advice'
+  assertion_id PK, kind (GENERATED, + composite FK)
+  inbound_shipment_id         -- the SUBJECT this claim is about (our resolution)
+  ship_from_gln, ship_to_gln, gsin, ginc
+  carrier_party_id, conveyance_ref, container_ref, seal_number
+  despatched_at, estimated_arrival_at
+  split_shipment, completes_order, granularity
+  resolved_purchase_order_id, resolved_at, resolved_by_id, resolution_method
+
+asserted_unit                 -- the declared logistic hierarchy, per claim
+  id, assertion_id, parent_asserted_unit_id
+  level_code, sscc, sequence
+  raw_package_type_code, resolved_package_type_id
+  -- NO weights, NO ti/hi. Those are OBSERVATIONS whose observable is this
+  --   asserted_unit and whose asserted_by is the author (D23).
+  -- Nesting is unbounded here (cold path); it collapses to D24's cap at receipt.
+
+asserted_unit_content
+  id, asserted_unit_id
+  raw_gtin, raw_item_code, resolved_item_id
+  raw_po_reference, raw_po_line_number, resolved_purchase_order_line_id
+  quantity, entered_quantity, entered_unit_id   -- structural: the receipt
+  lot_code, expiry_date, best_before_date       --   compares these line by line
+  resolved_at, resolved_by_id, resolution_method
+```
+
+**The boundary with observations.** An assertion body holds **identifiers,
+structure, and the values the receipt compares line by line**. Every other number
+with a unit is an `observation` (D23) whose observable is the asserted unit. A
+supplier-declared carton weight is therefore an observation with
+`asserted_by_party_id = supplier`, and comparing it to our scale is one query
+against one vocabulary rather than two parallel ones.
+
+**Two column classes, and immutability follows the class.** `raw_*` and every
+transcribed value are immutable. `resolved_*` are *our annotation* and may be
+written when resolution later succeeds — a GTIN unresolvable today becomes
+resolvable when the item is created tomorrow, and refusing that would discard a
+claim because our catalogue was behind. But a re-resolution **freezes on first
+use**: once an `assertion_check` or a `goods_receipt_line` references it, it may
+not be rewritten, and a correction writes a new assertion. Same rule as
+`goods_receipt_line.expected_quantity`.
+
+**`inbound_shipment` is a subject, not an assertion.** Filing it as an assertion
+means a resend mints a second row and orphans every FK pointing at the first —
+the `consignment.fulfilment_id` defect D15 already deleted once.
+
+```
+inbound_shipment              -- PROJECTION (subject)
+  id, tenant_id, site_id, supplier_party_id, owner_party_id
+  vendor_shipment_ref
+  in_force_assertion_id       -- @projection: the currently effective claim
+  granularity, estimated_arrival_at
+  asserted_unit_count, asserted_base_quantity      -- for the gate check
+  first_asserted_at, superseded_count
+  vehicle_arrival_id
+  UNIQUE (tenant_id, supplier_party_id, vendor_shipment_ref)
+```
+
+**Nothing on it is NOT NULL that requires an assertion**, so blind receipt — rung
+zero of the degradation ladder — is a **schema property**, not a workflow branch.
+
+#### Amendments to earlier decisions
+
+- **Principle 2** — the fourth provenance value, with the admission test.
+- **Principle 3** — restated to `bytea`; the model contains no `jsonb` column.
+- **D1** — `provider_exchange` becomes `party_message`; `consignment.eta`,
+  `.status` and `.price_minor` become projections of the in-force carrier advice.
+- **D5** — terminology: "counts are assertions, not deltas" becomes "counts are
+  **absolute claims** — register semantics". `stock_count` is a fact, and ours.
+  "Assertion" now means a statement of record exchanged with a party.
+- **D8** — `discrepancy` gains `assertion_check_id`; kinds `+= expiry_mismatch`,
+  `identity_mismatch`, `assertion_unresolvable`, `asserted_unit_absent`,
+  `asserted_unit_unexpected`.
+- **D11** — machine actors: `automation_key` XOR `recorded_by_id`, on
+  assertion-ingestion facts **only**. `stock_movement` keeps its NOT NULL person.
+- **D14** — `lot.expiry_date` remains the *accepted operational value*; a
+  supplier-asserted expiry is an assertion, and disagreement is `expiry_mismatch`.
+
+**Rejects.** "A counterparty's intention is still an intention". One table per
+assertion kind with author, artefact and clocks repeated. A single assertion table
+with a JSONB payload. An EAV bag of asserted attributes. Correcting an assertion
+in place where an artefact exists. Making the category asymmetric — inbound only.
+Treating adopted rate cards and customer shelf-life requirements as assertions:
+those are **policy**, carrying `adopted_from_assertion_id`, because we may change
+them unilaterally.
+
 ### D22 — Policy resolves against a scope lattice
 
 *Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with
@@ -2311,7 +2515,7 @@ strictly worse than the column it replaces.
 | **Finding** | **Declared.** `discrepancy.state` is ours, with `resolved_at`/`resolved_by_id` as its timestamps. |
 | **Grouping / projection** *(role)* | **Derived** — materialised, maintained in the same transaction, never written by the application, rebuildable, asserted. |
 | **A time-varying relationship** | **Forbidden as a column.** It lives in a fact table; the current value is a projection (D24's containment). |
-| **Assertion** | *(Pending D21: forbidden — the claim is immutable and our position is a separate fact.)* |
+| **Assertion** | **Forbidden.** The claim is immutable; *our position* on it is a separate fact (`assertion_stance`, D21). |
 
 **The falsifier that stops event tables breeding:**
 
@@ -2786,6 +2990,24 @@ Raised by D25 (adopted 2026-08-01):
     SECURITY` treatment and its own audit, or it becomes the way around every
     other rule here.
 
-*Numbering note: D21 and D26 remain proposed in
-[mechanism-design.md](./mechanism-design.md) and are not adopted. Their open
-questions (73–88) live there until they are.*
+Raised by D21 (adopted 2026-08-01):
+
+103. **Rule 3's positive half has no target.** Assertions must never project into
+    `stock` or commitment, which is settled — but where they *do* project depends
+    on D24's supply-side (`expected_supply`), which is not adopted. Until it is,
+    an ASN informs nothing downstream, which makes cross-dock and pre-receipt
+    allocation unreachable rather than merely unbuilt.
+104. **`assertion_check` holds a third copy of both values.** The asserted value
+    is an observation, the observed value is an observation, and the check
+    denormalises both. Justified — a comparison must be immutable and
+    self-contained for a dispute, same argument as
+    `goods_receipt_line.expected_quantity` — but it is a third copy and should be
+    a noticed cost.
+105. **What is `automation_key`?** D11 is extended to machine actors on
+    assertion-ingestion facts, but nothing says whether an automation key is a
+    row in a table, a config value, or a service identity. Accountability under
+    D8 reaches a person; it needs to reach *something* auditable here.
+
+*Numbering note: D26 remains proposed in
+[mechanism-design.md](./mechanism-design.md) and is not adopted. Its open
+questions (73–88) live there until it is.*
