@@ -1496,6 +1496,233 @@ non-catch-weight items the column is null and nominal weight is derived from
 satisfied differently even when they pick the same stock: one is judged against a
 weight tolerance, the other against a count.
 
+### D22 — Policy resolves against a scope lattice
+
+*Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with
+taxonomy changes as facts added. D21, D23, D25 and D26 remain proposed.*
+
+**Decision.** One `policy_binding` table. A policy is a **typed value row bound to
+a point in a lattice of six ordered, tree-shaped scope dimensions, effective over
+a period**. Resolution matches every binding whose non-null dimensions are
+at-or-above the request's node on each axis, orders the matches by their **depth
+vector** compared lexicographically in a precedence order declared per kind in
+code, takes the winner's value row, then clamps any field the value type declares
+as clamped.
+
+| Dimension | Nodes, least to most specific | Columns |
+|---|---|---|
+| **Tenancy** | operator (NULL) → tenant | `tenant_id` |
+| **Product** | any → `item_class` ancestors → `item_class` → `item` | `item_class_id`, `item_id` |
+| **Counterparty** | any → `party_class` → `party` | `party_class_id`, `party_id` |
+| **Space** | any → `site` → `zone` | `site_id`, `zone_id` |
+| **Ownership** | any → `owner_party` | `owner_party_id` |
+| **Metric** | any → `metric` (flat) | `metric_id` |
+
+**Tenancy is not a declarable dimension** — it is the mandatory first component of
+every depth vector, so a tenant's binding always beats an operator-shipped one.
+Without this, a per-kind order ranking Product above Tenancy would let our default
+outrank a tenant's own configuration: a correctness hole, not a support surface.
+
+**Specificity is a vector, not a number.** Collapsing a componentwise comparison
+to one integer lets a large count in a low-weight component beat a small count in
+a high-weight one. CSS is twenty years of proof; there is no `specificity` column.
+
+**A scope is a conjunction.** The columns are independent nullable axes, NULL
+meaning "any". There is deliberately **no `num_nonnulls` CHECK** — one would
+reverse the semantics and forbid the all-NULL operator default that shipped
+defaults and clamping require.
+
+**The entire matching language has cardinality one:** *is this node an
+ancestor-or-self of that node*, over closure tables. No `<`, no `LIKE`, no `IN`,
+no boolean connectives anywhere in the data. That is why this is not a rules
+engine, and it is greppable.
+
+**Ties are prevented, not broken.** Within a tree dimension a request node has
+exactly one ancestor at each depth, so two matching bindings with identical depth
+vectors must name identical scopes — forbidden by the unique index. **The
+load-bearing dependency is that every scope dimension is single-parent.** If
+`item_class` ever becomes many-to-many tags, resolution becomes non-deterministic
+and this design is unsound. Defence in depth: equal vectors take the lower binding
+id (deterministic — never stop the floor) and raise
+`discrepancy.kind = 'policy_ambiguous'`.
+
+```
+policy_binding                -- WHERE a policy applies. Scope is IMMUTABLE.
+  id, tenant_id               -- NULL = operator-shipped default
+  kind
+  item_class_id, item_id, party_class_id, party_id
+  site_id, zone_id, owner_party_id, metric_id
+  supersedes_id, note, created_at, created_by_id
+  UNIQUE NULLS NOT DISTINCT (tenant_id, kind, item_class_id, item_id,
+                             party_class_id, party_id, site_id, zone_id,
+                             owner_party_id, metric_id)
+  UNIQUE (id, kind)           -- composite FK target for value tables
+  INDEX (tenant_id, kind)     -- the resolver's only scan
+
+policy_change                 -- FACT. Append-only. Mandatory reason.
+  id, tenant_id, occurred_at, recorded_at
+  policy_binding_id, kind
+  action                      -- created | revalued | retired | reinstated
+  reason (NOT NULL)           -- a weight change with no reason is how tuning
+                              --   becomes superstition
+  recorded_by_id, authorised_by_id
+
+<kind>_policy                 -- WHAT applies and WHEN. Append-only versions.
+  id, policy_binding_id, kind
+  CHECK (kind = '<its kind>')
+  FOREIGN KEY (policy_binding_id, kind) REFERENCES policy_binding (id, kind)
+  effective tstzrange
+  EXCLUDE USING gist (policy_binding_id WITH =, effective WITH &&)
+  ... typed scalars ...
+```
+
+**Eleven kinds:** `allocation`, `putaway`, `receiving`, `order_tolerance`,
+`count_tolerance`, `shelf_life`, `sampling`, `cycle_count`, `specification`,
+`observation_precedence`, `observation_acceptance`. The enum, the `%_policy` table
+set and the compiled Rust registry are asserted equal in CI.
+
+**Combination is most-specific-wins over the whole value row**, not per field —
+you must not take `weight_rotation` from a customer binding and `weight_travel`
+from a site binding, because weights are only meaningful relative to each other.
+The one exception is **per-field clamping declared on the Rust value type**: the
+winner's value, clamped against every less-specific match. That is what "customer
+× item class, plus a site floor" (q33, q39) actually asks for, and it gives a
+commercial product an operator-shipped ceiling no tenant can exceed.
+
+**No per-row override flag.** That is `!important`, and it exists precisely to
+escape the precedence order it was supposed to live in. If an operation needs both
+a floor customers cannot undercut and a default they can, those are two fields
+with two declarations.
+
+**Instance agreements sit outside the resolver and win outright.** An explicitly
+agreed value on an instance — `order_line.tolerance_under_pct` from an EDI order
+or typed by a salesperson — is a different category of thing (what was *agreed*,
+not what we do by default), and the resolver is not consulted.
+
+**Reproducing a past decision is a foreign key, not a replay.** Value rows are
+append-only, so `stock_allocation.allocation_policy_id` points at the exact
+immutable row that scored it. One naming convention, asserted:
+`<kind>_policy_id`, always an FK to the value row, never a version integer.
+
+**Scope is immutable.** Editing a binding's scope would silently change the
+meaning of every value row a past decision already references. Rescoping is
+retire-and-create, linked by `supersedes_id`.
+
+**The resolver returns an explanation, not a value** — winner, what clamped it,
+and in explain mode the candidates considered and the near-misses with the
+dimension that failed. *"Why is the 60 I configured not applying?"* is only
+answerable by evaluating bindings that did not match. `resolve_batch` is the
+primary interface; single-request is a wrapper.
+
+#### Where the line sits
+
+D13 said *"if we ever find ourselves adding a table where the logic itself is
+rows, that is the line"* — true, and unfalsifiable as written. Sharpened:
+
+> **Data may say where a number applies and how big it is. Only code may say what
+> to do with it.**
+> A row may contain: a scope node identifier, a period, and a typed scalar.
+> A row may never contain: the name of a field, the name of an operator, a
+> comparison, a boolean connective, the target of an action, or an ordering of
+> steps. **The moment a table has a column whose *value* is a *column name*, we
+> have crossed.**
+
+That is a grep, and it caught its own author: the first draft of this design
+failed it on a `band_axis` column.
+
+**One bounded extension, fenced now rather than smuggled in later.** A value table
+may have **at most one child, keyed on a single numeric axis declared in code**,
+with `[lower, upper)` bands and a no-overlap exclusion constraint, containing only
+bounds and typed scalars. `order_tolerance_band` is the only instance, and the
+axis is named in the Rust type — there is no `band_axis` column.
+
+#### Taxonomy changes are facts
+
+*(Added on adoption.)* Depth vectors make **tree shape semantically
+load-bearing**, and the failure mode is subtler than it looks. Membership changes
+are intuitive — move a class out of `dairy` and dairy's rules stop applying. But
+**cross-dimension flips are possible**: a binding at Product-3/Space-0 beats one
+at Product-2/Space-2; re-parent so the first is depth 2 and the second now wins,
+with nothing about either binding changed.
+
+Retire-and-create for taxonomy nodes was rejected as too heavy for a structure
+that legitimately evolves. Instead the change is recorded, and its blast radius is
+computed **before** it is committed:
+
+```
+taxonomy_change               -- FACT. Append-only.
+  id, tenant_id, occurred_at, recorded_at
+  item_class_id, party_class_id            -- exactly one
+  CHECK (num_nonnulls(item_class_id, party_class_id) = 1)
+  action                      -- created | reparented | renamed | retired
+  from_parent_id, to_parent_id
+  reason (NOT NULL)
+  affected_resolution_count   -- computed before the move, frozen on the fact
+  recorded_by_id, authorised_by_id
+```
+
+Two things follow. The operator sees *"this move changes N active resolutions"*
+before confirming, so the blast radius is a decision rather than a discovery. And
+*"why did this item's shelf-life rule change last March"* becomes answerable by
+the same anti-join that answers it for `policy_change` — which is the point: a
+taxonomy edit and a policy edit have identical consequences and should leave
+identical evidence.
+
+#### Prerequisites
+
+`item_class` and `party_class` are per-tenant rooted trees with closure-table
+projections. `zone` becomes a real table (`zone(id, site_id, code, …)`,
+`location.zone_id`), not a bare column — the Space dimension needs something to
+FK to and a depth to read.
+
+**`item.item_class_id NOT NULL` would break D19** and is not used: a shared item
+(`tenant_id IS NULL`) cannot carry a mandatory FK into one tenant's private
+taxonomy, since every other tenant reads it as an unresolvable link. Classification
+is an association:
+
+```
+item_classification
+  tenant_id, item_id, item_class_id
+  PRIMARY KEY (tenant_id, item_id)      -- exactly one class per item per tenant
+```
+
+Single parentage is preserved, so the tie-freedom proof holds, and D19's thin
+shared item survives.
+
+#### Amendments to earlier decisions
+
+- **D13** — `allocation_policy(scope_kind, scope_id)` → `policy_binding_id`. The
+  scoring function stays code, unchanged and reaffirmed; the line becomes a grep.
+  "We ship defaults, not hard-coded behaviour" becomes literally true: our
+  defaults ship as `tenant_id IS NULL` bindings.
+- **D14** — `customer.min_shelf_life_days`/`_pct` are **removed**; they cannot
+  express "different requirements by category". Replaced by `shelf_life_policy`
+  with clamping, so a site floor raises a customer rule.
+- **D9 / q21** — `count_tolerance_policy`, distinct from order tolerance:
+  different numbers, different screens.
+- **D20 q55** — `order_line.quantity_tolerance_pct` becomes an instance
+  agreement; the policy value moves to `order_tolerance_policy` plus its band
+  child. **`order_line` is not a scope** — it would put instance-cardinality rows
+  in a config table.
+- **D8** — `discrepancy.kind += policy_ambiguous`; `respond_by` populated from
+  `receiving_policy.respond_by_hours`.
+- **D19** — a third RLS shape, for operator-shipped shared bindings.
+
+**Rejects.** A polymorphic `policy_scope(scope_kind, scope_id, precedence)` pair,
+structurally unable to express *(customer AND item class)*. A scalar or packed
+specificity. Tie-breaking by entry order, `created_at`, or document order. A
+per-row `is_override` flag. A `combine` column chosen per kind as data — combining
+is semantics and belongs in the Rust type. Predicate rows.
+`policy_value(policy_id, field_name, value)`. JSONB value blobs. Many-to-many item
+tags. Per-tenant policy kinds or tenant-defined dimensions. A `policy_resolution`
+audit table — volume is per-scan, and the value-row FK carries the same
+information.
+
+**Not a projection, deliberately.** `policy_change` holds no values, so a claim
+that policy state is rebuildable from it reduces to rebuilding the value rows from
+the value rows. The guarantee is carried entirely by a bidirectional anti-join:
+every value version has a matching `policy_change` and vice versa.
+
 ### D24 — Containment joins the `stock` key; a package's placement is a fact
 
 *Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with the
@@ -1805,7 +2032,8 @@ Raised by D9–D11:
     The counter-argument is that `measurement` is append-only reference data on a
     cold path, where the batch-loading argument does not apply — so this may be
     a case where the polymorphic pair genuinely costs nothing.
-21. **Who configures tolerances, and at what grain?** Per item, item class, site,
+21. ~~Who configures tolerances, and at what grain?~~ Settled by D22: the scope
+    lattice, with `count_tolerance` and `order_tolerance` as separate kinds. ~~Per item, item class, site,
     or location kind? D9 says the operator decides, but not yet at what
     resolution they express it.
 22. **What is a `work_session` in practice?** A shift, a task, a wave, or an
@@ -1819,7 +2047,8 @@ Raised by D12:
 
 24. ~~FEFO versus travel — which wins?~~ Settled by D13: neither, in code. The
     model holds expiry, travel and access cost; a manager sets the weights.
-25. **When are allocations released?** Explicit release on cancellation is
+25. ~~When are allocations released?~~ Settled by D22:
+    `allocation_policy.allocation_expiry_hours`. ~~Explicit release on cancellation is
     obvious. Less obvious: does an allocation expire? One held for a week is a
     lie that suppresses availability for everything else. A sweep needs a rule.
 26. **Who allocates, and when?** At order import, on a schedule, at wave
@@ -1841,7 +2070,8 @@ Raised by D13:
     to account for equipment *availability* (one forklift, three people wanting
     it)? Queueing is a scheduling problem, and modelling it properly is a much
     larger commitment than a scalar.
-30. **Who may change an `allocation_policy`, and is the change audited?** These
+30. ~~Who may change an `allocation_policy`, and is the change audited?~~ Settled
+    by D22: `policy_change` is a fact with a mandatory reason. ~~These
     weights directly affect spoilage and labour cost. Per D8's spirit, a policy
     change is exactly the kind of thing you want to correlate against a later
     change in findings — which argues for policy edits being facts too.
@@ -1858,7 +2088,8 @@ Raised by D14:
     delivery. If yes, `lot` is created by inbound rather than by the first
     movement, and `received_at` becomes nullable — which is fine, but it means
     lots can exist with no stock, and expiry reporting must not count them.
-33. **Is `min_shelf_life` per customer, or per customer *and* item?** Modelled on
+33. ~~Is `min_shelf_life` per customer, or per customer and item?~~ Settled by
+    D22: `shelf_life_policy` on the lattice, any combination of dimensions. ~~Modelled on
     the customer. A single retailer often has different requirements by category,
     which would push it to a customer-item-class pair.
 34. **What happens to allocations when a lot is held?** D14 says they become
@@ -1888,7 +2119,9 @@ Raised by D16:
     at what point does in-transit shrinkage become someone's finding rather than
     a timing difference? Needs a rule, since transfers will otherwise generate
     noise every time a truck is mid-journey at a reporting boundary.
-39. **Do shelf-life rules apply to transfers?** D14 puts `min_shelf_life` on the
+39. ~~Do shelf-life rules apply to transfers?~~ Settled by D22:
+    `shelf_life_policy.min_remaining_days_transfer`, with a site floor via
+    clamping. ~~D14 puts `min_shelf_life` on the
     customer, and a transfer has none. If site B serves a customer who demands 90
     days, sending them stock with 30 days left is a real failure that the current
     model would not catch.
@@ -1996,6 +2229,24 @@ Raised by D24 (adopted 2026-08-01):
     unprojectable, so it is a finding (`nesting_too_deep`) with a fixed three-hop
     fold returning NULL beyond. See D24.
 
-*Numbering note: D21, D22, D23, D25 and D26 remain proposed in
+Raised by D22 (adopted 2026-08-01):
+
+93. **The eleven per-kind precedence orderings are undocumented.** Eleven
+    orderings of six dimensions, declared in a Rust const. Counterparty over
+    product for shelf life, product over space for putaway — both defensible,
+    neither obvious, and a manager who assumes wrong misconfigures confidently.
+    Each needs a written justification, not just a declaration.
+94. **S23 — "no resolver call inside a loop" — is probably not enforceable** as an
+    AST check in Rust, with closures, iterator chains and helper functions in
+    play. Worth having, but the batch-first interface shape is doing the real
+    work and should not be assumed redundant.
+95. **`affected_resolution_count` is computed before a taxonomy move — against
+    what?** Active bindings is cheap; actual future resolutions is unbounded. It
+    needs a defined denominator or the number is theatre.
+96. **Does `metric` want a hierarchy?** It is the only flat scope dimension. "All
+    temperature metrics" is a plausible near-term ask, and adding a tree later
+    changes existing depth vectors — the same class of hazard as q78.
+
+*Numbering note: D21, D23, D25 and D26 remain proposed in
 [mechanism-design.md](./mechanism-design.md) and are not adopted. Their open
 questions (73–88) live there until they are.*
