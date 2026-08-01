@@ -2645,6 +2645,7 @@ stock_allocation              -- INTENTION (amended)
   origin_expected_supply_id   -- set once at binding, never cleared
   binding_kind    GENERATED   -- on_hand | pre_receipt | in_transit
   bound_at, expires_at
+  rebind_count, last_rebound_at   -- volatility, not a path (q108)
   firm, firmed_at, firmed_by_id, firmed_reason   -- what the re-allocator may not steal
   allocation_policy_id
   state -- allocated | picking | picked | packed | fulfilled | short | released
@@ -2663,6 +2664,47 @@ cell-bound, 40 still expectation-bound — with `origin_expected_supply_id` on b
 **Rolling back a receipt because an intention could not be rewritten would be the
 clearest D5 violation in the model.** A failed re-point raises a finding; the goods
 are on the dock either way.
+
+#### Re-point history: first, last, and a volatility signal
+
+*(Settling question 108.)* An allocation records where it was **first** bound
+(`origin_expected_supply_id`) and where it is **now** (the live arm). The path
+between is not stored, and most of what it was wanted for is answerable elsewhere.
+
+**"Which PO did this unit come from?"** is answered by **containment, not by
+allocation history.** Goods arrive in identified packages, and D24 makes the
+package part of the `stock` key — so PO X's pallet and PO Y's pallet are
+*different cells*, and receipt movements carry `goods_receipt_line_id` → PO line.
+Physical provenance lives in the fact ledger. Once a pallet is broken down and
+cartons are mixed into one tote, provenance blurs — but that is **physically
+true, not a modelling gap**, and a schema claiming otherwise would be lying.
+
+**"Why did the promise slip?"** is answered by findings: `expected_supply` rows
+close with `closed_reason`, assertions supersede via `assertion_stance`, and
+`supply_withdrawn` / `commitment_unbacked` carry timestamps and a counterparty.
+
+**What is genuinely unanswerable is auditing an automated re-allocator** — did it
+release a binding it should not have, and why? A per-allocation event log is the
+wrong shape for that: it records *"the row changed from A to B"*, which is the
+changelog D25 refuses and which fails D25's own falsifier (bounded by our code
+paths, not by things that happened in the world).
+
+**A planner decision, by contrast, is a thing that happened in the world.** The
+right mechanism generalises the proposed `work_creation_outcome` — trigger,
+inputs considered, outcome, reason, policy version — which are columns a state
+transition does not have. It is the same category as `policy_change` and
+`taxonomy_change`: a **fact about a decision**, not a history of a row. It passes
+the falsifier rather than needing an exception to it.
+
+> **Deferred with a trigger: build `planner_decision` when the re-allocator is
+> built.** Not before — there is nothing to audit until something automated is
+> making these choices, and building the audit table first means guessing what it
+> needs to record.
+
+What ships now is `rebind_count` and `last_rebound_at` on the allocation: a
+counter and a timestamp on an intention, which D25 permits, and which make *"this
+promise has moved four times"* visible without a log. **An unstable promise is the
+one worth looking at**, and that is the operationally useful half of the question.
 
 #### Demand-side coverage — the symmetric fold
 
@@ -3400,12 +3442,12 @@ Raised by D24 (supply side), adopted 2026-08-01:
     allocatable ownership; legal title timing belongs to the finance system. The
     rebuildability concern was misplaced: `owner_id` is a projection of the source
     line describing the arrival state, now marked as such. See D24 (supply side).
-108. **Are intermediate re-points reconstructable?** `origin_expected_supply_id`
-    gives the first binding and the current arm gives the last; the middle is
-    gone. Irrelevant for recall (D14 traces over `stock_movement.lot_id`);
-    possibly relevant for a chargeback over which PO a cross-docked unit came
-    from. If yes, it is an explicit exception to D25's refusal of an event log for
-    intentions, argued in writing.
+108. ~~Are intermediate re-points reconstructable?~~ Settled: **first, last and a
+    volatility counter now; the full path deferred with a trigger.** PO
+    provenance comes from containment rather than allocation history, promise
+    slippage from findings, and auditing an automated re-allocator wants a
+    `planner_decision` fact — not an event log for intentions. See D24 (supply
+    side).
 109. ~~Multi-PO ASN — in or out?~~ Settled: **in, and already supported.** The
     X12 ORDER hierarchy level partitions advised content by PO, so a content line
     names exactly one PO line and the scalar FK is correct. Recorded as an
