@@ -33,6 +33,20 @@ being quietly recorded as a fact. Facts give us audit, reconciliation and histor
 for free. Intentions are allowed to be wrong — that is what makes them plans
 rather than lies. Findings are the most valuable output of the system.
 
+**There is a second, orthogonal axis: role.** *(Lifted in with D25. The
+provenance axis above may gain a fourth value — assertions, what a counterparty
+claims — under D21, still proposed.)*
+
+| Axis | Values | Decides |
+|---|---|---|
+| **Provenance** | fact \| intention \| finding | mutability, who may author, what may project from it |
+| **Role** | reference \| projection \| policy \| grouping | how it is read, indexed, rebuilt, and who may write it |
+
+Every table registers exactly one value on each axis. This is what stops the
+category list growing: `goods_receipt` is a **grouping**, `stock` is a
+**projection**, `allocation_policy` is **policy** — none of them is a new kind of
+thing, and each kept looking like one only because the role axis was missing.
+
 **3. No JSON for anything we query.** JSONB is permitted for exactly one thing:
 opaque third-party payloads retained for audit (a raw MachShip response, a
 webhook body). If we would ever filter, join, sort or aggregate on it, it is a
@@ -2269,6 +2283,208 @@ Inbound Tier-0 asked for `stock(location_id, item_id)`. It must be
 **`stock(resolved_location_id, item_id)`** — on `holder_location_id` it would make
 container-held stock invisible to every commingling and putaway check.
 
+### D25 — Status is derived, declared or forbidden; projections are enforced by the database
+
+*Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with the
+role axis lifted into principle 2. D21 and D26 remain proposed.*
+
+**Decision.** Every status column is exactly one of three things, determined by
+the **provenance and role** of the row it sits on. Projections are enforced by
+column-level grants, not by convention. One `client_event` registry owns
+idempotency. One `acceptance` table owns assent.
+
+**Why the cross-cutting review's own test is rejected.** *"Derive status where the
+transition is evidence, store it where it is only state"* is not decidable —
+there is no way to lose the argument that a transition is evidence. It also
+answers the wrong question (the evidence in a consignment delivery is the
+carrier's message, not a status log), and it has two branches where the model
+needs four. The largest class here is statuses that are neither evidence nor state
+but **arithmetic over facts that already exist**, for which an event table is
+strictly worse than the column it replaces.
+
+**The rule, and it is total:**
+
+| Provenance / role | Treatment |
+|---|---|
+| **Fact** | **No status.** Facts do not have lifecycles. |
+| **Intention** | **Declared** — the row owns it, one timestamp per state reached, no history table. Principle 2 defines an intention as mutable; giving it an immutable event log contradicts its own category. |
+| **Finding** | **Declared.** `discrepancy.state` is ours, with `resolved_at`/`resolved_by_id` as its timestamps. |
+| **Grouping / projection** *(role)* | **Derived** — materialised, maintained in the same transaction, never written by the application, rebuildable, asserted. |
+| **A time-varying relationship** | **Forbidden as a column.** It lives in a fact table; the current value is a projection (D24's containment). |
+| **Assertion** | *(Pending D21: forbidden — the claim is immutable and our position is a separate fact.)* |
+
+**The falsifier that stops event tables breeding:**
+
+> An event table earns its place only if it has columns a state transition does
+> not. If it would be `(entity_id, from_state, to_state, changed_at, changed_by)`
+> and nothing more, it is a changelog. **An event table's row count is bounded by
+> things that happened in the world; a changelog's is bounded by our own code
+> paths.**
+
+`policy_change` (D22) passes: mandatory `reason`, `authorised_by_id`, and a
+valid/transaction time split. `work_task_status_history` fails, and is refused.
+
+#### One column per source — D12's move, applied to status
+
+`purchase_order.status ∈ {draft, issued, partially_received, closed, cancelled}`
+is **two facts about two different things in one enum**: `draft/issued/cancelled`
+is *our intention*, `partially_received/closed` is *arithmetic over the ledger*.
+Storing both in one column means either the arithmetic overwrites the intention or
+a human overwrites the arithmetic — and NetSuite is what happens when you do that
+for fifteen years.
+
+```
+purchase_order   state          -- DECLARED: draft | issued | cancelled
+                 issued_at, cancelled_at
+                 receipt_status -- @projection: none|partial|complete|over
+transfer_order   state / receipt_status               -- same split
+order            state          -- DECLARED: placed | on_hold | cancelled
+fulfilment       state          -- DECLARED: planned | released | cancelled
+                 progress       -- @projection
+goods_receipt    status         -- @projection: lines + movements
+consignment      status         -- @projection: in-force carrier advice
+package          status         -- @projection: package_event + consignment
+work_task        state          -- DECLARED
+stock_allocation state          -- DECLARED
+discrepancy      state          -- DECLARED (finding)
+```
+
+**`order.fulfilment_status` is dropped.** It would be a third hop
+(`stock_movement → fulfilment.progress → order.fulfilment_status`), breaking the
+two-hop cascade cap. An order has few fulfilments; compute it on read.
+
+**`work_task.state` stays declared**, for three stated reasons — not "a pick lasts
+ninety seconds", which would not survive a week-long task. A monotone lifecycle's
+timestamps **are** its event log transposed (`claimed_at`, `started_at`,
+`completed_at` — zero extra rows, no greatest-n-per-group). The non-monotone parts
+have a home already: `activity_event` gains `task_claimed | task_released |
+task_reassigned`. And the hot read is the current state, which principle 6
+decides. A status changelog here would be ~20,000 rows/day/site recording
+transitions three columns already imply.
+
+#### Enforcement is the database, not a sentence in a document
+
+The model already says *"Nothing writes to `stock` directly. Ever."* Postgres can
+make that a fact rather than a hope.
+
+- **Column-level grants, issued column-wise from the first migration.** The trap:
+  granting table-wide and then revoking one column **does not work**. A single
+  table-wide `GRANT UPDATE` would silently disarm every projection guard in the
+  schema, and nothing would fail loudly.
+- **Fact tables get no `UPDATE` and no `DELETE` grant at all.** Append-only stops
+  being a convention. One mechanism and one catalogue assertion replaces four
+  separate immutability-trigger families.
+- **Triggers exist for projection maintenance and nothing else.** One function per
+  projection, named for it. Never business rules, defaults, validation or
+  cascades. Unbounded trigger logic is Postgres's own accretion failure mode.
+- **`SECURITY DEFINER` maintainers require `FORCE ROW LEVEL SECURITY`** on every
+  RLS-protected table involved. Table owners bypass RLS by default, so without
+  this the mechanism guarding the projections punches a hole through D18.
+- **Registration is checkable.** Each projection column carries
+  `COMMENT '@projection <source>'`, and CI diffs the commented set against the
+  code registry of rebuild functions, bidirectionally.
+
+#### Idempotency has one registry
+
+```
+client_event                  -- Unpartitioned, by necessity.
+  tenant_id, client_event_id  -- PRIMARY KEY (tenant_id, client_event_id)
+  site_id, device_id, work_session_id
+  recorded_by_id / automation_key      -- CHECK num_nonnulls(...) = 1
+  app_version, submitted_at, received_at
+```
+
+**Every fact table carries `client_event_id` as a plain FK**, not a unique one.
+Two reasons the per-table `UNIQUE` had to go, both of which void D5's stated
+non-negotiable property:
+
+1. **One physical act produces many facts** — a receipt writes a `package_event`
+   and N movements; a cubing scan writes an event and four observations.
+2. **Postgres requires the partition key in any unique constraint.** On a table
+   range-partitioned by `occurred_at`, a per-table `UNIQUE(client_event_id)`
+   silently degrades to *per-partition* uniqueness, and a replay landing in a
+   different month is accepted.
+
+One submission inserts one `client_event` row plus all its facts in one
+transaction; a replay aborts on the primary key and rolls back. The
+`(tenant_id, …)` key also closes a cross-tenant unique-constraint oracle.
+
+`recorded_by_id` stays denormalised on every fact row — D11 is emphatic that it is
+the non-repudiable floor and a join is the wrong shape for an accountability query
+— and CI asserts the denormalisation agrees with the envelope.
+
+#### Acceptance, and what happens when it is contradicted
+
+```
+acceptance                    -- FACT: a person took responsibility for a state
+  id, tenant_id, occurred_at, recorded_at, client_event_id
+  accepted_by_person_id       -- ours (D19's global person)
+  accepted_by_party_id        -- the counterparty, when external
+  authorised_by_id
+  goods_receipt_id, consignment_id, discrepancy_id, observation_id
+  assertion_id                -- [D21, proposed]
+  CHECK (num_nonnulls(<arms>) = 1)   -- a subject union, per D23's rule
+  decision                    -- accepted | rejected | accepted_with_exception
+  accepted_state              -- the derived value AS AT acceptance. FROZEN.
+  basis                       -- manual | policy_auto
+  observation_acceptance_policy_id   -- which policy auto-accepted (D22)
+  reason_id, note
+  rejection_window_expires_at -- statutory clock, computed once and frozen
+```
+
+The five arms are legitimate under D23's discriminated-union rule: these are
+alternative identities of the thing being accepted, not a cause set.
+
+**The frozen `accepted_state` answers open question 13.** When a derived status
+recomputes to a value that contradicts an `acceptance`, the recomputation does
+**not** lose — but it raises `discrepancy.kind = 'accepted_state_contradicted'`.
+
+> The projection is the truth about the facts; the acceptance is the truth about
+> what a person committed to; their disagreement is the finding.
+
+```
+projection_check              -- FACT: we checked a projection against its source
+  id, tenant_id, projection_name, scope_kind, scope_id
+  checked_at, rows_checked, rows_mismatched, duration_ms
+```
+
+Mismatches raise `discrepancy.kind = 'projection_drift'`, so the model's
+self-consistency lands in the same queue as every other finding.
+
+#### `row_audit` is not built
+
+A generic `(table_name, row_id, before jsonb, after jsonb)` changelog is a
+polymorphic reference plus an untyped payload, defended only by "we never read
+it". It is also mostly dead weight: fact tables have no `UPDATE` or `DELETE`
+grant, so their audit rows could only ever be inserts — doubling the write volume
+of the largest tables in the system to record nothing. The tables that *are*
+mutable are intentions and policy, and policy already has `policy_change`. If
+compliance later demands row-level audit for intentions, that is an
+infrastructure decision with its own justification, not a domain table smuggled in
+on a principle-3 exception.
+
+#### Amendments to earlier decisions
+
+- **Principle 2** — the role axis, lifted in above.
+- **D5** — the `client_event` registry replaces per-table idempotency uniqueness.
+- **D8** — `discrepancy.kind +=` `containment_conflict`, `projection_drift`,
+  `clock_skew`, `accepted_state_contradicted`, `policy_ambiguous`,
+  `stock_without_location`, `specification_breach`, `uncalibrated_instrument`,
+  `nesting_too_deep`. **Source arms are capped at five** with `CHECK <= 1`; a
+  sixth requires a recorded decision, because these are causes, not a subject
+  union.
+- **D12** — one-column-per-source, generalised to status.
+- **D17** — `work_task.state` confirmed with the reason replaced; `activity_event`
+  gains three kinds.
+
+**Rejects.** A global `events` table. Per-entity status-history tables. The
+evidence test. CQRS with async projectors — the model already chose transactional
+projections for `stock`, and async would make availability and task queues stale
+on exactly the paths D5 spent its coordination budget to get right.
+Event-sourcing ceremony: aggregates, upcasting, snapshots. Postgres tables *are*
+the snapshots; upcasting is what you build when you cannot migrate.
+System-versioned temporal shadow tables. `row_audit`. An event log for intentions.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -2289,10 +2505,9 @@ container-held stock invisible to every commingling and putaway check.
 
 Raised by D5–D7:
 
-13. ~~Does the count-as-assertion approach hold?~~ Resolved by D8: counts do not
-    adjust, they create findings. Remaining detail — a variance is computed
-    against ledger state *at `counted_at`*, so a movement arriving late but
-    dated before the count should re-open a resolved finding. Needs a rule.
+13. ~~Does the count-as-assertion approach hold?~~ Resolved by D8, and the
+    late-arrival case is settled by D25: a recomputation that contradicts an
+    `acceptance` does not lose, it raises `accepted_state_contradicted`.
 14. **Nosdesk: shared workspace, or service boundary?** Sharing the platform
     could mean one Cargo workspace with shared crates, or two services with an
     API between them. Affects deployment, migrations and blast radius (D7).
@@ -2556,6 +2771,21 @@ Raised by D23 (adopted 2026-08-01):
     reasoning would put in code. It reads as the one place the vocabulary/type
     line is blurred.
 
-*Numbering note: D21, D25 and D26 remain proposed in
+Raised by D25 (adopted 2026-08-01):
+
+101. **What is the idempotency retention window?** `client_event` is the one
+    table that can **never be partitioned** — partitioning it would reintroduce
+    the exact per-partition-uniqueness bug it exists to prevent. It takes a row
+    per fact-producing act, forever, and nothing says when rows may go. If a
+    handheld can be offline for a week the window is a week; if the answer is
+    "forever", that is an unbounded unpartitionable table and it should be a
+    decision rather than a discovery.
+102. **Who may write a `@projection` column during a rebuild?** The maintainer
+    role has grants the application role does not, so the rebuild path is the one
+    place the guard is deliberately open. It needs the same `FORCE ROW LEVEL
+    SECURITY` treatment and its own audit, or it becomes the way around every
+    other rule here.
+
+*Numbering note: D21 and D26 remain proposed in
 [mechanism-design.md](./mechanism-design.md) and are not adopted. Their open
 questions (73–88) live there until they are.*
