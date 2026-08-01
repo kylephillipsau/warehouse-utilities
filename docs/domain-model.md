@@ -3347,6 +3347,127 @@ Interpreted rule tables. Writing our own condition language. Server-side WASM
 *only* answer. A polymorphic `(entity_type, entity_id)` for attaching extension
 records — the genericity lives in the compiler, not in the row.
 
+### D27 — `device`: one table, two roles, calibration as facts
+
+*Adopted 2026-08-02, settling question 99. `device_id` is referenced by D5, D11,
+D23, D24 and D25 and was defined by none of them.*
+
+**Decision.** One `device` table covering both roles a device plays, with
+commissioning as timestamps and calibration as an append-only fact.
+
+#### Two roles, one table
+
+D23 already distinguishes them on `observation_event`:
+
+- **`device_id`** — the **recording** device. The handheld that submitted the
+  fact. Unconditional under D11: every fact names the hardware it came from.
+- **`instrument_device_id`** — the **measuring** instrument. The scale, the cubing
+  station, the thermometer. Set only when `method ∈ {instrument, scan}`.
+
+A handheld with a built-in scanner is both, on different facts. That is two roles
+of one thing, not two things, so it is one table with a `kind` — the same
+reasoning D17 used for `work_task`.
+
+```
+device                        -- role: REFERENCE
+  id, tenant_id
+  home_site_id                -- nullable; a handheld moves, a dock scale does not
+  kind                        -- handheld | scanner | scale | cubing_station
+                              -- | printer | workstation | gateway
+  serial_number, model, manufacturer, asset_tag
+  commissioned_at, decommissioned_at        -- see below
+
+  -- measurement capability: NULL for a device that measures nothing
+  measures_dimension_id       -- FK dimension (D23)
+  resolution_numeric          -- least count, canonical unit. D23's
+                              --   observation.uncertainty default comes from here.
+  range_min_numeric, range_max_numeric
+
+  -- trade-legal metrology
+  approval_authority          -- nmi | oiml | none
+  approval_number             -- e.g. an NMI pattern approval
+  verification_class
+  calibration_valid_until     -- @projection from device_calibration
+
+  CHECK ((measures_dimension_id IS NULL) = (resolution_numeric IS NULL))
+```
+
+#### Calibration is a fact, not a column
+
+A device is calibrated repeatedly, and *"was this scale in calibration when it
+produced that weight"* is the question a billing dispute turns on.
+
+```
+device_calibration            -- FACT. Append-only.
+  id, tenant_id, device_id
+  calibrated_at, valid_until
+  performed_by_party_id       -- the external calibrator
+  certificate_ref, attachment_id
+  outcome                     -- passed | adjusted | failed
+  recorded_by_id, client_event_id
+```
+
+This gives D23's `uncalibrated_instrument` finding an actual source: an
+`observation` whose `instrument_device_id` had
+`calibration_valid_until < observed_at` raises it. Per D23 and D5 we **do not
+reject the reading** — the goods really did weigh that much — we record it and
+raise the finding, because the reading may be perfectly good and the certificate
+merely lapsed.
+
+#### Why this is not bureaucracy: catch weight
+
+D20 admitted catch-weight items, which are **sold by actual weight**. Under the
+National Measurement Act a weight used for trade must come from an instrument with
+pattern approval and current verification. So the chain
+`observation → instrument_device → approval_number + calibration_valid_until` is
+what makes a catch-weight consignment legally invoiceable. Without it we can weigh
+things but cannot defend the number.
+
+#### `active` is derived, not stored
+
+`commissioned_at` and `decommissioned_at` are a **monotone lifecycle**, so their
+timestamps *are* the event log transposed — D25's `work_task` reasoning applied
+verbatim, and `active` is derived rather than a mutable boolean. Decommissioning
+matters: a dispute may turn on whether a scale was still in service, and a boolean
+cannot say when it stopped being.
+
+#### A gap this exposed in principle 2
+
+**Reference tables have a role but no provenance.** `device`, `dimension`, `unit`,
+`metric` and `observable` are all role `reference`, and none of them is a fact, an
+intention, an assertion or a finding — we neither observed them nor plan them nor
+were told them.
+
+This is not a fifth provenance value: under D21's admission test, reference data
+changes who may write it (us) but not what may project from it or whether it may
+be revised in any distinctive way. The honest statement is:
+
+> **Role `reference` tables do not register a provenance.** Their mutable state is
+> treated as an intention would be — declared, with timestamps, no history table
+> unless a transition is itself a fact worth keeping (`device_calibration` is).
+
+Recorded here rather than left implicit, because D25's rule table is indexed by
+provenance and would otherwise have no row for the tables it most obviously
+applies to.
+
+#### `device_id` and `automation_key` are different questions
+
+D21 admits machine actors via `automation_key XOR recorded_by_id`, and q105 asks
+what an automation key is. `device` answers it by contrast rather than directly:
+**`device_id` is *how* a fact was captured; `automation_key` is *who* captured
+it.** An EDI parser has an automation key and no device; a handheld has a device
+and a person. They are orthogonal and both may be present.
+
+#### Amendments to earlier decisions
+
+- **D5, D11, D24, D25** — `device_id` becomes a real FK to `device`. It was a bare
+  column on `stock_movement`, `package_event`, `stock_count` and `client_event`.
+- **D23** — `observation.uncertainty_numeric` defaults from
+  `device.resolution_numeric`, which is now a real column;
+  `uncalibrated_instrument` gains its source.
+- **D19** — `device` is tenant-scoped, not global. Unlike `person`, hardware
+  belongs to an organisation.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -3635,10 +3756,8 @@ Raised by D23 (adopted 2026-08-01):
     composite FKs enforcing agreement. That is the price of database-enforced type
     safety on the typed value columns, and it is roughly 40 bytes a row on the
     second-largest table. Deliberate, but worth measuring before it is 10⁷ rows.
-99. **`device` is now referenced by four adopted decisions and defined by none.**
-    D5, D11, D23 and D24 all name `device_id`. It is where an instrument's
-    calibration date and approval number live, and a billing dispute becomes a
-    question about the instrument. Inbound Tier-0 flagged it; it is now blocking.
+99. ~~`device` is referenced by adopted decisions and defined by none.~~ Settled
+    by D27: one table, two roles, calibration as an append-only fact.
 100. **Does `metric.applies_to` belong in data?** It constrains which `observable`
     arms a metric is legal against — arguably a type rule, which D23's own
     reasoning would put in code. It reads as the one place the vocabulary/type
@@ -3679,7 +3798,9 @@ Raised by D21 (adopted 2026-08-01):
 105. **What is `automation_key`?** D11 is extended to machine actors on
     assertion-ingestion facts, but nothing says whether an automation key is a
     row in a table, a config value, or a service identity. Accountability under
-    D8 reaches a person; it needs to reach *something* auditable here.
+    D8 reaches a person; it needs to reach *something* auditable here. *(D27
+    narrows it: an automation key is **who**, a device is **how**, and they are
+    orthogonal — so it is not solved by pointing it at `device`.)*
 
 Raised by D24 (supply side), adopted 2026-08-01:
 
