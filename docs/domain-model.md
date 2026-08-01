@@ -75,7 +75,17 @@ deciding per column whether this one is "really" opaque. "We'll make it flexible
 with JSON" is the first step toward the mess we are replacing, and an enumerated
 exception list erodes by exception.
 
-**4. No entity-attribute-value, no custom-field framework.** Adding a column is
+**4. No entity-attribute-value, and no untyped attribute soup — but a tenant may
+declare a typed scheme that compiles to real columns.** *(Amended by D26.)* The
+original wording refused custom fields because "adding a column is cheap and
+migrations are routine". That sentence has a hidden subject: cheap **for us**, and
+D18 made the subject non-universal. The refusal was never really about columns; it
+was about deferring *type* decisions to runtime. So the boundary is **what a
+column may be**, not who may add one: real types, real CHECKs, real foreign keys,
+real indexes, declared up front and compiled to DDL. A generic attribute system,
+a spare-column sidecar, or JSON-with-a-schema remains refused.
+
+The original reasoning, which still holds for us: adding a column is
 cheap and migrations are routine. A generic attribute system is how you get a
 schema that cannot be read and queries that cannot be optimised.
 
@@ -3102,6 +3112,241 @@ Event-sourcing ceremony: aggregates, upcasting, snapshots. Postgres tables *are*
 the snapshots; upcasting is what you build when you cannot migrate.
 System-versioned temporal shadow tables. `row_audit`. An event log for intentions.
 
+### D26 — Extensibility: a schema compiler, an outbox, and no document store
+
+*Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with four
+amendments applied. **This completes D1–D26; nothing remains proposed.***
+
+**Decision.** Extensibility decomposes into exactly three things a tenant can
+want, and each gets one primitive:
+
+| Want | Primitive |
+|---|---|
+| **Data** the product does not model | `record_scheme` — a schema compiler |
+| **Decisions** the product makes | D22's scope lattice — nothing new |
+| **Reactions** to things that happen | `event_subscription` + `outbox` |
+
+A fourth — presentation — is not extensibility and never touches the schema.
+**Three is the budget. A fourth request means one of the three is wrong.**
+
+#### The premise that changed
+
+Principle 4's refusal rested on *"adding a column is cheap and migrations are
+routine"*. That has a hidden subject — cheap **for us** — and D18 made it
+non-universal. But the refusal was never about columns; it was about **untyped
+attribute soup**. So the boundary moves from *who may add a column* to **what a
+column may be**.
+
+```
+record_scheme                 -- REFERENCE. tenant_id NULL = shipped by us (D19)
+  id, tenant_id, key, version
+  provenance                  -- fact | intention | assertion | finding
+  role                        -- reference | grouping
+  attaches_to                 -- a core entity (see "one registry" below)
+  cardinality                 -- one | many
+  physical_table              -- 'ext_daff_biosec_discrepancy_v1'; immutable
+  manifest_source bytea, manifest_hash          -- retained; never queried
+  source                      -- shipped | tenant | plugin
+  plugin_id, state, materialised_at, created_by_id
+  UNIQUE (tenant_id, key, version)
+
+record_scheme_field           -- the COMPILED SYMBOL TABLE. Rows, not JSON.
+  id, record_scheme_id, ordinal, column_name, label
+  field_type                  -- integer|text|boolean|date|timestamptz
+                              -- |quantity|money_minor|enum|ref|attachment
+  unit_id                     -- FK unit (D23). NOT NULL iff quantity.
+  currency                    -- NOT NULL iff money_minor
+  enum_values text[]          -- non-empty iff enum   -> generates a CHECK
+  ref_entity                  -- NOT NULL iff ref     -> generates a real FK
+  required, min_value, max_value
+  CHECK (parameter presence matches field_type)
+  UNIQUE (record_scheme_id, column_name)
+```
+
+**This is a code generator whose input happens to live in a row**, not an
+attribute store. The generated table gets a real `tenant_id` FK, a real parent FK
+with **`ON DELETE RESTRICT`** (not CASCADE — a fact scheme's evidence must not be
+destroyed when a receipt is deleted), `client_event_id` where
+`provenance = fact`, RLS with `FORCE`, column-wise grants **derived from
+`provenance`**, and real columns with real types, CHECKs and indexes.
+
+Against six tests: referential integrity — real FKs. Database enforces invariants
+— NOT NULL, CHECK, UNIQUE, RLS, and no UPDATE grant for facts, which is the
+**first time principle 2's categories are mechanical rather than a naming
+convention**. Survives migrations — a scheme version *is* a migration. Queryable —
+`contamination_g` is an integer with planner statistics. Debuggable — `\d` tells
+you everything; there is no interpreter. Not a language — nine type constructors,
+no nesting, no `any`. EAV fails all six; spare-column sidecars fail all six;
+JSONB-with-a-schema fails all six.
+
+**Evolution is additive in place, otherwise a new version.** Adding a nullable
+column is metadata-only in Postgres and permitted; narrowing, dropping or adding
+NOT NULL mints version N+1 with a new table and a generated backfill, and the old
+table stays. **A scheme is never rewritten** — D8's invariant applied to schema.
+
+**Ceilings are declared numbers**: 50 schemes per tenant, 60 fields per scheme,
+100 tenant-defined metrics. Not because 51 breaks anything, but because the
+ceiling is what keeps this a schema *extension* rather than a schema *escape*.
+Salesforce's flex-column pivot is what happens when it comes off.
+
+**The boundary against D23:** a single unit-carrying number with provenance is a
+`metric`; a coherent multi-field record is a `record_scheme`. Most "we need a
+field" requests are actually observations, which is why D23 absorbs the larger
+share.
+
+#### Ownership, not detection
+
+*(Amendments 3 and 4.)* The compiler runs DDL from tenant-supplied declarations,
+so it is the same deliberately-elevated path question 102 identified for the
+projection maintainer. It gets the same treatment, and one mechanism does the work
+of two:
+
+> **The compiler role owns every generated table. The application role receives
+> DML grants only.**
+
+`ALTER TABLE` requires ownership in Postgres, so manual drift is not *detected*,
+it is **unrepresentable** — D25's move applied one level down. That collapses the
+drift job from *"has anything diverged?"* to *"did a materialisation complete?"*,
+which is a far smaller surface and is checkable at materialisation rather than by
+polling.
+
+What remains is checked in **one set-based query** over `pg_attribute` and
+`pg_constraint`, aggregated to a hash per table and joined to `record_scheme` —
+not one query per table. At any plausible scale that is a catalogue read of a few
+hundred thousand rows.
+
+The compiler role requires `FORCE ROW LEVEL SECURITY`, its own audit, and a
+stated rule on who may invoke materialisation.
+
+**Scale is a ceiling, not an expectation:** shipped schemes have
+`tenant_id IS NULL` and are **shared**, so only tenant-declared schemes multiply.
+**Escape hatch, recorded not built:** if generated tables ever grow large enough
+to matter, they move into a per-tenant Postgres namespace — which also turns
+"everything belonging to tenant T" into a schema listing rather than a filtered
+scan, helping export and deletion. The trigger is catalogue-query latency; the
+cost is a dimension on every generated FK and grant.
+
+#### Reactions
+
+```
+event_subscription            -- INTENTION
+  id, tenant_id, name
+  source_table                -- a core entity (see below)
+  site_id, party_id, item_class_id      -- scope filter, D22's dimensions
+  delivery                    -- webhook | plugin | outbox_only
+  endpoint_id, plugin_id, format_version, state
+
+outbox                        -- FACT. Written in the SAME TRANSACTION as its fact.
+  id, tenant_id, occurred_at, enqueued_at
+  source_table, source_id     -- audit only; NEVER dereferenced (see below)
+  subscription_id
+  party_message_id            -- THE PAYLOAD, rendered at enqueue (D21)
+  attempt_count, next_attempt_at, delivered_at, last_error
+  INDEX (next_attempt_at) WHERE delivered_at IS NULL
+
+registered_endpoint           -- SSRF guard: targets are registered, not free-form
+  id, tenant_id, url, host, auth_kind, secret_ref, verified_at, active
+```
+
+**The outbox's polymorphic pair is permitted, and the reason is an invariant, not
+a comment.** *(Amendment 2.)*
+
+> **S27 — the outbox source reference is never dereferenced. The rendered bytes in
+> `party_message_id` are the payload.**
+
+D10's decisive argument against polymorphic references was that batch loading
+cannot be expressed over one. That argument does not apply to a queue *only
+because* the payload is rendered at enqueue. Without S27 asserted, a delivery
+worker that looks up the source puts polymorphic joins back on a hot path, and
+nothing would fail.
+
+**Subscription filtering uses D22's scope dimensions, not a predicate language.**
+*"Webhook me for discrepancies against supplier X"* is a scope, not an expression
+— one addressing mechanism across policy and subscriptions.
+
+#### One registry, not three lists
+
+*(Amendment 1.)* `record_scheme.attaches_to` and `event_subscription.source_table`
+were both specified as hand-maintained closed enums naming core tables. Two lists
+tracking the same moving target drift — and had already begun to: three members of
+`source_table` were renamed by decisions written in the same document.
+
+Both are instead **derived from the code-side table registry** that S4 already
+requires and CI already diffs against `information_schema`. Attachability and
+subscribability become capability flags on a registration, not lists someone
+remembers to update.
+
+`observable`'s arms (D23) stay as they are and are legitimately different: those
+are typed FKs to *instances*, not an enum naming *types*.
+
+#### Plugins, with one divergence from Nosdesk
+
+The plugin surface reuses Nosdesk's sandbox wholesale — opaque-origin iframe on a
+separate registrable domain, `connect-src 'none'`, Comlink over a transferred port
+authenticated by holding the port, manifest-declared permissions enforced from
+trusted DB state, signed bundles with trust tiers, an egress proxy injecting
+credentials the plugin never sees.
+
+**One deliberate divergence: no document store.** Nosdesk's
+`plugin_collection_rows.data jsonb` is right for a helpdesk, where a plugin's
+saved addresses are nobody's business but the plugin's. It is wrong here, because
+**warehouse plugin data is almost never private to the plugin** — a biosecurity
+form is evidence in a dispute, a quality result gates a release. In a JSONB
+collection it cannot be joined to a receipt, reported on, exported into a claim,
+or given a foreign key: D23's trapped-in-`measurement` failure, one level down. A
+warehouse plugin declares a `record_scheme` and gets a real table.
+
+#### Two deferrals, both with thresholds
+
+**`decision_rule`** — a compiled, type-checked, total predicate (Cedar or
+equivalent) is a genuinely better answer than an interpreted rule table, and if
+ever built it should be adopted rather than written. But it crosses D22's
+sharpened line on every clause, and **both its motivating examples have
+evaporated**: *"vendor X's goods go to zone 3"* is a `putaway` binding, and
+subscription filtering is a scope. **Revisit when two tenants want different
+behaviour at the same decision point** — one tenant is a shipped vertical.
+
+**Server-side WASM** — nothing in the three axes needs arbitrary computation
+inside a warehouse transaction, and for the one job it might serve WASM is
+strictly worse: Wasmtime bounds guests with fuel or epoch interruption, and
+neither is a **type checker**, which is the property we actually want. Adopting it
+would buy generality by deferring *what a plugin computes* to runtime — the exact
+failure the standing direction names.
+
+#### Amendments to earlier decisions
+
+- **Principle 1** — corollary: an extension mechanism is itself a primitive.
+  Three is the budget.
+- **Principle 2** — the categories become mechanical: a scheme's `provenance`
+  drives its grants.
+- **Principle 4** — amended above.
+- **D7 / q14** — Nosdesk is shared as **library crates** (sandbox, bridge,
+  consent, signing), not as a deployment. **Not** shared: the plugin collection
+  store.
+- **D19** — the nullable-tenant reference shape covers `record_scheme`.
+- **D20** — cited as the consistency check: an org with no schemes and no
+  subscriptions encounters none of this, because there are no rows.
+- **D25 / q102** — answered for the compiler: ownership, `FORCE ROW LEVEL
+  SECURITY`, its own audit.
+- **Tenant export and deletion are materially de-risked** — because tenant
+  extension data lives in enumerable named tables rather than shared blobs,
+  "export everything for tenant T" and "delete T except statutorily retained
+  facts" are generated queries over `record_scheme.physical_table`, not a hunt.
+  That is an argument *for* the compiler that has nothing to do with
+  extensibility.
+
+**Rejects.** EAV. Spare-column sidecars (`ext_int_1..20`) — EAV with extra steps,
+and the planner's statistics land on `ext_int_7` rather than on `contamination_g`.
+JSONB plus JSON Schema. Schema-per-tenant with **tenant-owned DDL** — it fails on
+operations, not capability: if the tenant owns the DDL, *we* cannot upgrade, and
+the rebuild-and-assert jobs holding this model together cannot be written once.
+(Database-per-tenant as a *deployment topology* stays available per D18, and
+namespacing without tenant DDL stays available as the escape hatch above.)
+Interpreted rule tables. Writing our own condition language. Server-side WASM
+(deferred, seam open). Nosdesk's plugin collection store. Shipped verticals as the
+*only* answer. A polymorphic `(entity_type, entity_id)` for attaching extension
+records — the genericity lives in the compiler, not in the row.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -3125,7 +3370,9 @@ Raised by D5–D7:
 13. ~~Does the count-as-assertion approach hold?~~ Resolved by D8, and the
     late-arrival case is settled by D25: a recomputation that contradicts an
     `acceptance` does not lose, it raises `accepted_state_contradicted`.
-14. **Nosdesk: shared workspace, or service boundary?** Sharing the platform
+14. ~~Nosdesk: shared workspace, or service boundary?~~ Settled by D26: shared as
+    **library crates** (sandbox, bridge, consent, signing), not as a deployment;
+    the plugin collection store is explicitly not shared. ~~Sharing the platform
     could mean one Cargo workspace with shared crates, or two services with an
     API between them. Affects deployment, migrations and blast radius (D7).
 15. **What is the reconciliation UI for negative stock?** D5 accepts negative
@@ -3406,7 +3653,9 @@ Raised by D25 (adopted 2026-08-01):
     handheld can be offline for a week the window is a week; if the answer is
     "forever", that is an unbounded unpartitionable table and it should be a
     decision rather than a discovery.
-102. **Who may write a `@projection` column during a rebuild?** The maintainer
+102. *(Answered for the compiler by D26: ownership, `FORCE ROW LEVEL SECURITY`,
+    its own audit. Still open for the projection maintainer itself.)*
+    **Who may write a `@projection` column during a rebuild?** The maintainer
     role has grants the application role does not, so the rebuild path is the one
     place the guard is deliberately open. It needs the same `FORCE ROW LEVEL
     SECURITY` treatment and its own audit, or it becomes the way around every
@@ -3453,6 +3702,19 @@ Raised by D24 (supply side), adopted 2026-08-01:
     names exactly one PO line and the scalar FK is correct. Recorded as an
     omission on a misreading. See D24 (supply side).
 
-*Numbering note: D26 remains proposed in
-[mechanism-design.md](./mechanism-design.md) and is not adopted. Its open
-questions (73–88) live there until it is.*
+Raised by D26 (adopted 2026-08-01):
+
+110. **What is the materialisation authority?** The compiler role owns generated
+    tables and runs DDL from tenant-supplied declarations. Who may *invoke* it —
+    the tenant directly, an operator approval step, or a signed plugin bundle —
+    is a product decision with a privilege-escalation surface behind it.
+111. **Do the ceilings need enforcement, or only assertion?** 50 schemes and 60
+    fields are declared numbers checked by a job. A tenant hitting the ceiling
+    mid-declaration needs a defined behaviour, and "the job complains tomorrow"
+    is not one.
+
+*All decisions D1–D26 are now adopted. The proposals in
+[mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
+and [supply-side-design.md](./supply-side-design.md) are superseded by this
+document where they disagree; their open questions (73–88) remain there as
+working notes.*
