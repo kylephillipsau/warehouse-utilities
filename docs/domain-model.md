@@ -3970,6 +3970,183 @@ receipt scan being rejected. Deterministic `stock.id` (UUIDv5 over the key) —
 considered seriously, unnecessary once nothing durable holds the id, and it puts a
 random-key B-tree on the hottest table in the system.
 
+### D31 — Retention: floors are declared, and nothing that folds is ever deleted
+
+*Adopted 2026-08-03, settling questions 101, 113 and 115 together.*
+
+**Decision.** Retention has exactly two drivers: **verifiability**, which sets a
+hard floor nothing may cross, and **claim windows**, which set the minimum age for
+anything that can still be argued about. **Value decay is rejected as a driver.**
+Ageing data out is done by **archiving, never deleting**. Every floor is a
+declared row with a named authority, and CI asserts the data actually reaches it.
+
+#### Why value decay is rejected
+
+The intuitive model is that detail matters while something is in motion and fades
+into summary afterwards, the way memory does. It is seductive and it is wrong for
+an audit trail, for one reason:
+
+> **Significance is determined retrospectively.** Nothing is knowable as noise at
+> the time it is written. An event becomes evidence when a dispute surfaces, and
+> that can be months later.
+
+The memory analogy fails precisely where it matters. Human memory is lossy and we
+accept that. A chargeback dispute needs exactly the detail that looked like noise
+when it was recorded.
+
+#### The verifiability floor
+
+Facts divide into two classes by whether anything folds from them.
+
+**Facts that fold to a projection** — the movement ledger, observations, container
+placement — **are never deleted.** The check that makes stock trustworthy is that
+the stored total equals the fold of the whole ledger, and deleting any of it means
+that check can no longer run. This is not a retention policy so much as a
+consequence of the model: the log is the only truth, and projections are caches
+that may be discarded and refolded at any time.
+
+**Facts that fold to nothing** — scan failures, activity, work that moved no stock
+— may age out, but see the archive rule below.
+
+#### Archive, never drop
+
+*(Adopted from the substrate work in the `timespace` project, whose law 8 states
+compaction as freeze-with-tested-unfreeze and archives a segment only once
+everything in it is snapshot-covered.)*
+
+D28 range-partitions `activity_event` on time, with the implication that old
+partitions are dropped. **Dropping is deletion, and question 115 named the failure
+mode: it is silent.** A fold invariant detects source deletion because the
+projection stops matching. An **existence** predicate — has this identifier been
+used in the last twelve months, has this submission been seen before — has no
+projection to compare against, so after a truncation both sides agree and nothing
+fails.
+
+So a partition is **detached and archived**, not dropped. It reopens cold and
+transparently. The failure mode of archiving is slowness; the failure mode of
+dropping is a check that quietly starts passing.
+
+#### Retention floors are declared facts with an authority
+
+*(Settling question 115.)*
+
+```
+retention_floor               -- REFERENCE
+  id, tenant_id               -- NULL = applies to all
+  subject                     -- the table or check the floor protects
+  minimum_age                 -- interval
+  basis                       -- statutory | standard | contractual | operational
+  authority                   -- the instrument it comes from, named
+  established_at, established_by_id, note
+```
+
+The floors known from the inbound research, each with the instrument behind it:
+
+| Subject | Minimum age | Basis |
+|---|---|---|
+| Identifier reuse guard | 12 months | GS1 General Specifications, SSCC non-reallocation |
+| Receipt and discrepancy evidence | 30 days minimum | Food and Grocery Code of Conduct, claim window |
+| Pallet account movements | 180 days | Carrier equipment control policy, liability window |
+| Carrier charge disputes | 12 months | Quarterly dispute cycles, four quarters of cover |
+
+**[Unverified and probably the binding one: Australian business record retention
+under tax and corporations law, commonly five years. Needs legal confirmation
+before any floor is set below it.]**
+
+**The assertion that makes a floor real**: for every declared floor, either the
+oldest live row in the subject reaches `minimum_age`, or the archive manifest
+covers back to it. A partition detached below the floor fails the check loudly
+rather than degrading a guard nobody is watching.
+
+#### `client_event` retention is derived, not chosen
+
+*(Settling questions 101 and 113.)*
+
+Every fact carries `client_event_id`. The row it points at holds the person, the
+device, the session, the app version and both clocks, which is exactly the material
+D8 and D11 depend on for an investigation. **Deleting it while keeping the fact
+would leave the record intact and gut the ability to investigate it.**
+
+So the retention of `client_event` is not an independent decision. **It lives as
+long as the longest-lived fact that references it**, which for the ledger is
+indefinitely.
+
+#### The premise of question 101 was wrong
+
+D25 asserted that `client_event` can never be partitioned, because Postgres
+requires the partition key inside any unique constraint, so partitioning by time
+would degrade a global uniqueness guarantee into a per-partition one and let a
+replay landing in a different month through.
+
+That holds only when the partition key is **independent** of the identifier. It is
+not a property of the table.
+
+> **Derive the partition key from the identifier and a replay routes to the
+> partition its original landed in, so uniqueness within the partition is globally
+> sufficient.**
+
+With a time-ordered identifier (UUIDv7, already the recommended scheme), the
+server computes the bucket from the id itself and stores it as a plain column. The
+key becomes `(tenant_id, bucket, client_event_id)`. A replay carries the same id,
+therefore the same bucket, therefore the same partition, and the conflict is
+caught. Two distinct submissions can never collide because their identifiers
+differ.
+
+The bucket is computed server-side from the identifier, never supplied by the
+client.
+
+#### The volume does not justify urgency
+
+With `scan_ok` deleted (D28), `client_event` takes one row per fact-producing
+submission rather than per capture: on the order of 10,000 a day per site. The row
+is narrow.
+
+| | |
+|---|---|
+| Rows per year per site | ~3.7M |
+| Storage per year per site, with indexes | ~500 MB |
+| Ten years, twenty sites | ~100 GB |
+
+That is unremarkable for Postgres. **The honest answer to question 101 is that
+`client_event` is retained indefinitely, it is partitionable if that ever becomes
+useful, and the question was more urgent in the asking than in the answering.**
+
+#### Snapshot membership is by identity, never by time
+
+*(Adopted pre-emptively from the same substrate work, whose law 3 is marked as a
+correction, implying it was learned the hard way.)*
+
+Nothing is snapshotted today, so this costs nothing to write down now and would be
+expensive to discover later.
+
+> When a segment of the ledger is folded into a snapshot, the remainder is defined
+> as **the operations the snapshot does not contain**, never as *"everything after
+> time T"*.
+
+A time-keyed cut loses any movement that arrives late but is dated before the cut.
+The model is built to make exactly that case correct: D5 orders the ledger by
+device clock so a late scan lands in its true position, and D9 computes count
+variance against ledger state at the moment of counting rather than at write time.
+The first time-keyed snapshot would quietly undo both.
+
+**And when a snapshot exists, it joins the trusted base.** Today nothing is trusted
+except the log. Afterwards a corrupted snapshot is invisible to the mechanism built
+to detect corruption, which is an acceptable trade if it is chosen rather than
+arrived at.
+
+#### Amendments to earlier decisions
+
+- **D25** — the claim that `client_event` can never be partitioned is withdrawn;
+  it holds only for a partition key independent of the identifier.
+- **D28** — `activity_event` partitions are **archived, not dropped**.
+- **J-series** — a new assertion per declared `retention_floor`, checking the
+  oldest live row or the archive manifest reaches it.
+
+**Rejects.** Value decay as a retention driver. Dropping partitions on a table any
+existence check reads. Deleting `client_event` rows while referencing facts
+survive. Choosing an arbitrary retention window in place of a derived one.
+Time-keyed snapshot cuts.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14, and the scope question is answered:
@@ -4266,8 +4443,10 @@ Raised by D23 (adopted 2026-08-01):
 
 Raised by D25 (adopted 2026-08-01):
 
-101. **What is the idempotency retention window?** `client_event` is the one
-    table that can **never be partitioned** — partitioning it would reintroduce
+101. ~~What is the idempotency retention window?~~ Settled by D31: derived, not
+    chosen. `client_event` lives as long as the facts referencing it, and the
+    "never partitioned" premise was wrong. ~~`client_event` is the one
+    table that can never be partitioned — partitioning it would reintroduce
     the exact per-partition-uniqueness bug it exists to prevent. It takes a row
     per fact-producing act, forever, and nothing says when rows may go. If a
     handheld can be offline for a week the window is a week; if the answer is
@@ -4337,12 +4516,15 @@ Raised by D26 (adopted 2026-08-01):
 
 Raised by D28 (adopted 2026-08-02):
 
-114. **`client_event` retention is now the binding constraint.** D28 avoided
+114. ~~`client_event` retention is now the binding constraint.~~ Settled by D31:
+    the volume is unremarkable and the retention is derived. ~~Original:~~ D28 avoided
     7–18M rows/year/site by deleting `scan_ok`, but migration imports still put
     30–60k rows per tenant in on day one, and `client_event` is the only table
     with no range-drop exit. Question 101 is promoted: answer it with the
     partitioning plan, not separately.
-115. **Retention floors are a class the invariant register cannot check.** A
+115. ~~Retention floors are a class the invariant register cannot check.~~
+    Settled by D31: a floor is a declared row with a named authority, and the
+    assertion is that live data or the archive manifest reaches it. ~~Original:~~ A
     duplicate-identifier guard needs N months of history; drop a partition and
     the check *silently starts passing*. Fold invariants detect source deletion
     because the projection stops matching; an **existence predicate** has no
