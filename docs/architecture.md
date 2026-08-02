@@ -184,6 +184,23 @@ everything beside it on the shelf is neither. The same mechanism covers a
 catalogue with a few refrigerated lines and a catalogue where most of it is
 refrigerated, without either paying for the other's requirements.
 
+### Old data is archived, never deleted
+
+Anything the running totals are derived from is kept indefinitely, because the
+check that makes stock trustworthy is that the total equals the sum of the whole
+record. Delete part of it and the check cannot run.
+
+Records nothing is derived from, such as scan failures, can age out. They are moved
+to cold storage rather than removed, because the failure mode of removing them is
+silent: a check that asks whether an identifier has been used in the last twelve
+months has nothing to compare itself against, so truncating its history makes it
+quietly start passing.
+
+How far back each kind of record must reach is written down with the rule that
+requires it, whether that is a carrier's liability window, a supplier claim period,
+or the twelve months a barcode identifier cannot be reissued within. A check
+confirms the data actually reaches those floors.
+
 ### Customers can add fields, and they become real ones
 
 A customer can define a set of fields and the system builds them a real database
@@ -248,23 +265,21 @@ with a pallet count on every delivery, and that is not the yard.
 
 ## Current state
 
-Thirty recorded decisions, around fifty-five rules the design must always satisfy,
+Thirty-one recorded decisions, around sixty rules the design must always satisfy,
 no code.
 
 That list of rules is what the design gets checked against. It is currently
 written as prose, and it should be generated from the tests instead, so a rule and
 the check for it cannot drift apart.
 
-Three things want settling while the first database migration is written rather
-than before it. How long to keep the record of each handheld submission, since
-that table cannot be split up and discarded piecemeal and every other record
-points at it. Who is allowed to write to the running totals while they are being
-rebuilt. What permissions the mechanism that builds customer-defined tables runs
-with. Everything else is deferred against a stated trigger.
+Two things want settling while the first database migration is written rather
+than before it. Who is allowed to write to the running totals while they are
+being rebuilt, and what permissions the mechanism that builds customer-defined
+tables runs with. Everything else is deferred against a stated trigger.
 
 ## Reading further
 
-- [domain-model.md](./domain-model.md), the decision record from D1 to D30
+- [domain-model.md](./domain-model.md), the decision record from D1 to D31
 - [order-fulfilment-process.md](./order-fulfilment-process.md), the process being
   replaced, as it runs today
 - [warehouse-data-model.md](./warehouse-data-model.md), the shared data layer and

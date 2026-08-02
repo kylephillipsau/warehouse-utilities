@@ -21,8 +21,8 @@ disagreements are raised as findings with the evidence attached rather than bein
 quietly corrected, and most of that chasing stops existing rather than getting
 faster.
 
-The design is specified to a level it could be built from: thirty recorded
-decisions, around fifty-five rules it must always satisfy, and research against six
+The design is specified to a level it could be built from: thirty-one recorded
+decisions, around sixty rules it must always satisfy, and research against six
 comparable products. What it does not have is code, a measured baseline for the
 current process, or costings for the alternatives. The first two are being
 addressed. The third needs figures from the business.
@@ -271,13 +271,13 @@ of steps removed rather than a measurement.
 
 ## Where it stands
 
-There are thirty recorded decisions, around fifty-five rules the design must always
+There are thirty-one recorded decisions, around sixty rules the design must always
 satisfy, and research against six comparable products alongside the freight
 standards and Australian grocery requirements that apply. There is no code.
 
 The design has been checked repeatedly against real requirements rather than
 against itself, and the specification is detailed enough to build from directly.
-Three technical questions want settling as the first database work is done rather
+Two technical questions want settling as the first database work is done rather
 than before it, and they are recorded. Everything else is either decided or
 deferred against a stated trigger, so nothing is waiting on a decision nobody has
 identified.
@@ -289,8 +289,8 @@ measurement.
 ## Supporting documents
 
 - `architecture.md`, the design in more detail
-- `domain-model.md`, the full decision record, thirty decisions with the reasoning
-  and what each rejected
+- `domain-model.md`, the full decision record, thirty-one decisions with the
+  reasoning and what each rejected
 - `order-fulfilment-process.md`, the current process recorded step by step
 - `competitor-analysis.md`, `inbound-analysis.md` and `supply-side-design.md`, the
   research the decisions rest on
