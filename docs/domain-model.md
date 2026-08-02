@@ -3972,9 +3972,11 @@ random-key B-tree on the hottest table in the system.
 
 ## Open questions
 
-1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
-   and FEFO are actually in scope, since that decides whether `tracking = lot` is
-   the default or the exception.
+1. ~~Lot/batch and expiry~~ — settled by D14, and the scope question is answered:
+   the business distributes **food safety products** (gloves, hair nets,
+   protective equipment), which are largely non-perishable. So `tracking = lot` is
+   the **exception, not the default**, and rotation applies to a small part of the
+   catalogue. The capability is built for breadth, not for current need — see D20.
 2. ~~Does a fulfilment ever span multiple orders?~~ Settled by D15: no. Waves are
    a work grouping and belong in `pick_batch`, not in the order structure.
 3. ~~Does a consignment ever span multiple fulfilments?~~ Settled by D15: yes,

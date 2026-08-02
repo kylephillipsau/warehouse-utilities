@@ -107,8 +107,10 @@ explain themselves.
 ### Inventory
 
 **Stock on hand** — item x location x quantity, plus lot/batch, expiry, and
-serial where applicable. Expiry matters: the `Foodcare` caller value suggests
-food, where FEFO picking is usually a requirement rather than a nicety.
+serial where applicable. Expiry is modelled for breadth rather than for the
+current catalogue: food safety products are largely non-perishable, though some
+protective equipment does carry a shelf life. The capability exists so the model
+can serve a perishables operation later without reopening the core.
 **[unverified — confirm whether lot/expiry tracking is in scope.]**
 
 **Stock movement** — the append-only log. Every feature that reasons about

@@ -6,10 +6,22 @@ and the reasoning behind the parts that are unusual.
 
 ## What it is
 
-A warehouse management system for a food distributor running several sites across
-Australia, built to replace Oracle NetSuite. Rust and PostgreSQL on the server,
-React on the client, Tauri on the handhelds. Multi-tenant from the first migration,
-because it is meant to become a product.
+A warehouse management system for a distributor of food safety products (gloves,
+hair nets, protective equipment) running several sites across Australia, built to
+replace Oracle NetSuite. Rust and PostgreSQL on the server, React on the client,
+Tauri on the handhelds. Multi-tenant from the first migration, because it is meant
+to become a product.
+
+The current business does not handle perishables. The model handles them anyway,
+and that is a deliberate choice rather than an accident of the domain. Lot
+tracking, expiry, rotation policy, catch weight and third-party stock are all
+built and all default to off. A distributor of gloves never encounters any of it.
+A distributor of chilled goods turns it on per item, without a migration and
+without us reopening the core.
+
+That only works because of one decision, covered below: capability is a property
+of the data rather than a mode the system runs in. It is the difference between a
+platform that can grow into new industries and one that has to be forked for each.
 
 The work it replaces is packing and despatching several hundred orders a day. That
 process currently spans two systems and about a dozen screens. Most of it is
@@ -138,8 +150,9 @@ check.
 
 ### Rotation policy is not baked in
 
-FEFO against travel cost is a business decision that varies by product and by
-situation. Grabbing the next best thing from another bay at ground level is often
+Rotation against travel cost is a business decision that varies by product and by
+situation, and for most of the current catalogue there is no rotation requirement
+at all. Grabbing the next best thing from another bay at ground level is often
 right. The same substitution is a different call when it needs a forklift to bring
 a pallet down. The model holds expiry, distance and access cost, the allocator
 scores over them, and a manager sets the weights. A flexible model can always
@@ -147,10 +160,17 @@ become strict. A strict one cannot become flexible without surgery.
 
 ### Capability is a property of the data
 
-Lot tracking, catch weight, third-party stock and multiple legal entities are
-properties of an item or a site, and they default to off. An operation that needs
-none of them configures nothing and never meets the machinery. There is no
-settings screen where enabling something changes how the whole system behaves.
+This is the decision the breadth rests on. Lot tracking, catch weight,
+third-party stock and multiple legal entities are properties of an item or a
+site, and they default to off. An operation that needs none of them configures
+nothing and never meets the machinery. There is no settings screen where enabling
+something changes how the whole system behaves.
+
+The alternative, a global mode per feature, is what forces a vendor to maintain
+separate builds for separate industries. Here a single item can be lot-tracked
+and rotation-managed while everything beside it on the shelf is neither, so the
+same deployment serves a PPE distributor and a chilled food operation without
+either paying for the other's requirements.
 
 ### Extensibility compiles to real columns
 
