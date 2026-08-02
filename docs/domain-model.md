@@ -4147,6 +4147,148 @@ existence check reads. Deleting `client_event` rows while referencing facts
 survive. Choosing an arbitrary retention window in place of a derived one.
 Time-keyed snapshot cuts.
 
+### D32 — One `party` for identity, roles as relationships
+
+*Adopted 2026-08-03, settling question 57 and answering question 53.*
+
+**Decision.** One `party` table holding a company's identity, and a `party_role`
+table saying what that company is **to us**. Role-specific operational data hangs
+off the role, not the party. Every foreign key meaning "a company" points at
+`party.id`, a single column with no arms.
+
+#### The `kind` column is a shape this model already refused
+
+`party(id, kind, …)` with `kind ∈ {customer, supplier, carrier, legal_entity}` is
+the same construction D16 rejected for `order`: *"adding a kind and a nullable
+customer to `order` would be the generic document model already on the
+deliberately-not-building list."* The objection was that a discriminator column
+forces every consumer to carry a predicate the database cannot help with, and that
+two honest tables beat one apologetic one.
+
+Here it fails for a sharper reason.
+
+#### Roles are not exclusive, so neither a discriminator nor separate tables works
+
+D23's rule says typed alternatives are correct when the arms are **alternative
+identities of one referent**, where exactly one applies and "none" is meaningless.
+A party's roles are not that. **A company can hold several at once**, so this is a
+set, not a union.
+
+Both of the obvious shapes break on it in the same way. A `kind` column means a
+company that is both customer and supplier gets two rows, therefore two
+identities, and "are these the same company" becomes unanswerable. Separate
+`customer` / `supplier` / `carrier` tables have the identical problem with more
+DDL, and additionally force four typed arms onto every table that references a
+counterparty.
+
+**The overlap is not hypothetical, and the clearest case is already in the
+model.** A carrier invoices us. D31's freight-cost goal is to compare what a
+carrier charged against what was predicted, which makes a carrier's invoice a
+supplier document from a company that, under a discriminator, is not a supplier.
+Swift is a carrier when it moves a pallet and a supplier when it bills for it, and
+it is one company throughout.
+
+```
+party                         -- REFERENCE. Identity. Intrinsic (D19).
+  id, tenant_id               -- NULL = shared across tenants
+  name, trading_name
+  abn                         -- Australian Business Number
+  gln                         -- GS1 Global Location Number
+  gs1_company_prefix, gs1_prefix_length      -- D29, for identifier issuance
+  active
+
+party_role                    -- REFERENCE. What they are TO US. Operational.
+  id, tenant_id (NOT NULL), party_id
+  role                        -- customer | supplier | carrier | freight_provider
+                              -- | legal_entity | pool_provider | calibrator
+  owner_party_id              -- whose supplier is this? NULL = ours (D20's 3PL)
+  account_reference           -- our account with them, or theirs with us
+  established_at, ended_at    -- a monotone lifecycle; timestamps are its log (D25)
+  UNIQUE (tenant_id, party_id, role, owner_party_id)
+```
+
+**Role-specific data hangs off `party_role`, never off `party`.** A company that is
+both supplier and carrier has two role rows, each carrying its own operational
+detail: `carrier_profile` (D22's despatch scalars) attaches to the carrier role,
+supplier capability such as whether they send advices attaches to the supplier
+role. Hanging both off the party would produce one sparse table where most columns
+are null for most rows, which is the attribute-soup shape principle 4 refuses.
+
+**`owner_party_id` is what makes the role relative.** D20 admitted third-party
+stock, and a 3PL client has their own suppliers whose goods arrive at our dock.
+That party is a supplier *to the client*, not to us. One nullable column expresses
+it, defaults to NULL meaning ours, and an operation that never holds another
+company's stock never encounters it. D20's own pattern.
+
+#### D19's split falls out for the third time, which answers question 53
+
+Question 53 asked whether carriers and package types are shared reference data
+too, and noted that if the intrinsic-versus-operational split applied again it
+would be *"a good sign the split is real rather than fitted to items"*.
+
+It applies exactly. A company's name, ABN, GLN and GS1 prefix are facts about the
+company that are true for everyone, so `party` is shareable with `tenant_id NULL`.
+What that company is to a given tenant, the account number, the despatch rules,
+whether they send advices, is observed and operational, so `party_role` is
+tenant-scoped and never shared.
+
+**Third independent case, none of them fitted to the others.** The split is real.
+
+#### What this changes in the freight model
+
+D1 introduced `carrier` and `freight_provider` as separate tables. A carrier is a
+company, so `carrier` collapses into `party` plus a carrier role. `carrier_service`
+survives unchanged, because a service offering is not a company.
+
+`freight_provider` survives as a **route**, which was always D1's point, and now
+names the company at the other end of it:
+
+```
+freight_provider              -- HOW a carrier is reached
+  id, tenant_id
+  party_id                    -- the intermediary; NULL when reached directly
+  kind                        -- aggregator | direct
+  ... credentials, endpoint ...
+```
+
+D1's whole argument is preserved and gets sharper. Swift reached through an
+aggregator and Swift reached directly are the same carrier because they are the
+same `party`, and the aggregator is itself a party we hold a relationship with.
+
+#### The consequence that matters
+
+Every reference to a company is one column. `discrepancy.counterparty_party_id`,
+`observation_event.asserted_by_party_id`, `assertion.author_party_id`,
+`stock.owner_id`, `site.legal_entity_id`, `purchase_order.supplier_party_id` and
+`consignment.carrier_party_id` all point at `party.id`.
+
+Under separate tables each of those would need four typed arms and a CHECK, on
+seven tables. Under a discriminator each would point at a row whose meaning
+depends on a column the database cannot constrain. **One identity per company is
+what makes a supplier scorecard, a carrier cost history and a counterparty finding
+join to each other at all.**
+
+#### Amendments to earlier decisions
+
+- **D1** — `carrier` collapses into `party` plus a carrier role;
+  `freight_provider` gains `party_id` and keeps its routing meaning.
+- **D20** — `party` loses its `kind` column; roles move to `party_role`. The
+  `legal_entity` axis is unchanged, and `site.legal_entity_id` now points at a
+  party holding that role.
+- **D19** — extended to parties, which is its third independent application.
+- **D22** — `carrier_profile` attaches to the carrier `party_role`, not to a
+  separate carrier table.
+- **D29** — the GS1 company prefix sits on `party`, where identifier issuance
+  already assumed it.
+
+**Rejects.** A `kind` discriminator on `party`, refused on D16's reasoning and on
+the fact that roles are not exclusive. Separate `customer` / `supplier` /
+`carrier` tables, which multiply the identity problem and force four typed arms
+onto seven tables. A single `party_profile` carrying every role's operational
+columns, which is sparse by construction. Deriving a role from the existence of
+related rows, such as treating any party with a purchase order as a supplier,
+which cannot express a supplier we have not yet ordered from.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14, and the scope question is answered:
@@ -4347,7 +4489,10 @@ Raised by D19:
     operator-managed and read-only to tenants, or a tenant needing a change forks
     it into a tenant-scoped copy. The fork is more flexible and quietly
     reintroduces the duplication that sharing was meant to avoid.
-53. **Are carriers and `package_type` shared too?** A carrier looks intrinsic —
+53. ~~Are carriers and `package_type` shared too?~~ Answered for carriers by D32:
+    yes, and the intrinsic/operational split applied a third time without being
+    fitted, which was the stated test. `package_type` still wants confirming.
+    ~~A carrier looks intrinsic —
     Swift is Swift — but `carrier_profile` (despatch times, caller values) and
     account credentials emphatically are not. Probably the same intrinsic /
     operational split applied again, which would be a good sign the split is real
@@ -4382,7 +4527,10 @@ Raised by D20:
     crossing `legal_entity` is a sale. Whether we raise the corresponding order,
     purchase order and invoice, or merely flag it for the finance system, decides
     how far this project reaches into accounting.
-57. **Is `party` one table or several?** Modelled as one with a `kind`, which is
+57. ~~Is `party` one table or several?~~ Settled by D32: one `party` for
+    identity, `party_role` for what a company is to us. Roles are not exclusive,
+    so neither a discriminator nor separate tables can represent a carrier that
+    also invoices. ~~Modelled as one with a `kind`, which is
     the generic-document-model smell the project has otherwise avoided. The
     counter-argument is that a customer can also be a supplier and the same
     carrier can be both — real overlap that separate tables handle badly.
@@ -4531,7 +4679,7 @@ Raised by D28 (adopted 2026-08-02):
     projection to compare against, so after a truncation both sides agree and
     nothing fails. Retention floors must be declared and asserted separately.
 
-*All decisions D1–D30 are now adopted. The proposals in
+*All decisions D1–D32 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
 document where they disagree; their open questions (73–88) remain there as
