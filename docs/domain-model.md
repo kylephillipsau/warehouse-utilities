@@ -2111,7 +2111,8 @@ observation_event             -- THE ACT. Append-only.
                               --               |scale|scanner|derived
   derived_from_event_id
   party_message_id, attachment_id       -- [D21 / inbound, proposed]
-  challenged, challenge_context, confirmed        -- D9, generalised
+  -- NOTE: challenge fields are NOT here. See the correction below: a challenge
+  --   is a property of a captured VALUE, and an event may carry several.
   UNIQUE (id, observable_id), UNIQUE (id, observed_at), UNIQUE (id, tenant_id)
 
 observation                   -- ONE RESULT. Append-only. Never UPDATEd.
@@ -2217,9 +2218,34 @@ The projection assertion applies to unsealed packages only.
 - **D8** — `discrepancy.observation_id`; kinds `specification_breach`,
   `uncalibrated_instrument`. We do not reject the reading; we record it and raise
   the finding.
-- **D9** — `challenged`/`challenge_context`/`confirmed` promoted to
-  `observation_event`; **`stock_count` loses its copies**. One mechanism, and the
-  policy deciding *when* to challenge is `count_tolerance_policy` (D22).
+- **D9** — the policy deciding *when* to challenge is `count_tolerance_policy`
+  (D22). *(This amendment originally promoted `challenged`/`challenge_context`/
+  `confirmed` to `observation_event` and stripped `stock_count`'s copies. That was
+  wrong — see the correction below.)*
+
+#### Correction — a challenge belongs with the value, not the act
+
+*(2026-08-02.)* The amendment above created a live defect. It moved the challenge
+fields to `observation_event` **and** this decision's own boundary rule says a
+`stock` cell is deliberately not an `observable` — *"quantities of cells are
+`stock_count`"*. So a bin count has no `observation_event` to carry the challenge,
+and **D9's founding worked example — "this location has not moved since the last
+count of 50, and you have entered 47" — became unrecordable.**
+
+The error was putting a **per-value** property on a **per-act** table. A challenge
+contradicts a *number*, and one act may carry several: a cubing scan produces four
+observations from one capture, and two of them may each be challenged. A single
+flag on the envelope cannot say which.
+
+> **The challenge lives with the captured value:** `challenged`,
+> `challenge_context` and `confirmed` sit on **`observation`** (the result, not the
+> event) and on **`stock_count`** (which is both act and result — a count is one
+> number).
+
+That is one *rule* applied to two value tables, not two mechanisms. It is the same
+shape as the cell-key columns appearing on both `stock_movement` and `stock_count`,
+which the model already accepts for the same reason: the value is where the
+property belongs.
 - **D13** — extended one level up: result types are code, vocabulary is data.
 - **D19** — `dimension`/`unit` are global; `metric`/`metric_code` are shared
   reference; everything else tenant-scoped.
