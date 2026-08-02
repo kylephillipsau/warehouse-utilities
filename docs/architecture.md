@@ -8,15 +8,21 @@ replace Oracle NetSuite. Rust and PostgreSQL on the server, React on the client,
 Tauri on the handhelds. Multi-tenant from the first migration, because it is
 intended to become a product.
 
-The business it serves does not handle perishables. The model handles them
-regardless, deliberately. Lot tracking, expiry, rotation policy, catch weight and
-third-party stock are all built and all default to off. A distributor of gloves
-never encounters any of it. A distributor of chilled goods enables it per item,
-without a migration and without reopening the core.
+Most of the catalogue is non-perishable. Some of it is not: a few lines require
+refrigeration, and some protective equipment carries a shelf life. Lot tracking,
+expiry and rotation therefore cover a live requirement, and a model without them
+would be short of what the business already does.
 
-That breadth rests on one decision, covered below: capability is a property of the
-data rather than a mode the system runs in. It is the difference between a
-platform that grows into new industries and one that has to be forked for each.
+Each is a property of an item rather than a mode the system runs in. An item that
+needs a use-by date carries one, everything beside it on the shelf does not, and
+neither pays for the other's requirements. Catch weight and third-party stock use
+the same mechanism and are not currently in use. What makes a handful of
+refrigerated lines cheap to support is what would let the model serve an operation
+where perishables are the norm rather than the exception.
+
+That rests on one decision, covered below: capability is a property of the data
+rather than a mode the system runs in. It is the difference between a platform
+that grows into new requirements and one that has to be forked for each.
 
 The work it replaces is packing and despatching several hundred orders a day. That
 process spans two systems and about a dozen screens. Most of it is navigation
@@ -161,9 +167,9 @@ something changes how the whole system behaves.
 
 A global mode per feature is what forces a vendor to maintain separate builds for
 separate industries. Here a single item can be lot-tracked and rotation-managed
-while everything beside it on the shelf is neither, so one deployment serves a PPE
-distributor and a chilled food operation without either paying for the other's
-requirements.
+while everything beside it on the shelf is neither. The same mechanism covers a
+catalogue with a few refrigerated lines and a catalogue where most of it is
+refrigerated, without either paying for the other's requirements.
 
 ### Extensibility compiles to real columns
 

@@ -107,10 +107,11 @@ explain themselves.
 ### Inventory
 
 **Stock on hand** — item x location x quantity, plus lot/batch, expiry, and
-serial where applicable. Expiry is modelled for breadth rather than for the
-current catalogue: food safety products are largely non-perishable, though some
-protective equipment does carry a shelf life. The capability exists so the model
-can serve a perishables operation later without reopening the core.
+serial where applicable. Expiry is a live requirement, not a future one: most
+food safety products are non-perishable, but a few lines require refrigeration
+and some protective equipment carries a shelf life. Modelling it properly for
+those also means the model can serve a perishables operation without reopening
+the core.
 **[unverified — confirm whether lot/expiry tracking is in scope.]**
 
 **Stock movement** — the append-only log. Every feature that reasons about
