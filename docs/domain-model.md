@@ -3468,6 +3468,185 @@ and a person. They are orthogonal and both may be present.
 - **D19** — `device` is tenant-scoped, not global. Unlike `person`, hardware
   belongs to an organisation.
 
+### D28 — Failed scans: record resolution failures, never decode failures
+
+*Adopted 2026-08-02 from [d24-open-questions.md](./d24-open-questions.md),
+settling question 89. Two amendments applied: the canonical length unit becomes
+micrometres, and `discrepancy`'s source-arm cap is retired rather than spent.*
+
+**Decision.** `activity_event` gains four **resolution**-failure kinds and typed
+columns for the identifier that failed to resolve. `scan_ok` is **deleted** from
+D17's kind list. Scan-rate denominators come from `client_event` (D25), which
+already takes one row per fact-producing act.
+
+#### The obvious answer is wrong in both directions
+
+**A decode failure is not observable, so a `no_read` kind would read zero forever
+and be believed.** On the dominant handheld platform a no-read produces *nothing*:
+the scan intent bundle carries `source, label_type, data_string, decode_data,
+decoded_mode` — no status field and no failure variant — and the scanner-status
+enum has no "failed decode" value. Trigger-driven readers emit events on success
+only.
+
+Making it observable would mean owning the decode session via soft trigger, which
+makes **scanning depend on our process being healthy** — D5's central trade run
+backwards. Refused with the reason.
+
+**The population we *can* record is the benign one, and the decision must say so.**
+A misread returns a valid-looking wrong value and is indistinguishable from a
+correct scan; it surfaces only as a contradiction against an expectation
+(`scan_mismatch`, `containment_conflict`). Recording unresolvable identifiers does
+nothing to find misreads, and a failure kind must not imply otherwise.
+
+**`activity_event` is the only table that can hold a subjectless fact.** Not
+`observation` — `observable` has typed arms under `= 1`, and D23's licensing
+argument is that *"nobody will ever discover an observation about no thing"*. Not
+`package_event` — `package_id` is the subject, always exactly one. So a failed
+scan is **keyed on context, never on a subject**: adding a `package_id` that is
+NULL for the entire failure population is the always-NULL column D23 refused.
+
+#### The volume argument, made rather than assumed
+
+A site at 5,000 picks/day takes 20,000–50,000 application-level identifier
+captures/day across picking, receiving, putaway, replenishment and counting.
+
+| | rows/year/site | storage |
+|---|---|---|
+| `scan_ok` in `activity_event` | 7.3M – 18M | 2.2 – 5.5 GB |
+| its `client_event` companion (S19) | 7.3M – 18M | **and this one cannot be partitioned** |
+
+The second row is the cost nobody had computed. S19 requires every fact to carry a
+`client_event`, and D25 states that `client_event` can **never** be partitioned.
+Failures only, at 0.1–2% of captures, are 20–1,000 rows/day/site — **a ~100×
+ratio, and it is the whole decision.**
+
+**The denominator survives without `scan_ok`.** `client_event` already carries
+`device_id`, `recorded_by_id`, `work_session_id`, `site_id` and `submitted_at`,
+one row per act, so scan rate is a `GROUP BY` over an existing table at zero
+marginal cost. Its only bias is scans producing no fact at all — exactly the
+population that should not mint rows. D17's denominator claim is narrowed:
+`activity_event` supplies **labour-time** denominators (`idle`, `task_paused`,
+`skip`, `search_failed`); `client_event` supplies **scan-rate** denominators.
+
+```
+activity_event                 -- FACT (D17), amended. Range-partitioned on occurred_at.
+  id, tenant_id NOT NULL, site_id NOT NULL      -- both absent from D17's sketch
+  occurred_at, recorded_at
+  client_event_id              -- PLAIN FK (D25); D17's "(unique)" was stale
+  device_id                    -- FK device (D27): the RECORDING device
+  instrument_device_id         -- FK device: the scan engine, when separately mounted
+  recorded_by_id, work_session_id, authorised_by_id
+  work_task_id, location_id                     -- CONTEXT, not subject; both nullable
+  location_provenance          -- observed | context
+  kind
+  scanned_value    text        -- the decoded string, capped and truncated
+  symbology_id                 -- FK symbology (shared reference)
+  parsed_ai        text        -- FIXED-WIDTH TEXT, never smallint: '00' keeps its
+                               --   leading zero and 310n has a variable final digit
+  expected_entity_kind         -- package | location | item | lot | none
+  attempt_ordinal  smallint    -- within the client_event
+  detail                       -- retained; nothing queryable may live here
+
+symbology                      -- REFERENCE, tenant_id NULL (D19 shape)
+  id, aim_code, device_label_type, label
+  -- a table, not an enum: scanner platforms ship ~60 label types and they grow
+  -- with firmware. An enum turns a vendor release into a migration.
+```
+
+**`location_provenance` earns its column.** A failed scan's location is the app's
+*belief*, not an observation. Mixing the two makes a per-bin failure heatmap
+confidently blame the last bin that scanned correctly.
+
+**Grain is one row per operator-initiated capture attempt.** This belongs in the
+decision, not in an implementation note: camera decoders run per preview frame, so
+a three-second aim is 45–90 failed decodes, and at decode-attempt grain a
+20,000-scan site generates ~1.3M rows/day. **Four orders of magnitude turn on that
+sentence.**
+
+**Retries coalesce by `client_event_id`, server-side.** An operator scanning a
+smudged label six times in four seconds is one world event. Six rows would measure
+label quality × operator persistence, and a patient operator would score worse
+than one who gives up. Never coalesce on the client, where the discard has no
+audit and depends on app version.
+
+#### Amendment 1 — the canonical length unit becomes micrometres
+
+Principle 5 as restated by D23 makes canonical length **millimetres as integers**.
+A verifier aperture of ten thousandths of an inch is 0.254 mm and **rounds to
+zero**. The design used this to argue barcode grading is out of scope; the real
+problem is that the failure is *silent truncation* rather than a stated boundary.
+
+> **Canonical length is micrometres.** 0.254 mm is 254 µm, a standard pallet is
+> 1,165,000 µm, and a `bigint` covers nine orders of magnitude beyond anything a
+> warehouse holds.
+
+It costs nothing today because nothing is built. **Instrument specifications —
+aperture, wavelength — are not observations of goods and do not use the canon.**
+They are `device` attributes (D27) with their own units. That is the clean split:
+*the canon measures things we handle; specs describe the instruments that measure
+them.*
+
+#### Amendment 2 — `discrepancy`'s source-arm cap is retired
+
+D25 capped `discrepancy` source arms at five and required a recorded decision for a
+sixth; D24 (supply side) spent the sixth on `expected_supply_id` while noting it
+was "a subject standing in for an absent cause". Scan-failure aggregates want a
+seventh.
+
+**The cap was imported from the wrong rule.** `stock_movement`'s cause CHECK is
+capped because causes are *distinct relationships that merely happen to be
+exclusive* — D23's straining case. `discrepancy.source_*` is not that: it is **the
+row this finding is most closely associated with**, seen through different types.
+Two of six arms already being subjects is the symptom, not an anomaly.
+
+Under D23's own test that is a **subject union with an optional none** — "none" is
+meaningful (a negative balance has no single associated row), so `<= 1` stays, and
+the arms grow with the subject set exactly as `observable` does.
+
+> **The cap is removed. `discrepancy.source_*` grows with the subject set under
+> D23's discriminated-union rule; `<= 1` is retained because a finding may be
+> associated with no single row.**
+
+`activity_event_id` joins as an arm. **Findings are raised per pattern, not per
+attempt** — one `activity_event` per capture, and N failures at one supplier,
+device or location within a window is what a human sees.
+
+#### Amendments to earlier decisions
+
+- **D17** — `activity_event` gains `tenant_id`, `site_id`, `instrument_device_id`
+  and the identification columns; four resolution-failure kinds; `scan_ok`
+  deleted; `client_event_id` corrected to a plain FK; the denominator claim
+  narrowed.
+- **D23 / principle 5** — canonical length is micrometres (amendment 1).
+- **D24** — `package_event.source` gains **`keyed`**. Today a hand-keyed SSCC must
+  be recorded as `operator_scan`, which is a false fact under D24's own *"the fact
+  recorded is the fact observed"*. Manual keying is the only reliable proxy for an
+  unreadable label, which is why GS1 mandates human-readable interpretation on
+  logistic labels.
+- **D25** — `activity_event` is range-partitioned on `occurred_at` from the first
+  migration, with local indexes. **Retention on a fact table is partition DDL by
+  the owning role, not a DELETE grant** — compatible with S6 rather than an
+  exception to it, and written down before someone requests a grant or quietly
+  stops recording. Source-arm cap retired (amendment 2).
+- **D19** — `symbology` joins the shared reference set.
+- **D27** — instrument specifications (aperture, wavelength) are device attributes
+  with their own units, outside the observation canon.
+
+**Rejects.** `scan_ok`, refused with the number. `no_read` as a kind —
+structurally unpopulatable. Per-decode-attempt grain — bounded by our frame rate,
+not by the world. A `scan_stat` counter table — it has **no role value** under
+D25's axis: not reference, not policy, not grouping, and not a projection, because
+a counter over scans not otherwise recorded has no source to rebuild from. It
+would be the first unrebuildable maintained table in the model. A derived supplier
+label-quality score — GS1's own verification template disclaims the inference in
+both directions, and an inferred score has no author, which D21 rule 2 makes an
+access-control boundary rather than metadata. Failure aggregates may **trigger** a
+verification; the verification is the assertion of record. Barcode print-quality
+grading as a by-product of picking — D27 instrument territory. `detail` as the
+home for the scanned string: "which barcodes are failing, on which device" is the
+entire point of the row, so it is queryable, so principle 3 promotes it to a
+column.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -3709,10 +3888,9 @@ Raised by D20:
 
 Raised by D24 (adopted 2026-08-01):
 
-89. **Does a failed container scan need an `activity_event`?** A carton scanned
-    onto the wrong pallet and corrected leaves a `containment_conflict` finding,
-    but a scan that resolved to nothing leaves no trace at all. D17's
-    `location_empty` reasoning applies verbatim.
+89. ~~Does a failed container scan need an `activity_event`?~~ Settled by D28:
+    **yes for resolution failures, never for decode failures** — the latter are
+    not observable on the hardware. `scan_ok` deleted.
 90. **What mints a package at receipt when the supplier sends no SSCC?** We
     generate one so the stock has a holder — but D24 says minting is a policy, so
     the default for an unlabelled pallet needs stating rather than defaulting to
@@ -3834,7 +4012,21 @@ Raised by D26 (adopted 2026-08-01):
     mid-declaration needs a defined behaviour, and "the job complains tomorrow"
     is not one.
 
-*All decisions D1–D26 are now adopted. The proposals in
+Raised by D28 (adopted 2026-08-02):
+
+114. **`client_event` retention is now the binding constraint.** D28 avoided
+    7–18M rows/year/site by deleting `scan_ok`, but migration imports still put
+    30–60k rows per tenant in on day one, and `client_event` is the only table
+    with no range-drop exit. Question 101 is promoted: answer it with the
+    partitioning plan, not separately.
+115. **Retention floors are a class the invariant register cannot check.** A
+    duplicate-identifier guard needs N months of history; drop a partition and
+    the check *silently starts passing*. Fold invariants detect source deletion
+    because the projection stops matching; an **existence predicate** has no
+    projection to compare against, so after a truncation both sides agree and
+    nothing fails. Retention floors must be declared and asserted separately.
+
+*All decisions D1–D28 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
 document where they disagree; their open questions (73–88) remain there as
