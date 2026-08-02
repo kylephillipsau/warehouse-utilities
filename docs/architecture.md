@@ -5,24 +5,24 @@
 A warehouse management system for a distributor of food safety products (gloves,
 hair nets, protective equipment) running several sites across Australia, built to
 replace Oracle NetSuite. Rust and PostgreSQL on the server, React on the client,
-Tauri on the handhelds. Multi-tenant from the first migration, because it is
-intended to become a product.
+Tauri on the handhelds. One deployment can serve more than one company, and that
+is true from the first database migration rather than added later.
 
 Most of the catalogue is non-perishable. Some of it is not: a few lines require
-refrigeration, and some protective equipment carries a shelf life. Lot tracking,
-expiry and rotation therefore cover a live requirement, and a model without them
-would be short of what the business already does.
+refrigeration, and some protective equipment carries a shelf life. Batch tracking,
+expiry and stock rotation therefore cover something the business already does, and
+a system without them would fall short of current requirements rather than future
+ones.
 
-Each is a property of an item rather than a mode the system runs in. An item that
-needs a use-by date carries one, everything beside it on the shelf does not, and
-neither pays for the other's requirements. Catch weight and third-party stock use
-the same mechanism and are not currently in use. What makes a handful of
-refrigerated lines cheap to support is what would let the model serve an operation
-where perishables are the norm rather than the exception.
+Each of those is a property of a product rather than a mode the whole system runs
+in. A product that needs a use-by date has one. Everything beside it on the shelf
+does not, and neither pays for the other's requirements. Weight-based pricing and
+holding stock on behalf of another company work the same way and are not currently
+used.
 
-That rests on one decision, covered below: capability is a property of the data
-rather than a mode the system runs in. It is the difference between a platform
-that grows into new requirements and one that has to be forked for each.
+That rests on one decision, covered below: what the system can do is determined by
+the data rather than by a setting. It is the difference between a platform that
+grows into new requirements and one that has to be forked for each.
 
 The work it replaces is packing and despatching several hundred orders a day. That
 process spans two systems and about a dozen screens. Most of it is navigation
@@ -32,211 +32,235 @@ telling the software about it.
 ## The premise
 
 Most warehouse systems treat the database as the authority and the floor as a
-source of errors to be validated. This one inverts that.
+source of errors to be checked. This one inverts that.
 
 A scanner in someone's hand observes physical reality. The database only models
 it. When the two disagree the scanner is usually right, and a system that rejects
-the scan to protect its own consistency has discarded the more reliable of the
+the scan to protect its own consistency has thrown away the more reliable of the
 two.
 
 Three things follow, and most of the design sits downstream of them.
 
-Scans are facts rather than requests. A pick is recorded as something that
-happened at a place and time, not as a transaction awaiting approval. The movement
-ledger is append-only and every entry carries a client-assigned identifier, which
-makes it an operation-based CRDT. Replaying an entry does nothing and arrival
-order does not matter, so a network dropout degrades into late arrivals instead of
-into a separate offline mode with its own code path.
+Scans are records of what happened, not requests for permission. A pick is written
+down as something that occurred at a place and time, not as a transaction awaiting
+approval. The record of stock movements is only ever added to, never edited, and
+every entry carries an identifier the handheld generates. Sending the same entry
+twice changes nothing, and entries can arrive in any order without changing the
+result. A network dropout therefore turns into a few late arrivals rather than
+into a separate offline mode with its own code to maintain.
 
-Convergence is not correctness, and the gap is accepted. Two pickers taking the
-last unit drive the balance to minus one. That is allowed. Rejecting the second
-pick would discard a true observation to protect a database invariant, and the
-unit is gone either way.
+Two pickers taking the last unit will drive the count to minus one. That is
+allowed. Rejecting the second pick would mean discarding a true record of
+something that happened in order to keep a number tidy, and the unit has gone
+either way.
 
-Disagreement is the most valuable output. A negative balance means something
-physical happened that nobody recorded: stock damaged and not reported, a delivery
-that never arrived, a mislabelled pallet. Competing systems treat these as
-adjustments to be reconciled away. Here they are findings, with an owner, evidence
-and a resolution, and they escalate to a ticket so a manager can investigate
-without stopping the floor.
+Disagreement is the most valuable thing the system produces. A count of minus one
+means something physical happened that nobody wrote down: stock damaged and not
+reported, a delivery that never arrived, a mislabelled pallet. Competing systems
+treat these as adjustments to be quietly corrected. Here they become findings,
+each with an owner, the evidence behind it and a resolution, and they raise a
+ticket so a manager can look into it without stopping the floor.
 
-That is why accountability is a schema requirement rather than a feature. Every
-movement and every scan names an individual person, the device used, and both the
-device clock and the server clock. A crew name in place of a person makes the
-whole apparatus decorative, because an investigation cannot be followed up with
-"Casual Melbourne".
+That is why naming the person is built into the structure rather than added as a
+feature. Every movement and every scan records an individual, the device used, and
+two timestamps: when the handheld says it happened, and when the server received
+it. A crew name in place of a person makes the whole apparatus decorative, because
+nobody can follow up a question with "Casual Melbourne".
 
 ## Four kinds of thing
 
-Every table sits on two axes. The first says where a row's authority comes from.
+Every table in the database is classified two ways. The first says where the
+information came from, and therefore what may be done with it.
 
 | Category | Meaning | Rules |
 |---|---|---|
-| Fact | What happened | Append-only, immutable, projects to current state |
-| Intention | What is planned | Mutable, cancellable, reconciled against facts |
-| Assertion | What a counterparty stated | Immutable, names its author, never reaches a balance |
-| Finding | Where two of those disagree | The output, not the failure mode |
+| Fact | What happened | Only ever added to, never edited |
+| Intention | What is planned | Can change or be cancelled, and is checked against what actually happened |
+| Assertion | What another company stated | Cannot be edited, always names who said it, never changes a stock figure |
+| Finding | Where two of those disagree | The output, not the failure |
 
-The second axis says how a table is read and who may write it: reference,
-projection, policy, or grouping.
+The second classification says how a table is used: a list of reference data, a
+stored summary derived from something else, a set of configurable values, or a
+grouping of other records.
 
-The second axis is what keeps the first one closed. A goods receipt looks like a
-fifth kind of thing, and so does a stock balance, and so does a policy table.
-None of them is. They are the same four categories seen through a role, and once
-roles have names the provenance list stops growing.
+That second classification is what stopped the first one growing. A goods receipt
+looks like a fifth kind of thing, and so does a stock balance, and so does a table
+of settings. None of them is. They are the same four categories seen through a
+different use, and once uses have names the list of categories stops expanding.
 
 Assertions are the least obvious of the four and the most useful. A supplier's
-despatch advice is not a fact, because nothing here observed it. It is not an
-intention either, because nothing here planned it and nothing here can cancel it.
-It is a claim, and the property that generates every rule about it is not
-authorship but that a copy exists outside this system's control. An outbound
-advice is exactly as unrevisable, so the category is symmetric and costs one
-column.
+despatch note is not a fact, because nobody here saw the goods being loaded. It is
+not a plan either, because nobody here made it and nobody here can withdraw it. It
+is a claim, and what makes it different from everything else is not who wrote it
+but that somebody outside holds a copy and will quote it back. A despatch note
+sent out is exactly as unretractable, so the same category covers both directions.
 
 ## The spine
 
-Two append-only tables carry everything.
+Two tables carry everything, and both are only ever added to.
 
-`stock_movement` records that a quantity of an item changed hands: a different
-location, container, lot, condition or owner. Movements are two-sided, folding a
-negative into one cell and a positive into another. Stock on hand is a projection
-of that fold, maintained in the same transaction, rebuildable from the ledger, and
-checked by a job that asserts the two agree.
+The first records that a quantity of a product changed hands: moved to a different
+place, into a different container, reassigned to a different batch, marked
+damaged, or transferred to a different owner. Every movement subtracts from one
+place and adds to another. The stock figures the warehouse actually reads are
+running totals derived from that record. They are stored so they can be read
+quickly, updated in the same breath as the movement itself, and can be rebuilt
+from scratch at any time. A scheduled job rebuilds them and reports any
+disagreement.
 
-`observation` records that something was measured, with its source, its confidence
-and both clocks. Dimensions, weights, temperatures, quality grades, carrier
-arrival estimates and supplier-declared quantities all use it. The subject is a
-foreign key into a registry rather than a type column on the fact, so the set of
-observable things grows without touching a table holding tens of millions of rows.
+The second records that something was measured, along with who measured it, how,
+and how much it should be trusted. Dimensions, weights, temperatures, quality
+grades, carrier delivery estimates and quantities a supplier claims to have sent
+all go in the same place. What is being measured is named in a separate list
+rather than by a code on the measurement itself, so new kinds of thing can be
+measured without touching a table holding tens of millions of rows.
 
-That second table is the interoperability answer. The same fact arriving over EDI,
-a supplier portal, a spreadsheet, a dock scale or a keyboard produces rows that
-are byte-identical in their content columns and differ only in provenance. A test
-enforces it, one fixture per channel, so a new adapter that needs a column the
-others lack fails on the day it is written.
+That second table is what makes integration tractable. The same fact arriving by
+electronic data interchange, a supplier's website, a spreadsheet, a dock scale or
+somebody typing it produces identical records apart from where it came from. A
+test enforces that, one case per channel, so a new connection needing a field the
+others lack fails on the day it is written rather than years later.
 
-Nothing writes to a projection directly. Column-level grants enforce that rather
-than convention, so "nothing writes to stock" is a property Postgres holds instead
-of a sentence in a document.
+Nothing writes to the running totals directly. Database permissions prevent it, so
+"nothing writes to stock" is a rule the database holds rather than a sentence in a
+document that somebody eventually breaks.
 
 ## The parts worth arguing about
 
-### Containment is part of the stock key
+### Where stock sits is part of its identity
 
 A pallet is a container, and stock sits either at a location or inside a
-container, never both. Moving a pallet of forty cartons writes one event rather
-than forty movements. Forty movements would assert forty inspections that nobody
-performed, and the ledger's value is that every row is work someone actually did.
+container, never both. Moving a pallet of forty cartons writes one record rather
+than forty. Forty records would claim forty inspections that nobody carried out,
+and the value of the whole ledger is that every line is work someone actually did.
 
-The rule deciding which fact to write is stated by subject rather than by intent,
-because "custody changed" is undecidable: a carton is both a holder and a thing
-with a holder. A movement records a stock cell's key changing. An event records a
-container's placement changing. They cannot both apply, and neither can be
-skipped.
+Deciding which of the two records to write is settled by asking what changed
+rather than what the operator intended, because a carton is both a container and a
+thing inside a container, so "who has custody" has no single answer. If the
+stock's identity changed, that is a movement. If a container moved, that is a
+container record. Exactly one applies, every time.
 
-### Policy is data, logic is code
+### Settings are data, decisions are code
 
-Eight things want the same most-specific-wins resolution: allocation weights,
-tolerances, shelf life, putaway scoring, receiving defaults, quality sampling,
-audit tiering and over-receipt limits. They share one resolver over a lattice of
-scope dimensions, and a manager owns the weights.
+Eight separate things need the same kind of configuration: how stock is chosen for
+an order, how much variance is acceptable, minimum shelf life on despatch, where
+goods are put away, what condition received goods start in, how much gets
+inspected, what gets audited, and how much over-delivery is tolerated. All eight
+share one mechanism. A value can be set for everything, or for a category, or for
+one product, customer or site, and the most specific setting wins.
 
-The line between configuration and a rules engine is a grep rather than a
-judgement. A row may hold a scope identifier, a period and a typed number. A row
-may never hold the name of a field, the name of an operator, a comparison, or an
-ordering of steps. A table with a column whose value is a column name is a rules
-engine, and this design excludes one.
+The boundary between configuration and something nobody can predict is a rule that
+can be checked mechanically. A setting may name what it applies to, when it
+applies, and a number. A setting may never name a database field, an operator such
+as "greater than", a comparison, or a sequence of steps to carry out. Once
+settings start naming fields and operators, the configuration has quietly become a
+programming language that nobody designed, and this system excludes that.
 
-### Rotation policy is not baked in
+### Stock rotation is not fixed
 
-Rotation against travel cost is a business decision that varies by product and by
-situation, and most of the current catalogue has no rotation requirement at all.
-Taking the next best thing from another bay at ground level is often right. The
-same substitution is a different call when it needs a forklift to bring a pallet
-down. The model holds expiry, distance and access cost, the allocator scores over
-them, and a manager sets the weights. A flexible model can always become strict. A
-strict one cannot become flexible without surgery.
+Choosing between oldest stock first and the nearest pallet is a business decision
+that varies by product and by situation, and most of the current catalogue has no
+rotation requirement at all. Taking the nearest pallet at ground level is often
+right. The same substitution is a different call when the alternative needs a
+forklift to bring a pallet down, which means waiting for equipment and possibly a
+second person. The system holds expiry dates, distances and the cost of reaching
+each location, ranks the options, and a manager decides how much each factor
+counts for.
 
-### Capability is a property of the data
+A flexible system can always be made strict. A strict one cannot be made flexible
+without rebuilding it.
 
-This is the decision the breadth rests on. Lot tracking, catch weight,
-third-party stock and multiple legal entities are properties of an item or a
-site, and they default to off. An operation that needs none of them configures
-nothing and never meets the machinery. There is no settings screen where enabling
-something changes how the whole system behaves.
+### What the system can do is determined by the data
 
-A global mode per feature is what forces a vendor to maintain separate builds for
-separate industries. Here a single item can be lot-tracked and rotation-managed
-while everything beside it on the shelf is neither. The same mechanism covers a
+This is what the breadth rests on. Batch tracking, weight-based pricing, holding
+another company's stock and operating several legal entities are all properties of
+a product or a site, and all default to off. An operation that needs none of them
+configures nothing and never encounters them. There is no settings screen where
+switching something on changes how the whole system behaves.
+
+A global switch per feature is what forces a vendor to maintain separate versions
+for separate industries. Here one product can be batch-tracked and rotated while
+everything beside it on the shelf is neither. The same mechanism covers a
 catalogue with a few refrigerated lines and a catalogue where most of it is
 refrigerated, without either paying for the other's requirements.
 
-### Extensibility compiles to real columns
+### Customers can add fields, and they become real ones
 
-A tenant declares a typed field set and gets a real table with real types,
-constraints, foreign keys and indexes. It is a code generator whose input happens
-to live in a row.
+A customer can define a set of fields and the system builds them a real database
+table, with real types and real validation, rather than putting everything in one
+untyped bucket.
 
-The usual argument against custom fields is that adding a column is cheap. That
-holds for a single-tenant system and stops holding for a product, where the party
-who needs the column and the party who can add it are different. The objection was
-never about columns. It is about deferring type decisions to runtime, and that
-part still stands.
+The usual argument against customer-defined fields is that adding a column is
+cheap. That is true when one company runs the software for itself. It stops being
+true for a product, where the company that needs the field and the company that
+can add it are different. The objection was never really about adding columns. It
+was about storing data in a form where nothing knows what it holds until something
+tries to read it, and that objection still stands.
 
 ## What it does that NetSuite cannot
 
-These are consequences of the model rather than features bolted onto it.
+These fall out of the design rather than being features added to it.
 
-It can say what is physically in a carton. Packages are real rows and their
-contents join back to order lines, so a packing list is per package, a damage
-claim names the package the item was in, and a declared weight can be checked
-against its contents before a carrier bills for the difference. NetSuite holds one
-line per product type with no package count, so that number exists nowhere until
-an operator types it into the freight system.
+It can say what is physically in a carton. Cartons are real records and their
+contents link back to order lines, so a packing list is per carton, a damage claim
+can name the carton the item was in, and a declared weight can be checked against
+its contents before a carrier charges for the difference. NetSuite holds one line
+per product with no carton count, so that number exists nowhere until an operator
+types it into the freight system.
 
-It can say where freight went and what it cost. Carrier and freight provider are
-separate, so Swift reached through MachShip today and Swift reached directly
-tomorrow are the same carrier, and cost per carrier spans the migration.
+It can say where freight went and what it cost. The carrier and the service used
+to book them are recorded separately, so Swift booked through MachShip today and
+Swift booked directly tomorrow are the same carrier, and the cost history survives
+the change.
 
-It can say which of its own records are wrong. Every dimension carries how it was
-obtained and how well it has held up. Carrier re-weigh figures return as
-observations authored by the carrier, so comparing the prediction against the
-invoice is a query. It finds bad data and what that data costs.
+It can say which of its own records are wrong. Every measurement records how it
+was obtained and how well it has held up since. When a carrier reweighs a pallet
+and charges accordingly, that reweight is stored as their measurement, so
+comparing what was predicted against what was invoiced is a single question. It
+finds both the bad records and what they are costing.
 
-It can say what a supplier actually did. An advice is kept as sent, and the
-receipt compares against it line by line. Because the original claim is never
-overwritten, supplier promise accuracy stays answerable afterwards, which is the
-thing every system that depletes the original quantity gives up.
+It can say what a supplier actually did. A despatch note is kept exactly as sent,
+and the goods received are compared against it line by line. Because the original
+claim is never overwritten, how reliable a supplier's promises are stays
+answerable months later, which is what every system that overwrites the original
+figure gives up.
 
 ## Deliberate exclusions
 
-Recorded as decisions rather than gaps: a rules engine, an
-entity-attribute-value store, a generic document model, a workflow designer,
-configurable mobile screens, three-way match and inventory valuation, yard and
-dock scheduling, transport execution, unit-level serialised inventory, and
-date-qualified available-to-promise.
+Recorded as decisions rather than gaps: a configurable rules engine, a general
+purpose "any field on anything" store, one document type that tries to be every
+document, a workflow designer, screens customers can rearrange, purchase invoice
+matching and stock valuation, yard and dock scheduling, running the transport
+itself, tracking individual serial numbers through stock, and forward-looking
+delivery promising.
 
-Two of those warrant an explanation. Available-to-promise is a running minimum
-over a forward horizon, and no vendor computes it from row-per-supply storage. It
-would need an extra projection hop and an asynchronous projector, and this design
-excludes async projectors by name. That is two exceptions rather than one. Yard
-management stays out while a vehicle arrival with a gate count stays in, because
-Australian grocery contractually requires a signed paper delivery docket carrying
-a pallet count, and that is not the yard.
+Two of those warrant an explanation. Forward-looking delivery promising means
+answering "what can I commit to for Thursday" by looking across everything due to
+arrive between now and then. Doing it correctly means finding the lowest point the
+stock level reaches anywhere in that window, and no vendor computes that from
+records held one row per expected delivery. It would need another layer of derived
+totals, updated in the background rather than immediately, and this design
+excludes background updates by name. That is two exceptions rather than one.
+
+Yard management stays out while recording a vehicle arrival and its pallet count
+stays in, because Australian grocery contractually requires a signed paper docket
+with a pallet count on every delivery, and that is not the yard.
 
 ## Current state
 
-Thirty decisions, around fifty-five invariants, no code.
+Thirty recorded decisions, around fifty-five rules the design must always satisfy,
+no code.
 
-The invariant register is the constraint set the model is checked against. It is
-currently prose, and it is intended to be generated from the test suite rather
-than maintained beside it, so that a constraint and its check cannot disagree.
+That list of rules is what the design gets checked against. It is currently
+written as prose, and it should be generated from the tests instead, so a rule and
+the check for it cannot drift apart.
 
-Three things want settling as the first migration is written rather than before
-it. How long client event records are kept, since that table cannot be partitioned
-and every fact references it. Who owns projections and who may write them during a
-rebuild. Where the schema compiler's privileges sit. Everything else is deferred
-against a stated trigger.
+Three things want settling while the first database migration is written rather
+than before it. How long to keep the record of each handheld submission, since
+that table cannot be split up and discarded piecemeal and every other record
+points at it. Who is allowed to write to the running totals while they are being
+rebuilt. What permissions the mechanism that builds customer-defined tables runs
+with. Everything else is deferred against a stated trigger.
 
 ## Reading further
 
