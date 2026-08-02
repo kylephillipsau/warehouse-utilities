@@ -4289,6 +4289,89 @@ columns, which is sparse by construction. Deriving a role from the existence of
 related rows, such as treating any party with a purchase order as a supplier,
 which cannot express a supplier we have not yet ordered from.
 
+### D33 — Two confirmations before the first migration
+
+*Adopted 2026-08-03, settling questions 31 and 44. Both had a stated lean; both
+leans hold, and one holds for a different reason than the one given.*
+
+#### Lot tracking is enforced by a finding, never by a rejection
+
+A CHECK cannot reach from `stock_movement.lot_id` to `item.tracking`, so a
+movement for a lot-tracked item that carries no lot cannot be forbidden by the
+database in the ordinary way. D23 leaned toward application validation plus a
+periodic assertion on the grounds that it matches how `stock` is already
+reconciled. That is true and it is not the reason.
+
+**The reason is D5.** A trigger that rejects the insert blocks the floor to
+protect a data rule. Picture the case: a picker scans an item whose lot label is
+damaged or missing. The goods are real, the pick happened, and a trigger would
+refuse to record it. That is the exact trade D5 exists to refuse, and refusing it
+here is worse than usual because the discarded record is the one a recall would
+have needed.
+
+So enforcement runs the same way every other impossible state does:
+
+1. **Challenged at capture** (D9). The handheld knows the item is lot-tracked and
+   asks for the lot while the operator is standing at the shelf and can look
+   again. This is where almost all of them get caught.
+2. **Accepted if confirmed.** An operator who cannot read the label records the
+   movement without one. The goods moved.
+3. **Raised as a finding.** `discrepancy.kind = 'lot_missing'`, carrying the
+   person, the device and the timestamp, so somebody can go and look at the pallet
+   while it is still where it was put.
+
+A trigger would have produced a rejection, which loses the event. A finding
+produces an investigation, which is the thing that recovers the lot.
+
+**One detail this exposed.** `item.tracking` is mutable, because an item can start
+being lot-tracked. Historical movements made before that change are still valid
+and must not fail the assertion. So `item` gains `tracking_effective_from`, and the
+assertion only considers movements at or after it. Without that column, switching
+an item to lot-tracked would retroactively flag every movement it ever had.
+
+#### `activity_event.kind` is an enum, and the model already has the test
+
+D28 leaned enum. Confirmed, and the general rule is worth stating because there
+are now three instances pointing at it.
+
+> A value set is a **table** when it carries attributes and grows independently of
+> the code that reads it. It is an **enum** when code branches on it, because then
+> the set is closed by the code that handles it, and adding a value without adding
+> handling is a bug rather than a configuration.
+
+| Set | Shape | Why |
+|---|---|---|
+| `metric` (D23) | table | Carries a result kind, a dimension, a unit; tenants may define their own |
+| `symbology` (D28) | table | Scanner platforms ship around sixty label types and add more with firmware |
+| `activity_event.kind` | **enum** | Every value exists because code does something different with it |
+| `discrepancy.kind` | **enum** | Same: each kind routes differently |
+
+D23 had already drawn the line in passing, when it refused a `metric` enum
+*"contrast question 44's `activity_event.kind`, where code branches and an enum is
+honest"*. This confirms it and makes the test explicit rather than a remark.
+
+**The escape hatch already exists**, which is what makes the refusal safe. D28
+rejected a kind table on the grounds that it *"invites per-site custom kinds,
+which is a small step toward the rules-engine-by-accretion D13 warned about"*. A
+tenant that needs to record something the enum does not cover declares a
+`record_scheme` (D26) and gets a real typed table for it. That is the sanctioned
+path, and it does not require loosening a discriminator the application branches
+on.
+
+#### Amendments to earlier decisions
+
+- **D14 / D23** — `item` gains `tracking_effective_from`; the lot-tracking
+  assertion is scoped to movements at or after it.
+- **D8** — `discrepancy.kind += lot_missing`.
+- **D23** — the table-versus-enum test is stated as a rule rather than left as an
+  aside.
+
+**Rejects.** A trigger enforcing lot presence, refused on D5. Denormalising
+`item.tracking` onto the movement with a composite foreign key: the idiom is
+sound and D23 uses it, but the foreign key would forbid ever changing an item's
+tracking, which is a legitimate operation. A kind table for `activity_event`.
+Deriving tracking obligations from the presence of related rows.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14, and the scope question is answered:
@@ -4389,7 +4472,9 @@ Raised by D13:
 
 Raised by D14:
 
-31. **How is `tracking = lot` enforced?** A CHECK cannot reach from
+31. ~~How is `tracking = lot` enforced?~~ Settled by D33: challenged at capture,
+    accepted if confirmed, raised as a finding. A trigger would block the floor,
+    which D5 refuses. ~~A CHECK cannot reach from
     `stock_movement.lot_id` to `item.tracking`. Options are application-level
     validation plus a periodic assertion (consistent with how `stock` is already
     reconciled), or a trigger. The first fits the existing pattern; the second is
@@ -4464,7 +4549,8 @@ Raised by D17:
 43. **What closes a `pick_batch`?** All tasks terminal is the obvious rule, but a
     batch with one permanently failed task would never close. Probably needs an
     explicit abandon, which is itself a decision worth recording.
-44. **Are `activity_event` kinds an enum or a table?** An enum is honest and
+44. ~~Are `activity_event` kinds an enum or a table?~~ Settled by D33: enum, and
+    the table-versus-enum test is now stated as a rule. ~~An enum is honest and
     typed; a table invites per-site custom kinds, which is a small step toward
     the rules-engine-by-accretion D13 warned about. Leaning enum.
 
