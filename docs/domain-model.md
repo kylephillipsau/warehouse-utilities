@@ -3673,6 +3673,303 @@ home for the scanned string: "which barcodes are failing, on which device" is th
 entire point of the row, so it is queryable, so principle 3 promotes it to a
 column.
 
+### D29 — Nothing mints a package at receipt
+
+*Adopted 2026-08-02 from [d24-open-questions.md](./d24-open-questions.md),
+settling question 90.*
+
+**Decision.** Goods arriving unlabelled land at a dock `location` —
+`holder_location_id` set, `holder_package_id` NULL, zero `package` rows. A package
+is minted on exactly **three triggers, all of them our acts**, and the identifier
+for an unlabelled pallet is an **internal licence plate, never an SSCC**.
+
+#### D24's minting rule contradicted its own default, and J19 could not see it
+
+D24 says a package exists *"when something identifies it — an SSCC, a licence
+plate, a scan"*, and four lines later that *"the default is never per-carton"*.
+Those collide, and they collide on the shape Australian grocery **mandates**: an
+ASN carrying SSCCs at the carton level, which is required whenever a pallet holds
+more than one SKU. At a reference site that is 1,200 cartons/day — and D24's rule
+as written fires per carton.
+
+That is the cheap half. The expensive half:
+
+> If a `package` is minted from `asserted_unit.sscc`, and stock is received into
+> it, then `stock.holder_package_id` — **a component of the six-dimension `stock`
+> key** — was determined by a counterparty's message.
+
+D21 rule 3 forbids exactly that. **And J19 passes anyway.** Truncate every
+assertion table: `assertion`, `asserted_unit` and `asserted_unit_content` go;
+`package` is not an assertion table and survives; `package_event` is a *fact* with
+`source = 'asn'` and survives; `stock` rebuilds byte-identical.
+
+**This is the J8 pattern again.** The invariant tests the *values* after a
+truncation, and the laundering happened in the *keys*, through an intermediate
+table the truncation does not reach. A wrong invariant is worse than a missing
+one — and this one was the register's confidence in rule 3.
+
+**The fix is one word:**
+
+> A `package` row exists when something **we observe** identifies it. A
+> counterparty's claim about a logistic unit lives in `asserted_unit` and becomes
+> a `package` only when someone scans it or we build it.
+
+#### Two arguments stronger than cardinality
+
+**Per-carton identification at receipt is physically unobservable.** GS1 General
+Specifications 4.4.2: on a nested pallet *"only the SSCC barcode of the higher
+logistic unit SHOULD be readable. The SSCC barcodes of the lower level logistic
+units should be obscured."* A receiver in front of a wrapped pallet **cannot** scan
+the cartons, because the standard says the labels are covered. Minting per carton
+would be minting packages nobody identified.
+
+**Per-carton SSCC minting is arithmetically impossible for a small tenant.** An
+SSCC is 18 digits: extension digit + company prefix + serial reference + check
+digit, with prefix and serial sharing 16. A 12-digit prefix — what a small
+Australian company is issued — leaves **four** serial digits: 100,000 total. GS1's
+one-year non-reallocation rule turns that into a sustained ceiling of **274
+SSCCs/day, forever**. Carton grain at 1,200/day exhausts a lifetime namespace in
+four months and breaches the reuse rule from day one. Pallet grain is ~50/day.
+
+That kills per-carton on the standard, before labour and long before the database
+notices. **Do not argue this on storage grounds.**
+
+#### The three triggers
+
+1. **We scanned a real label** — a supplier SSCC read off the pallet at the dock.
+2. **We built the logistic unit** — re-palletising, consolidating loose cartons,
+   rebuilding a broken pallet. GS1 4.4.1.2: *"the physical builder of the logistic
+   unit or the brand owner is responsible for the allocation of the SSCC."*
+3. **Putaway to a location that requires a holder** — the licence plate is a
+   property of *where the goods land*, not of the goods or the receipt. The dock
+   needs no package; a bulk rack gets one at putaway, which is the moment the
+   pallet first becomes a thing anyone must address later.
+
+**The identifier is an internal LP, not an SSCC.** Every property that makes an
+SSCC expensive — a licensed prefix, a finite serial budget, a 12-month obligation,
+an implicit assertion of authorship — exists to make it meaningful to *other
+parties*. A pallet broken down into putaway locations before anything leaves the
+site pays every cost and gets no benefit. **An SSCC is minted at the boundary:**
+despatch, or re-palletisation into something that will ship.
+
+The LP format must be **mechanically distinguishable from an SSCC in one regex** —
+alpha-prefixed, never an 18-digit numeric. An internal plate with a coincidentally
+valid check digit will eventually be transmitted on a despatch advice, and that
+class of error is undetectable afterwards.
+
+#### The issuing machinery, which did not exist
+
+`package.sscc` (D6) had no issuer; `party` had no company prefix; there was no
+number range.
+
+```
+number_range              -- REFERENCE. OPERATOR-OWNED (tenant_id IS NULL).
+  id
+  issuer_party_id         -- the LEGAL ENTITY holding the prefix (D20), not the tenant
+  key                     -- 'sscc' | 'internal_lp'
+  extension_digit         -- explicit row per digit; NO automatic rollover
+  next_value, block_size  -- claimed under FOR UPDATE, handed out from process memory
+  issued_through          -- high-water mark: serials consumed but never applied are
+                          --   still evidenced against the reuse window
+  exhausted_at            -- exhaustion raises a finding and FALLS BACK to internal
+                          --   LPs. It never blocks a print. Same code path as
+                          --   "tenant has no prefix" — one fallback, exercised daily.
+
+sscc_allocation           -- FACT. Append-only.
+  id, tenant_id, client_event_id
+  issuer_party_id, extension_digit, gcp, gcp_length, serial_reference
+  sscc CHAR(18) GENERATED -- CHAR, never bigint: leading zeros are significant
+  issued_at
+  UNIQUE (issuer_party_id, extension_digit, serial_reference)
+```
+
+#### D24's fan-out guarantee, stated honestly
+
+Without a package, a pallet move is **not** the O(1) `package_event` D24 promises
+— it is N `stock_movement` rows. So D24's guarantee does **not** hold at the dock
+for unlabelled goods, which is the common case.
+
+Trigger 3 is what recovers it: the pallet acquires an LP **at putaway**, so every
+move after putaway is O(1). Only the dock→putaway move fans out, and that move is
+a receipt, where fan-out at the system boundary is expected and correct (D24).
+
+#### Amendments to earlier decisions
+
+- **D24** — the minting rule gains "we observe"; the fan-out guarantee is scoped
+  to post-putaway.
+- **D21 / J19** — widened: truncate every assertion table, rebuild `stock`, assert
+  byte-identical **and** assert that no column of the `stock` key is reachable
+  from an assertion table by any path that survives truncation.
+- **J34** *(new)* — no `package` row's earliest `package_event` has
+  `source = 'asn'`. Minting from an assertion is structurally absent.
+- **J6** *(extended)* — the `package_event` fold covers `sscc`, `barcode` and
+  `identifier_kind`. Its enumerated fold omitted them, so relabelling drift passed
+  the check written to catch it — a third bad invariant of the J8 shape.
+- **D20** — `party` gains `gs1_company_prefix` and `gs1_prefix_length`.
+- **J35** *(new)* — every `sscc_allocation` serial lies within its range's issued
+  span, and no serial is reissued within the reuse window.
+
+**Rejects.** Minting per carton from an ASN. Minting an SSCC for internal use.
+An 18-digit numeric internal plate. Automatic extension-digit rollover on
+exhaustion — it changes the first character of every SSCC we issue and downstream
+systems pattern-match it. Blocking a print on range exhaustion.
+
+### D30 — The reaper: one reference, and the predicate belongs to the rebuild
+
+*Adopted 2026-08-02, settling question 91.*
+
+**Decision.** "Unreferenced" is a closed, CI-asserted list of **exactly one
+foreign key** — `stock_allocation.stock_id`, **in every state**, not the
+enumerated live set. `stock.id` is a handle for the life of the cell, not an
+archival key. The reaper runs weekly, off-peak, under the projection-maintainer
+role, batched, with a grace period and a kill switch.
+
+#### J3 is a quantity fold that reads as a reference test
+
+`stock.allocated_quantity` folds only `{allocated, picking, picked, packed}`.
+**Terminal allocations contribute nothing to it and still hold the foreign key.**
+So the obvious cheap predicate — `quantity = 0 AND allocated_quantity = 0`, which
+J3 makes look authoritative — **deletes rows that live foreign keys point at.**
+
+Write it as an `EXISTS` over `stock_allocation` in **any** state, and record that
+**J3 must never be used as a reference test.** Fourth bad invariant of the J8
+shape.
+
+**The reaper as adopted was also a near no-op.** A `fulfilled` allocation against
+a now-zero cell **is the normal end of every pick**, so under a literal reading of
+"not deleted while referenced" every cell that ever served a pick is pinned
+forever.
+
+There is no referential action that both reaps and keeps the allocation: RESTRICT
+blocks, CASCADE destroys fulfilment history, and SET NULL violates
+`CHECK (num_nonnulls(stock_id, expected_supply_id) = 1)`. Relaxing that CHECK is
+refused twice over — by D23's rule and by D24 (supply side) amendment 2, which
+dropped exactly that scoping. So: **RESTRICT, declared, with the reaper narrowed
+to match.**
+
+#### `stock.id` is a handle, not an archival key
+
+**The model has already answered this three times without writing it down.**
+`stock_count` and `discrepancy` carry the full cell key *column set* rather than an
+FK. `observable` (D23) deliberately excludes stock cells and says why —
+*"D24 gives `stock` a surrogate id that would make it tempting."* `stock_movement`
+carries `from_*`/`to_*` pairs, never a `stock_id`.
+
+> **`stock.id` is a current-state handle, not an archival key. History is
+> `stock_movement`.**
+
+That collapses the "historical reporting joins `stock.id`" worry into a rule the
+model already obeys — and it is why `outbox.source_id` is safe: **S27 is doing
+load-bearing work for the reaper that nobody wrote it for.**
+
+**Three referencers the register did not cover:**
+
+1. **D26's schema compiler.** `record_scheme_field.field_type = 'ref'` generates a
+   real FK with `ON DELETE RESTRICT`, and D26 derives `attaches_to` from the code
+   registry — which contains `stock`. So **a tenant could declare a scheme that
+   creates a durable FK to `stock.id` at runtime**, disabling an operator
+   invariant with no privilege required, surfacing as a maintenance job erroring.
+2. **`package_content` is a view exposing `stock.id`.** Any export or `ref_entity`
+   naming it persists a reapable surrogate.
+3. **`projection_check.scope_kind`/`scope_id`** (D25) is a polymorphic pair on a
+   fact with no DELETE grant — scope a check to a cell and it holds a `stock_id`
+   forever, uncatchable by any FK.
+
+**S2 licensed the bug.** *"Every table naming a stock cell carries the whole key —
+FK to `stock.id` **or** the complete column set."* Under a reapable `stock` those
+are not equivalent: the column set survives the row's death and the FK does not.
+**The disjunction is removed.**
+
+#### The rebuild collision
+
+J1 asserts `stock.quantity` equals the fold of `stock_movement` over the cell key.
+A reaped cell folds to zero and has no row — so unless the rebuild's definition of
+*which cells exist* excludes them, **every reap cycle emits `projection_drift`**
+and D8's queue fills with noise the model generates about itself.
+
+> A cell exists iff `quantity <> 0 OR weight_g <> 0 OR allocated_quantity <> 0 OR
+> referenced`.
+
+`weight_g` is easy to miss and matters: J2 folds `catch_weight_g` independently, so
+a cell can reach `quantity = 0` with `weight_g <> 0`. That is a catch-weight
+capture bug, and it is exactly the evidence a quantity-only reaper destroys while
+the rebuild resurrects the row.
+
+#### The honest benefit
+
+D24 amendment 3 claimed reaping *"removes the unbounded-growth concern"*. **That
+is wrong.**
+
+- The availability index is already partial (`WHERE quantity <> 0`), so dead cells
+  are already invisible to the read path.
+- The `UNIQUE NULLS NOT DISTINCT` arbiter index **cannot** be partial — it must
+  find a zero cell to resurrect it — so it carries every cell that ever existed.
+  Reaping trims about **one B-tree level**: roughly one page access per upsert.
+- At 5,000 picks/day, twelve months unreaped is ~730k dead rows, ~330 MB/year/site.
+  The ratio is the argument, not the megabytes.
+- **The real cost on `stock` is non-HOT UPDATE churn, and reaping does not touch
+  it.** `available_quantity` is `GENERATED STORED` and sits in the availability
+  index's `INCLUDE`, so every quantity change and every allocation state
+  transition writes new index tuples.
+
+Restated: **reaping bounds the arbiter index's page count.** It does not solve
+growth.
+
+#### Mechanics the natural implementation gets wrong
+
+- **The `DELETE` repeats the full predicate.** Under READ COMMITTED,
+  `DELETE ... WHERE id = ANY($1)` deletes a cell resurrected between the SELECT
+  and the DELETE. Batch by id **and** predicate.
+- **`stock_allocation(stock_id)` plain btree must exist first.** Postgres does not
+  index the referencing side of a foreign key; without it each delete fires an RI
+  trigger that sequentially scans the allocation table.
+- **Grace period.** `stock` gains `last_movement_at` (`@projection`) with a
+  candidate index. A cycle-count wave revisits a bin a week later; measure grace
+  in days.
+- **Per-table autovacuum** in the migration that creates `stock`, justified by
+  UPDATE churn rather than by the reaper. A self-hosted deployment (D18) has no
+  DBA to set it.
+- The reap-versus-resurrect race is **not** a problem: `ON CONFLICT DO UPDATE`
+  guarantees insert-or-update against a concurrent delete. The reaper cannot make
+  a receipt fail.
+
+#### Amendments to earlier decisions
+
+- **D24** — amendment 3's premise corrected; predicate stated as an `EXISTS` over
+  every allocation state; benefit restated. `stock` gains `last_movement_at`.
+  `stock.id` is documented as *"a handle for the life of the cell. NOT durable:
+  reissued if the cell is reaped and returns."*
+- **D12 / D24** — `stock_allocation.stock_id` declared `ON DELETE RESTRICT` with a
+  plain btree.
+- **D25** — **DELETE revoked on projection tables** from the app role. S5 covered
+  UPDATE only and S6 covered fact tables only, so *"nothing writes to `stock`
+  directly, ever"* was unenforced against DELETE. `projection_check.scope_kind`
+  may not name a stock cell.
+- **D26** — `stock` and `package_content` carry neither the attachable nor the
+  subscribable capability flag.
+- **S2** *(corrected)* — the disjunction removed.
+- **J33** *(new)* — rebuilding `stock` preserves row identity; truncate-and-
+  regenerate is forbidden while any allocation holds a `stock_id`. **This is
+  J30's missing analogue** — D24 (supply side) forbade it for `expected_supply`
+  because live allocations hold those ids, and `stock` has the same exposure under
+  the same CHECK on the same table.
+- **J32** *(new)* — the reap predicate is the complement of the rebuild's
+  existence predicate: reap, rebuild, assert produces zero `projection_drift`.
+- **q102** — the reaper runs as the projection maintainer, so q102 blocks it.
+
+**Rejects.** Reaping on `allocated_quantity = 0`. Relaxing the `= 1` CHECK to
+permit SET NULL; CASCADE. Loose foreign keys with a deletion queue and worker — it
+deletes the guard that stops a caller naming a cell that never existed. A
+`stock_reaped` tombstone — storage to record having freed storage, recreating the
+unbounded table the reap exists to prevent; extractors get the natural key, never
+the surrogate. `deleted_at` soft delete, which is not a reap. Never-reap plus
+periodic `REINDEX CONCURRENTLY` — attractive on the numbers, refused on D5,
+because a concurrent reindex of a unique index can make `INSERT ... ON CONFLICT`
+fail with a spurious unique violation, and on `stock`'s arbiter index that is a
+receipt scan being rejected. Deterministic `stock.id` (UUIDv5 over the key) —
+considered seriously, unnecessary once nothing durable holds the id, and it puts a
+random-key B-tree on the hottest table in the system.
+
 ## Open questions
 
 1. ~~Lot/batch and expiry~~ — settled by D14. Still needs confirming whether food
@@ -3917,14 +4214,12 @@ Raised by D24 (adopted 2026-08-01):
 89. ~~Does a failed container scan need an `activity_event`?~~ Settled by D28:
     **yes for resolution failures, never for decode failures** — the latter are
     not observable on the hardware. `scan_ok` deleted.
-90. **What mints a package at receipt when the supplier sends no SSCC?** We
-    generate one so the stock has a holder — but D24 says minting is a policy, so
-    the default for an unlabelled pallet needs stating rather than defaulting to
-    one-per-carton by accident.
-91. **When does the reaper run, and what is "unreferenced"?** D24 makes dead cells
-    reapable. `stock_allocation.stock_id` is the obvious reference; historical
-    reporting that joins `stock.id` is the non-obvious one. If anything holds a
-    `stock_id` long-term, reaping breaks it.
+90. ~~What mints a package at receipt when the supplier sends no SSCC?~~ Settled
+    by D29: **nothing**. Goods land at a dock location; three minting triggers,
+    all ours; internal licence plates, never SSCCs.
+91. ~~When does the reaper run, and what is "unreferenced"?~~ Settled by D30:
+    exactly one FK in every state, and `stock.id` is a handle rather than an
+    archival key — a rule the model already obeyed in four places.
 92. ~~Is `depth <= 2` enforced on write or on projection?~~ Settled 2026-08-01:
     neither. It cannot be a CHECK on a projection without making the log
     unprojectable, so it is a finding (`nesting_too_deep`) with a fixed three-hop
@@ -4052,7 +4347,7 @@ Raised by D28 (adopted 2026-08-02):
     projection to compare against, so after a truncation both sides agree and
     nothing fails. Retention floors must be declared and asserted separately.
 
-*All decisions D1–D28 are now adopted. The proposals in
+*All decisions D1–D30 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
 document where they disagree; their open questions (73–88) remain there as
