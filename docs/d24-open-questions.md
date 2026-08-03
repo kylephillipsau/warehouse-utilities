@@ -408,6 +408,9 @@ Mechanics that must be in the decision because the natural implementation gets t
 
 ## Open questions
 
+> **Questions raised in this document have moved to [open-questions.md](./open-questions.md)**, the single register and the canonical numbering. The entries below are retained as written; the register is authoritative on status.
+
+
 **112. The seventh `discrepancy` source arm — or the admission that `discrepancy` is a subject union.** `containment_conflict` already has no reachable source; Q89's failure aggregates and Q90's duplicate-identifier case each want one. Two of the six arms are now subjects standing in for absent causes. Either take the seventh as a recorded decision, or re-derive the cap honestly.
 
 **113. q101, promoted.** `client_event`'s retention window is now the binding constraint on Q89 and takes 30–60k rows per migrating tenant on day one. It cannot be partitioned. Answer it with q76's partitioning plan and with the retention-floor class below, not separately.

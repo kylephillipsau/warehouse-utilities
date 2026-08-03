@@ -532,6 +532,9 @@ Cross-dock and pre-receipt allocation (blocked on question 40 being decided, not
 
 ## Open questions
 
+> **Questions raised in this document have moved to [open-questions.md](./open-questions.md)**, the single register and the canonical numbering. The entries below are retained as written; the register is authoritative on status.
+
+
 Continuing the doc's numbering.
 
 58. **Is `purchase_order` ours, or a NetSuite mirror?** Same fork as question 4, and it decides the size of the entire build. If purchasing stays in NetSuite, `supplier_item` catalogues, lead times, reorder logic and most of the demand side are out of scope and `purchase_order` should be as deliberately thin as `order`.

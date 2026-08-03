@@ -987,6 +987,9 @@ The artefact §1 asked for. Owner, and how it is asserted. The three known silen
 
 ## What remains open
 
+> **Questions raised in this document have moved to [open-questions.md](./open-questions.md)**, the single register and the canonical numbering. The entries below are retained as written; the register is authoritative on status.
+
+
 **Decided-adjacent, needing one line each before build:**
 
 73. **The `event_subscription.source_table` enum must be settled last.** Three of its members are being renamed by these six decisions. Writing it before the table set is final guarantees it is wrong.

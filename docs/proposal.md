@@ -277,8 +277,10 @@ standards and Australian grocery requirements that apply. There is no code.
 
 The design has been checked repeatedly against real requirements rather than
 against itself, and the specification is detailed enough to build from directly.
-Two technical questions want settling as the first database work is done rather
-than before it, and they are recorded. Everything else is either decided or
+Four technical questions want settling before or during the first database
+work, and around fifty others are open, each either deferred against a stated
+trigger or waiting on an answer only the business has. All of them are listed in
+one register rather than scattered through the research. Everything else is either decided or
 deferred against a stated trigger, so nothing is waiting on a decision nobody has
 identified.
 

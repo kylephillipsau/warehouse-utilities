@@ -272,10 +272,13 @@ That list of rules is what the design gets checked against. It is currently
 written as prose, and it should be generated from the tests instead, so a rule and
 the check for it cannot drift apart.
 
-Two things want settling while the first database migration is written rather
-than before it. Who is allowed to write to the running totals while they are
-being rebuilt, and what permissions the mechanism that builds customer-defined
-tables runs with. Everything else is deferred against a stated trigger.
+Four things want settling before or during the first database migration:
+defining the table that resolves a scanned barcode to a product, who is allowed
+to write to the running totals while they are being rebuilt, the query behind the
+receiving screen, and whether the limits on customer-defined fields are enforced
+or merely checked. Around fifty other questions are open, each either deferred
+against a stated trigger or waiting on a business answer, and all of them are
+listed in one place.
 
 ## Reading further
 

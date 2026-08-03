@@ -4374,6 +4374,18 @@ Deriving tracking obligations from the presence of related rows.
 
 ## Open questions
 
+**These have moved.** [open-questions.md](./open-questions.md) is the single
+register and the canonical numbering. It consolidates the questions that lived
+here with those left behind in `mechanism-design.md` (73 to 88),
+`inbound-analysis.md` (58 to 72), `supply-side-design.md` and
+`d24-open-questions.md` (116 to 119), and resolves three numbering collisions.
+
+The list below is retained because each entry sits with the decision that raised
+it, which is useful when reading a decision. **The register is authoritative on
+status.**
+
+
+
 1. ~~Lot/batch and expiry~~ — settled by D14, and the scope question is answered:
    the business distributes **food safety products** (gloves, hair nets,
    protective equipment), which are largely non-perishable. So `tracking = lot` is
