@@ -4892,6 +4892,205 @@ ones. An unbounded subscription set is a real load surface on the outbox, but th
 number depends on outbox throughput that has not been measured, so this is a gap
 named rather than a number invented.
 
+---
+
+### D37 — The receiving path, and the one column keeping the cold chain hot
+
+*Adopted 2026-08-03, settling the buildable half of question 75 and raising 122
+for the half that needs a database. Question 75 was raised before the merge and
+three of the four costs it named have since been removed by decisions that were
+not written to answer it.*
+
+#### The chain in the question is the cold path, and the screen must not walk it
+
+Question 75 named
+`goods_receipt → inbound_shipment → in_force_assertion → asserted_unit →
+asserted_unit_content`, plus observation resolution, plus a policy resolve per
+line, plus `client_event`. Checking each against what was actually adopted:
+
+| Cost named | Where it is now |
+|---|---|
+| The five-table assertion walk | Collapsed by `expected_supply`, **except for one hop** |
+| A policy resolve per line | Gone. `expected_supply.receiving_policy_id` is resolved at projection time |
+| Observation resolution | Never on the list. It is a second query, opened per unit |
+| `client_event` | Write path, not read path. One point lookup per submitted scan |
+
+The assertion body is the archive of what a supplier claimed. It is written once,
+read during investigation, and quoted in a dispute months later. **It is a cold
+table and the dock is the hottest screen in the building**, so D24's availability
+rule applies here verbatim:
+
+> **No join through an assertion body, and no aggregate over a fact table, on the
+> receiving path.**
+
+`expected_supply` exists precisely to be the warm projection between them, and it
+already carries the advised lot, the advised expiry, the expected window and the
+resolved policy. That is three of the four costs gone.
+
+#### The remaining hop, and why it costs exactly one column
+
+`expected_supply`'s four arms are `purchase_order_line_id`,
+`transfer_order_line_id`, `asserted_unit_content_id` and
+`return_authorisation_line_id`. **None of them is a shipment**, so scoping the
+screen to a delivery still requires
+`asserted_unit_content → asserted_unit → assertion → despatch_advice`, which is
+the exact chain the question names, three joins deep, per line.
+
+The asymmetry that decides this: a purchase order is **one hop** from its lines,
+so the unadvised arm scopes with an ordinary join and needs nothing. A shipment
+is **three hops** from its content lines, because the hierarchy in between is the
+supplier's declared packaging structure rather than ours.
+
+So one column, not four:
+
+```
+expected_supply
+  inbound_shipment_id     -- @projection from the assertion arm's chain.
+                          --   NULL for the other three arms.
+```
+
+D24 (supply side) set this precedent by denormalising `owner_id` and `status_id`
+onto the same table as projections of the source line. This is the same move for
+the same reason, and it stays a projection maintained by D35's function rather
+than a column anyone writes.
+
+**The refinement case works out correctly and is worth checking rather than
+assuming.** An ASN row refining a purchase order row carries
+`asserted_unit_content_id`, so the child gets the shipment and the parent does
+not. Receiving against a delivery therefore lists the refined children, which is
+what the operator should see, and the unrefined parent stays out of the list
+until the goods actually arrive unadvised.
+
+#### The screen is three queries, and merging them is what made it unmeasurable
+
+Six designs could not measure the aggregate because they were describing one join
+graph. It is not one. Separating them is most of the answer, because each has a
+different frequency and therefore a different budget.
+
+**A. The line list, advised.** Once per delivery.
+
+```sql
+SELECT es.id, es.item_id, i.code, i.description,
+       es.quantity_expected, es.quantity_outstanding,
+       es.advised_lot_code, es.advised_expiry_date, es.receiving_policy_id
+  FROM expected_supply es
+  JOIN item i ON i.id = es.item_id
+ WHERE es.tenant_id = current_tenant()
+   AND es.inbound_shipment_id = $1
+   AND es.closed_at IS NULL;
+```
+
+One partial index range scan returning N rows, then N primary-key lookups on
+`item`. N is lines on a delivery: five to sixty typically, a few hundred at
+worst. Bounded by N with every access an index hit, and no table in the plan is a
+fact table.
+
+**B. The line list, unadvised.** Once per delivery, and the common case here,
+because GS1 Australia's retailer matrix puts despatch advice in the preferred
+tier rather than the mandatory one.
+
+```sql
+  FROM expected_supply es
+  JOIN purchase_order_line pol ON pol.id = es.purchase_order_line_id
+  JOIN item i ON i.id = es.item_id
+ WHERE es.tenant_id = current_tenant()
+   AND pol.purchase_order_id = $1
+   AND es.closed_at IS NULL;
+```
+
+Driven from `purchase_order_line (purchase_order_id)`, then the existing
+`UNIQUE (tenant_id, purchase_order_line_id)` on `expected_supply`. No new index.
+
+**C. The scan resolve.** Once per carton, which makes it the only one in this set
+that is genuinely hot. D34's resolver, one hit on `item_barcode (barcode)`,
+matched against the already-loaded list in the client. **The naive design queries
+the line list again on every scan**, which is how a screen that measured fine
+becomes unusable at a hundred cartons.
+
+#### The index set, and the one that is only correct if it is partial
+
+```
+expected_supply (tenant_id, inbound_shipment_id) WHERE closed_at IS NULL
+item_barcode (barcode)                                        -- D34
+purchase_order_line (purchase_order_id)                       -- ordinary
+```
+
+The partial predicate is the whole point. Inbound at this scale is roughly thirty
+deliveries a day at thirty lines, so about 230,000 `expected_supply` rows a year
+a site, of which a few thousand are open at any moment. **A year in, the live set
+is about one percent of the table**, and an unpartial index makes the planner
+read the other ninety-nine.
+
+That is also the specific way a naive acceptance test passes and production
+fails: seed a week of data and every row is open, so the index looks fine and the
+predicate does nothing.
+
+#### A hazard on the reference join, recorded because it bites the next screen
+
+D19's reference-table policy is `tenant_id IS NULL OR tenant_id =
+current_tenant()`. **A row-level security policy with an `OR` over a nullable
+column is a known planner hazard**, because it can turn an index scan into a
+sequential scan on the shared catalogue.
+
+Query A is safe: the join is a primary-key lookup, so the policy is a filter on
+one row rather than the thing driving access. **A screen that searches items by
+description or code is not safe**, and that is a different screen with a
+different index, most likely on the same `COALESCE(tenant_id, sentinel)`
+expression D34 needed for the same underlying reason. Recorded here because the
+next person to write a picker will hit it and the failure is a slow page rather
+than an error.
+
+#### Which policy the receipt is judged against
+
+`expected_supply.receiving_policy_id` is resolved when the row is projected,
+which can be weeks before the goods arrive. D22's rule that a projection under a
+policy records the policy that produced it is satisfied by that column, and it is
+what stops a tolerance change reading as drift.
+
+It is **advisory for the screen and not the judgement**. The judgement is the
+`acceptance` fact (D25), which resolves the policy at receipt and records the row
+it used. So a manager who changes a tolerance the morning of a delivery gets the
+new tolerance applied, and the stale advisory value never silently decides
+anything.
+
+#### Amendments to earlier decisions
+
+- **D24 (supply side)** — `expected_supply` gains `inbound_shipment_id` as
+  `@projection`, NULL for the three non-assertion arms, with the partial index
+  above.
+- **D24 (supply side)** — the availability rule is restated to cover receiving:
+  no join through an assertion body and no aggregate over a fact table on either
+  path.
+- **D22 / D25** — the split is stated: `expected_supply.receiving_policy_id` is
+  advisory pre-population; `acceptance` resolves and records the policy that
+  judges the receipt.
+- **D34** — the resolver is named as the receiving screen's per-scan path, and
+  re-querying the line list per scan is refused.
+- **J41** *(new)* — `expected_supply.inbound_shipment_id` equals the walk
+  `asserted_unit_content → asserted_unit → assertion → despatch_advice` for every
+  assertion-arm row, and is NULL for every other arm. Rebuild-and-assert, like
+  every other projection column.
+
+**Rejects.** Denormalising `purchase_order_id` onto `expected_supply` alongside
+the shipment: the unadvised arm is one hop and does not need it, and two
+denormalisations where one is justified is how a projection turns into a
+duplicate of its sources. Resolving policy per line at read time. Loading
+supplier-declared measurements with the line list, when they are wanted for one
+unit at a time. One merged query for the whole screen, which is what made the
+aggregate unmeasurable in six designs.
+
+**Raises question 122**, and question 75 is retired into it. The queries above
+are written and their plans are reasoned about; they are not measured, because
+measuring needs a database with a year of seeded history that does not exist yet.
+The acceptance test is named now so it is written with the first migration rather
+than remembered later:
+
+> Query A at p95 under 50 ms with 200 lines against a year of history at least
+> ninety percent closed. Query C at p95 under 10 ms, because it is the only one
+> in an operator's hand per carton. `EXPLAIN (ANALYZE, BUFFERS)` on both, with the
+> plans committed beside the test so a later regression is a diff rather than a
+> memory.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single

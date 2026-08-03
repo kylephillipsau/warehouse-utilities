@@ -17,11 +17,12 @@ surviving live question was renumbered to 120.
 
 ## Live and blocking
 
-These stop something specific. Each names what.
+**None.** Nothing on this list stops the first migration or the first screen. The
+four that did were settled by D34, D35, D36 and D37 on 2026-08-03.
 
-| # | Question | Blocks |
-|---|---|---|
-| **75** | The receiving screen's query must be written and explained once, as its own acceptance test. Six designs each added joins to that path and none could measure the total. | Building the receiving screen |
+What replaces them is a measurement rather than a question: 122 below cannot be
+answered without a seeded database, so it is deferred against building one rather
+than left here looking like a decision nobody has made.
 
 ## Live, needing a business answer
 
@@ -59,6 +60,7 @@ Nobody can settle these from the code.
 | 119 | Whether the internal licence plate format is shipped or tenant-configurable | The second tenant |
 | 120 | The `expected_supply` concurrency budget under advice ingestion | Building inbound |
 | 121 | Whether `event_subscription` needs a ceiling, and what it is | Measured outbox throughput |
+| 122 | The receiving queries are written and reasoned about, not measured. Retires 75 | The first migration, with a year of seeded history |
 
 ## Live, wanting a written answer rather than a decision
 
@@ -108,6 +110,7 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 | 61 | D21 | 116 | D34 |
 | 63 | D22 | 102, 117 | D35 |
 | 64 | D23 | 111 | D36 |
+| | | 75 | D37, into 122 |
 
 ## Duplicates, resolved
 
@@ -128,16 +131,16 @@ numbering. All were absorbed into 1 to 57 during adoption and are superseded.
 
 | | |
 |---|---|
-| Live and blocking | 1 |
+| Live and blocking | 0 |
 | Live, business answer | 7 |
-| Live, deferred with trigger | 18 |
+| Live, deferred with trigger | 19 |
 | Live, wanting a written answer | 9 |
 | Live, minor | 14 |
 | **Live total** | **48** |
-| Settled | ~54 |
+| Settled | ~55 |
 
-116, 102, 117 and 111 were settled the day this register was written, and 121 was
-raised by settling 111. 116 had been sitting in a research document since the
-inbound pass without ever being carried across, which is the failure this register
-exists to stop repeating. 121 was migrated here in the commit that adopted the
-decision raising it, which is the rule working.
+All four blockers were settled the day this register was written, and settling
+two of them raised 121 and 122. 116 had been sitting in a research document since
+the inbound pass without ever being carried across, which is the failure this
+register exists to stop repeating. 121 and 122 were migrated here in the commits
+that adopted the decisions raising them, which is the rule working.

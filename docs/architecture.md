@@ -265,22 +265,23 @@ with a pallet count on every delivery, and that is not the yard.
 
 ## Current state
 
-Thirty-six recorded decisions, around sixty rules the design must always
+Thirty-seven recorded decisions, around sixty rules the design must always
 satisfy, no code.
 
 That list of rules is what the design gets checked against. It is currently
 written as prose, and it should be generated from the tests instead, so a rule and
 the check for it cannot drift apart.
 
-One thing wants settling before the first database migration, and it is a
-measurement rather than a decision: the query behind the receiving screen has to
-be written and timed against realistic volume. Around fifty other questions are
-open, each either deferred against a stated trigger or waiting on a business
-answer, and all of them are listed in one place.
+Nothing now blocks the first database migration or the first screen. Around fifty
+questions remain open, each either deferred against a stated trigger or waiting
+on a business answer, and all of them are listed in one place. The nearest of
+them is a measurement rather than a decision: the queries behind the receiving
+screen are written and their plans reasoned about, and they want timing against a
+database with a year of history in it.
 
 ## Reading further
 
-- [domain-model.md](./domain-model.md), the decision record from D1 to D36
+- [domain-model.md](./domain-model.md), the decision record from D1 to D37
 - [order-fulfilment-process.md](./order-fulfilment-process.md), the process being
   replaced, as it runs today
 - [warehouse-data-model.md](./warehouse-data-model.md), the shared data layer and
