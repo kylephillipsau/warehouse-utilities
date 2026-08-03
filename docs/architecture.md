@@ -184,6 +184,27 @@ everything beside it on the shelf is neither. The same mechanism covers a
 catalogue with a few refrigerated lines and a catalogue where most of it is
 refrigerated, without either paying for the other's requirements.
 
+### Every connection to another system is optional
+
+The system is complete on its own. Every external system it talks to is one
+implementation of a join that has a working default behind it, so an operation
+running nothing else loses no function it needs.
+
+Orders are created here and are complete here. A business that would rather
+create them in an accounting system can, and that connection is a channel rather
+than a dependency, with one system of record per order recorded on the order
+itself. Two systems that both accept edits to the same order need a conflict
+rule nobody can explain to a person on a dock, so that is refused outright.
+
+The same applies to paperwork for stock moving between two companies in a group.
+The system raises it, and a business with a finance system that would rather do
+it there can have the movement raise a flag instead. Both work and neither is
+required.
+
+This is the difference between replacing a dependency and moving it. A warehouse
+system that cannot run without the accounting system beside it has not reduced
+anything, it has added a second thing to keep running.
+
 ### Old data is archived, never deleted
 
 Anything the running totals are derived from is kept indefinitely, because the
