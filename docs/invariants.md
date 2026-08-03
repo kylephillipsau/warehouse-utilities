@@ -93,6 +93,7 @@ itself.
 | S32 | `activity_event` is range-partitioned on `occurred_at` with local indexes from the first migration, and carries `tenant_id NOT NULL` and `site_id` | D18/J20, D25, Q89 | Catalogue scan | |
 | S33 | No `party.gs1_company_prefix` is all-zero or absent-yet-used; no literal default prefix appears in code; SSCC issuance is gated on an explicit `number_range` row | D20, Q90 | CHECK + grep | ● |
 | S34 | For every row in `retention_floor`, either the oldest live partition or the archive index covers back to `now() - minimum_age`. **This is the companion assertion for every vacuity-marked entry whose population is bounded by history depth** | D31 | Partition catalogue + archive index | |
+| S35 | Every `asserted_unit` node with a non-physical `level_code` has a NULL `sscc` and contributes no `package` row at receipt. **The check that stops document nodes leaking into the physical projection** once the order level is stored as a node | D43 | Catalogue scan + anti-join over the collapse | ● |
 
 ## Job-asserted
 
@@ -144,6 +145,7 @@ itself.
 | J44 | No `order` row is written by a path that does not set `source_channel`, and no externally-authoritative order is amended locally | D39 | ● |
 | J45 | No query in the register reads across tenants except those on a declared exception list, and every entry on that list carries a cohort floor | D41 | ● |
 | J46 | Every covered `order` column equals the fold of `intention_amendment` over that order in `(occurred_at, recorded_at, id)` order; replay in **any** arrival order is identical. Same shape as J6 | D42 | |
+| J47 | No `package`, and no `asserted_unit` subtree, resolves to content lines naming more than one purchase order. Both standards enforce this structurally by putting the order level above the physical levels, so a violation means the tree was built wrong rather than that a supplier did something unusual | D43 | ● |
 
 ---
 
@@ -172,13 +174,13 @@ appears here as its current whole text.
 
 | | |
 |---|---|
-| Structural | 34 |
-| Job-asserted | 46 |
-| **Total** | **80** |
-| Marked for vacuity | 31 |
-| `specified` | 80 |
+| Structural | 35 |
+| Job-asserted | 47 |
+| **Total** | **82** |
+| Marked for vacuity | 33 |
+| `specified` | 82 |
 | `implemented` | 0 |
 
-Thirty-one of eighty assert an absence and pass on an empty population.
+Thirty-three of eighty-two assert an absence and pass on an empty population.
 That is the number worth watching, because those are the entries that will report
 success on the day they stop being checked.

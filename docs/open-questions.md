@@ -65,6 +65,7 @@ about inter-company documents and about legal entities.
 | 122 | The receiving queries are written and reasoned about, not measured. Retires 75 | The first migration, with a year of seeded history |
 | 123 | Verify the GS1 grocery surface is reachable without structural change: GTIN allocation, SSCC issuance and reuse, ITF-14 on master cartons, GS1-128 pallet labels, EDI despatch advice, National Product Catalogue. Carries the live half of 69 | Before the first grocery customer, and worth doing sooner because it is falsifiable now |
 | 124 | Benchmarking's cohort floor, suppression rule and consent model. D41 set the shape and deferred the build | Enough tenants for a cohort to mean anything |
+| 126 | Whether a counterparty's message-cardinality rules are a `policy_kind` under D22 or a `party_profile` capability column under D20. Both fit; they differ in whether the rule resolves by scope. Raised by D43 | The second counterparty with a stated cardinality rule |
 
 ## Live, wanting a written answer rather than a decision
 
@@ -83,6 +84,7 @@ fix applied to invariants that this file is to questions.
 | 95 | What `affected_resolution_count` is computed against. Without a defined denominator the number is theatre. |
 | 105 | What an `automation_key` is. D27 narrowed it by contrast (a device is *how*, a key is *who*) without defining it. |
 | 62 | Whether D8's non-blocking rule gets a counterparty carve-out, and where the statutory clock lives. |
+| 125 | Whether a `raw_*` column may ever hold a value inherited from another node, stated generally rather than per standard. D43 answered it for the X12 order level by storing the node; any hierarchical message can state an attribute above the level we store, so the 856 is the first instance and not the last. |
 
 ## Live, minor
 
@@ -95,7 +97,7 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 
 | # | Settled by | # | Settled by |
 |---|---|---|---|
-| 1, 32 | D14, D20 | 68 | D24 supply side |
+| 1, 32 | D14, D20 | 68 | D24 supply side, refined by D43 |
 | 2, 3 | D15 | 72 | D33 |
 | 13 | D8, D25 | 73 | D26 |
 | 14 | D26 | 74 | D29, D30 |
@@ -124,6 +126,14 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 | | | 77 | D42 |
 | | | 69 | answered; verification half is 123 |
 
+**68 and 109 were settled correctly and refined rather than reopened.** D43 found
+that one of the two reasons D24 (supply side) gave holds for EDIFACT and not for
+X12, which states the purchase order at the order node rather than on the line.
+The conclusion stands, the order level is now stored as a node, and neither
+question returns to the live list. The stale text in `inbound-analysis.md` and
+`supply-side-design.md` still describes 68 as undecided; this register is
+authoritative, which is the rule working as intended.
+
 ## Duplicates, resolved
 
 | Number | Duplicated | Kept |
@@ -145,11 +155,16 @@ numbering. All were absorbed into 1 to 57 during adoption and are superseded.
 |---|---|
 | Live and blocking | 0 |
 | Live, business answer | 0 |
-| Live, deferred with trigger | 21 |
-| Live, wanting a written answer | 8 |
+| Live, deferred with trigger | 22 |
+| Live, wanting a written answer | 9 |
 | Live, minor | 14 |
-| **Live total** | **42** |
+| **Live total** | **45** |
 | Settled | ~63 |
+
+**The previous total was one short of its own sections.** It read 42 against
+21 + 8 + 14 = 43, and D43's two additions surfaced it rather than caused it. The
+total is now derived from the sections rather than carried forward, which is the
+same failure mode as the invariant numbering and has the same fix: generate it.
 
 All four blockers were settled the day this register was written, and settling
 two of them raised 121 and 122. 116 had been sitting in a research document since

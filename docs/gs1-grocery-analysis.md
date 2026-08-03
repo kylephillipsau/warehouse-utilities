@@ -402,23 +402,26 @@ has none, which was question 69's stated good case and remains true.
 
 ## Proposed for the registers
 
-Numbering continues from 124 and is not allocated here.
+**Deliberately unnumbered.** Numbers are allocated in the commit that adopts, not
+here. The first draft of this section numbered these 125 to 128; D43 has since
+taken 125 and 126 for other questions, which is exactly why a research document
+must not allocate.
 
 **Questions.**
 
-- **125. Where does a counterparty's disposition of our outbound assertion
-  live?** Functional acknowledgement, header rejection, per-line exception with
-  reasons. Trigger: the first outbound despatch advice.
-- **126. Does D5's non-blocking rule survive a contractual "do not despatch until
+- **Where does a counterparty's disposition of our outbound assertion live?**
+  Functional acknowledgement, header rejection, per-line exception with reasons.
+  Trigger: the first outbound despatch advice.
+- **Does D5's non-blocking rule survive a contractual "do not despatch until
   acknowledged"?** Recommendation is a finding at despatch, not a lock, but D5
   was written about our own ledger. Related to question 62, which asks the same
   shape about D8. Trigger: the first EDI customer.
-- **127. Is a retailer-issued purchase order an assertion as well as an order?**
+- **Is a retailer-issued purchase order an assertion as well as an order?**
   D39 settled provenance for orders arriving through our own channels. A
   retailer's PO is a document a counterparty holds a copy of and will quote back
   in a chargeback, which is D21's defining property, and `assertion.kind` has no
   value for it. Trigger: the first EDI customer.
-- **128. Is publishing to the National Product Catalogue in scope?**
+- **Is publishing to the National Product Catalogue in scope?**
   Recommendation is no, with the logistics attribute export in scope and the
   reason recorded. Trigger: decide before anyone builds an NPC adapter.
 

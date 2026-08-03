@@ -21,8 +21,8 @@ disagreements are raised as findings with the evidence attached rather than bein
 quietly corrected, and most of that chasing stops existing rather than getting
 faster.
 
-The design is specified to a level it could be built from: forty-two recorded
-decisions, eighty rules it must always satisfy, and research against six
+The design is specified to a level it could be built from: forty-three recorded
+decisions, eighty-two rules it must always satisfy, and research against six
 comparable products. What it does not have is code, a measured baseline for the
 current process, or costings for the alternatives. The first two are being
 addressed. The third needs figures from the business.
@@ -276,14 +276,14 @@ of steps removed rather than a measurement.
 
 ## Where it stands
 
-There are forty-two recorded decisions, eighty rules the design must always
+There are forty-three recorded decisions, eighty-two rules the design must always
 satisfy, and research against six comparable products alongside the freight
 standards and Australian grocery requirements that apply. There is no code.
 
 The design has been checked repeatedly against real requirements rather than
 against itself, and the specification is detailed enough to build from directly.
 No technical question now blocks the first database work, and none is waiting on
-an answer only the business has. Forty-two remain open and every one is deferred
+an answer only the business has. Forty-five remain open and every one is deferred
 against a stated trigger. All of them are listed in
 one register rather than scattered through the research. Everything else is either decided or
 deferred against a stated trigger, so nothing is waiting on a decision nobody has
@@ -296,7 +296,7 @@ measurement.
 ## Supporting documents
 
 - `architecture.md`, the design in more detail
-- `domain-model.md`, the full decision record, forty-two decisions with the
+- `domain-model.md`, the full decision record, forty-three decisions with the
   reasoning and what each rejected
 - `invariants.md`, the rules the design must always satisfy, and which of them
   can pass while checking nothing

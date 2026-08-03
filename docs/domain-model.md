@@ -2653,6 +2653,12 @@ So an ORDER-level split does not need a new structure: it becomes content lines
 each naming one PO line, which is exactly what
 `asserted_unit_content.resolved_purchase_order_line_id` holds.
 
+*(Narrowed by D43. S remains the assertion; **O becomes a node** in
+`asserted_unit`, because X12 states the purchase order at the order node and not
+on the line, so filling the line's `raw_po_reference` from an 856 would write an
+inherited value into an as-exchanged column. The settlement below is unchanged: a
+content line still names exactly one PO line and the scalar FK is still correct.)*
+
 **A content line never legitimately spans two POs, because the ORDER level
 separates them.** Therefore:
 
@@ -5499,6 +5505,175 @@ amendment table per intention type, which is the polymorphic problem inverted
 into three near-identical tables. Demoting every `order` column, which would make
 routine pre-release editing an event stream nobody reads.
 
+---
+
+### D43 — The order level is a node, and a delivery's receipts are one per demand document
+
+*Adopted 2026-08-04, refining D24 (supply side)'s settlement of questions 68 and
+109 and raising 125 and 126. Neither question is reopened: both were settled
+correctly, and one of the two reasons given holds for EDIFACT and not for X12.*
+
+#### The settled answer was right, and half its reason was not
+
+D24 (supply side) settled multi-PO advice with this:
+
+> An ORDER-level split does not need a new structure: it becomes content lines
+> each naming one PO line, which is exactly what
+> `asserted_unit_content.resolved_purchase_order_line_id` holds.
+
+The conclusion is correct and stays. The step under it is true of one standard
+and false of the other, and the difference is invisible until an 856 arrives.
+
+**EDIFACT states the purchase order on the line.** A DESADV nests `CPS`
+packaging sequences with `LIN` under the innermost level, and `RFF+ON` is
+available at line level. `asserted_unit_content.raw_po_reference` is filled from
+the message.
+
+**X12 states it above the line.** `PRF` carries the purchase order number in the
+order-level `HL` loop. The item level carries `LIN` and `SN1` — identifier,
+quantity, unit of measure — and no purchase order at all. A shipment covering
+several orders has one order loop with its own `PRF` per purchase order number,
+which is the documented structure for mixed-PO shipments rather than an edge of
+it.
+
+So ingesting an 856 at content-line grain means walking up from each item node
+and writing an ancestor's `PRF` into every descendant's `raw_po_reference`.
+
+#### An inherited raw value is not an exchanged one
+
+D21 splits an assertion body's columns into two classes and hangs immutability
+off the split: `raw_*` and every transcribed value are **as exchanged**,
+`resolved_*` are our annotation. Rule 5 says an assertion is recorded in the
+author's vocabulary.
+
+After that walk, `raw_po_reference` holds a string that **appears nowhere on that
+line in the original message**. The value is correct and the claim the column
+makes about itself is not.
+
+It fails silently, in the shape this model has now caught five times: a check
+that reads `raw_*` to prove fidelity to the received bytes passes, because the
+value it finds really was in the message, just not there. The failure is in the
+provenance, and the provenance is what the column class exists to carry.
+
+#### The order level is a node in `asserted_unit`
+
+**Decision.** An X12 order loop is stored as an `asserted_unit` node with
+`level_code = 'order'`, no SSCC, and physical children. The tree stored is the
+tree the author sent, and resolution to a purchase order line walks up at
+ingestion.
+
+**This costs no schema change.** `asserted_unit` already carries `level_code`,
+already permits unbounded nesting on the stated grounds that it is a cold path,
+already has a nullable `sscc`, and already collapses to D24's depth cap at
+receipt. The walk happens once per message at ingestion, never once per scan at
+the dock, which is the boundary D37 drew when it put the assertion body off the
+receiving screen entirely.
+
+**Question 109's settlement is untouched.** Content lines still resolve to
+exactly one purchase order line, `refines_expected_supply_id` stays scalar, and
+J8's partition identity holds, because refinement is an ASN row refining a PO row
+and has nothing to do with where the order reference was stated.
+
+What changes is one sentence. The inbound analysis established that `S-O-T-P-I`
+is not five containers because *"S and O are documents"*, and D24 (supply side)
+reasoned from it. **S remains the assertion. O becomes a node.**
+
+#### One order per logistic unit, which is the rule both markets already enforce
+
+The 856's structures in production use are SOI, SOTI, SOPI and SOTPI, and in all
+four the order level sits directly under the shipment and **above every physical
+level**. The consequence is rarely stated and it is the useful half:
+
+> A logistic unit belongs to exactly one purchase order. There is no well-formed
+> 856 in which a pallet or carton spans two orders, because the tare and pack
+> nodes are descendants of a single order node.
+
+Metcash states the identical rule as prose: *"An ASN can only relate to a single
+PO. This means that goods from different orders cannot be mixed within a
+logistics unit."* The second sentence is the universal rule and the first is
+Australia's addition.
+
+Australia and the United States therefore **agree on the pallet** and differ only
+on the message. That is one level narrower than the question assumed, and it is
+why this is worth an invariant rather than a policy row.
+
+#### Cardinality restrictions belong to the counterparty, not to the schema
+
+Metcash forbidding an ASN that spans two purchase orders, Coles requiring pallets
+homogeneous by expiry date, a retailer accepting only a SOPI structure: all three
+are rules of a trading relationship, not properties of a despatch advice.
+
+They belong in D22's lattice with the party as a scope, and they are checked as
+D8 findings rather than enforced as constraints, because a constraint encoding
+one customer's rule silently applies it to another customer's goods. Coles and
+Metcash contradict each other outright on pallet composition, so this is not
+hypothetical.
+
+Stated as a rule here because it has now been reached twice from opposite
+directions — outbound pallet composition and inbound message cardinality — and
+two independent routes to the same rule is the reason to write it down once.
+
+#### A delivery's receipts are one per demand document
+
+One truck, one ASN, three purchase orders has two legal representations today.
+Three receipts each naming a purchase order in the header, or one receipt with
+the header demand null and lines carrying their own demand through
+`expected_supply`. Both satisfy S3, both fold correctly under J26, and **nothing
+chooses**, so both will appear and every query grouping by receipt will be right
+for one and wrong for the other. The silent third option is drift, which is what
+happens by default.
+
+**Decision: one `goods_receipt` per delivery per demand document.** The 856's own
+hierarchy then lands on tables that already exist:
+
+| 856 level | Ours |
+|---|---|
+| Shipment | `inbound_shipment`; the truck is `vehicle_arrival` |
+| Order | `goods_receipt` |
+| Tare, Pack | `asserted_unit`, collapsing to `package` at receipt |
+| Item | `asserted_unit_content`, becoming `goods_receipt_line` |
+
+Australia is the degenerate case with one receipt per delivery, by contract
+rather than by schema. The international case is the same structure with N
+greater than one. No branch, no mode, no per-market column.
+
+**`goods_receipt.inbound_shipment_id` is adopted.** D37 names the chain
+`goods_receipt → inbound_shipment → in_force_assertion → asserted_unit` as the
+cold path it designs around, and the column appears in no adopted DDL block. It
+is what makes "the three receipts off one delivery" a query rather than an
+inference.
+
+**The header source set widens to mirror `expected_supply`.** Purchase order,
+transfer order, return authorisation, inbound shipment, and none — at `<= 1` per
+S3, which already caught this CHECK once as D16-repeats-D10.
+
+#### Amendments to earlier decisions
+
+- **D16** — `goods_receipt`'s header demand set widens to four sources at `<= 1`,
+  and it gains `inbound_shipment_id`. The grain is one receipt per delivery per
+  demand document.
+- **D21** — `asserted_unit.level_code` admits non-physical levels. `raw_*` may
+  not hold a value inherited from another node; where a standard states an
+  attribute above the line, the node is stored.
+- **D24 (supply side)** — the quoted *"S and O are documents"* is narrowed to S.
+  Question 109's settlement stands unchanged and its reasoning gains the X12
+  case.
+- **D37** — the `goods_receipt → inbound_shipment` hop it designs around now has
+  a declared column rather than an implied one.
+- **S35** *(new)* — every `asserted_unit` node with a non-physical `level_code`
+  has a NULL `sscc` and contributes no `package` row at receipt.
+- **J47** *(new)* — no `package`, and no `asserted_unit` subtree, resolves to
+  content lines naming more than one purchase order.
+
+**Rejects.** Redefining `raw_po_reference` as "as exchanged at or above this
+line" with a companion column naming the level it came from, which adds a
+provenance column whose only job is to carry an apology and weakens a rule that
+is currently absolute. An `asserted_order` sibling table, refused on D32's
+grounds: a new table for something an existing tree already models. A CHECK
+enforcing one purchase order per despatch advice, which encodes one
+counterparty's rule for every counterparty. Per-market ingestion modes, which is
+the branch this decision exists to avoid.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
@@ -5904,7 +6079,7 @@ Raised by D28 (adopted 2026-08-02):
     projection to compare against, so after a truncation both sides agree and
     nothing fails. Retention floors must be declared and asserted separately.
 
-*All decisions D1–D42 are now adopted. The proposals in
+*All decisions D1–D43 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
 document where they disagree. Their open questions are carried by
