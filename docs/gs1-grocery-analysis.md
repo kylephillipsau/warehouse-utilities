@@ -434,7 +434,7 @@ must not allocate.
 - No outbound assertion of kind `despatch_advice` has a `fulfilment` whose
   packages resolve to more than one `order`. The vacuity marker applies.
 
-**Corrections.**
+**Corrections.** *(Both adopted 2026-08-04, into D29 and D34 directly.)*
 
 - D29's serial-capacity argument is retracted and replaced by the categorical
   one: an Individual Barcode Number subscription has no company prefix and can

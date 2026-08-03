@@ -3720,7 +3720,7 @@ one — and this one was the register's confidence in rule 3.
 > counterparty's claim about a logistic unit lives in `asserted_unit` and becomes
 > a `package` only when someone scans it or we build it.
 
-#### Two arguments stronger than cardinality
+#### The argument stronger than cardinality, and the one that was wrong
 
 **Per-carton identification at receipt is physically unobservable.** GS1 General
 Specifications 4.4.2: on a nested pallet *"only the SSCC barcode of the higher
@@ -3729,16 +3729,37 @@ units should be obscured."* A receiver in front of a wrapped pallet **cannot** s
 the cartons, because the standard says the labels are covered. Minting per carton
 would be minting packages nobody identified.
 
-**Per-carton SSCC minting is arithmetically impossible for a small tenant.** An
-SSCC is 18 digits: extension digit + company prefix + serial reference + check
-digit, with prefix and serial sharing 16. A 12-digit prefix — what a small
-Australian company is issued — leaves **four** serial digits: 100,000 total. GS1's
-one-year non-reallocation rule turns that into a sustained ceiling of **274
-SSCCs/day, forever**. Carton grain at 1,200/day exhausts a lifetime namespace in
-four months and breaches the reuse rule from day one. Pallet grain is ~50/day.
+**A tenant may have no company prefix at all, and then the grain question does not
+arise.** GS1 Australia's subscription entitlements mark *"Allocation & use of GS1
+Company Prefix (eg: so you can create SSCC)"* as **not included** in the
+Individual Barcode Number tier: turnover under $1M, one to ten GTINs, up to nine
+more on application. Such a tenant **cannot form an SSCC at any grain** while
+Woolworths, Coles and Metcash all mandate SSCC pallet labels.
 
-That kills per-carton on the standard, before labour and long before the database
-notices. **Do not argue this on storage grounds.**
+That is why the internal-LP fallback below is a daily path rather than an edge
+case, and it is a categorical limit rather than a budget: not a small serial
+allowance, but none.
+
+*(**Retracted on 2026-08-04, and the retraction is the point of question 123.**
+This argument previously ran on serial capacity: a 12-digit prefix leaving four
+serial digits, 100,000 lifetime SSCCs, a sustained ceiling of 274/day, carton
+grain exhausting a namespace in four months. **GS1 Australia does not issue
+12-digit prefixes.** Its SSCC fact sheet tabulates seven, eight, nine and ten
+digits, and its membership FAQ sets the allocation by turnover: eight digits under
+$50M, seven over. The smallest prefix a full member holds is ten digits, leaving
+six serial digits, which is 1,000,000 per extension digit and 10,000,000 across
+the ten, or roughly 27,400/day sustained under the twelve-month rule. Carton grain
+at 1,200/day is 4.4% of that a year. The figure was wrong by two orders of
+magnitude in the worst Australian case and four in the normal one, and it was the
+claim this decision told the reader to rely on. The same arithmetic appears in
+[d24-open-questions.md](./d24-open-questions.md), which this record supersedes.)*
+
+**The conclusion is unchanged, and it never rested on this.** Per-carton minting
+is refused because the cartons on a wrapped pallet cannot be observed, and because
+minting from an assertion launders a counterparty's claim into the `stock` key,
+which is the expensive half above. Serial capacity is not the constraint in
+Australia. **Do not argue this on storage grounds, and do not argue it on serial
+budget either.**
 
 #### The three triggers
 
@@ -4452,8 +4473,24 @@ Written as an exclusion over a range instead, one constraint gives three things:
    recorded in March is still explainable in September. Under D31 nothing here is
    deleted anyway, and this is the shape that makes the retained row useful
    rather than merely present.
-3. GTIN reuse after GS1's waiting period is a later non-overlapping range, which
-   the same constraint permits while continuing to forbid the overlap.
+3. A barcode that legitimately rebinds does so as a later non-overlapping range,
+   which the same constraint permits while continuing to forbid the overlap. A
+   supplier reusing its own carton code for a different product, a tenant-scoped
+   row superseding a shared one, an internal code retired and later reissued: all
+   three are real, and none is expressible by a boolean.
+
+*(**Corrected on 2026-08-04.** Point 3 previously read "GTIN reuse after GS1's
+waiting period". **There has been no general GTIN reuse waiting period since 1
+January 2019**, when the GTIN Management Standard eliminated reuse in every
+sector: a GTIN allocated to a trade item is not reallocated to another. The only
+surviving exception is narrow, for an item that was allocated a GTIN and never
+produced, reusable twelve months after deletion from the catalogue. The
+constraint shape is unchanged and the range is still right, for the reasons now
+stated; the example leading it was the one case that no longer happens. It has one
+consequence still to be picked up: whenever a GTIN issuer is built, its non-reuse
+obligation is **permanent**, so the `retention_floor` it needs has no expiry and
+S34's history-depth companion cannot be satisfied by any finite window. D31's
+twelve-month identifier floor is the SSCC's and stays as written.)*
 
 The idiom is already named in the model for `%_policy.effective`,
 `package_containment.valid` and `order_tolerance_band.quantity_range`, so this is
@@ -4567,7 +4604,7 @@ one.
 **Rejects.** One identifier table for packages, items and locations: it puts a
 projection and a reference row under one key and would make `package_identifier`
 directly writable, which D24 refused by name. `active boolean`: it cannot express
-GS1's reuse waiting period, it cannot explain a historical scan, and its unique
+a rebinding as a later range, it cannot explain a historical scan, and its unique
 index does not constrain the shared catalogue. A `kind` enum carrying symbologies.
 Storing the raw scanned string here rather than on `activity_event`, which would
 duplicate D24's home for it and split the diagnostic query in two. Auto-promotion
