@@ -146,6 +146,8 @@ itself.
 | J45 | No query in the register reads across tenants except those on a declared exception list, and every entry on that list carries a cohort floor | D41 | ● |
 | J46 | Every covered `order` column equals the fold of `intention_amendment` over that order in `(occurred_at, recorded_at, id)` order; replay in **any** arrival order is identical. Same shape as J6 | D42 | |
 | J47 | No `package`, and no `asserted_unit` subtree, resolves to content lines naming more than one purchase order. Both standards enforce this structurally by putting the order level above the physical levels, so a violation means the tree was built wrong rather than that a supplier did something unusual | D43 | ● |
+| J48 | Every outbound `party_message` on a channel whose `party_profile` requires acknowledgement has one, or a finding naming it. **Needs the companion assertion that outbound messages exist at all**: before the first EDI customer the population is empty and this passes without checking anything | D44 | ● |
+| J49 | No `document_response` assertion names a subject assertion of the same `direction`. A counterparty's disposition is always of a claim travelling the other way, and the inverse is a mapping bug that would otherwise look like data | D44 | ● |
 
 ---
 
@@ -175,12 +177,12 @@ appears here as its current whole text.
 | | |
 |---|---|
 | Structural | 35 |
-| Job-asserted | 47 |
-| **Total** | **82** |
-| Marked for vacuity | 33 |
-| `specified` | 82 |
+| Job-asserted | 49 |
+| **Total** | **84** |
+| Marked for vacuity | 35 |
+| `specified` | 84 |
 | `implemented` | 0 |
 
-Thirty-three of eighty-two assert an absence and pass on an empty population.
+Thirty-five of eighty-four assert an absence and pass on an empty population.
 That is the number worth watching, because those are the entries that will report
 success on the day they stop being checked.

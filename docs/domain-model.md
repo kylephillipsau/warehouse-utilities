@@ -5711,6 +5711,202 @@ enforcing one purchase order per despatch advice, which encodes one
 counterparty's rule for every counterparty. Per-market ingestion modes, which is
 the branch this decision exists to avoid.
 
+---
+
+### D44 — Acknowledgement is two layers, and a counterparty's order is both
+
+*Adopted 2026-08-04 from [outbound-edi-analysis.md](./outbound-edi-analysis.md),
+answering three questions the GS1 pass raised and raising 127 and 128. The fourth
+is refused in writing below.*
+
+#### An acknowledgement is two things arriving by different mechanisms
+
+Conflating them is how this gets built wrong, because they have different
+subjects and different lifetimes.
+
+**Transport and syntax.** EDIFACT `CONTRL`, X12 `997` or `999`. The interchange
+arrived and parsed. Metcash expects *"an automated Functional Acknowledgement
+(FA) at interchange level ... for all B2B documents"*, in both directions, for
+every message type, within three hours.
+
+This is a property of **the message**, not of the claim inside it.
+`party_message` already carries `parse_status` and `parser_version`, which are our
+parsing of an inbound message; their parsing of our outbound one is the mirror,
+and the acknowledgement arrives as its own inbound `party_message`. So the link is
+message to message: one nullable self-referencing `acknowledges_party_message_id`,
+plus the acknowledgement's outcome. No new table.
+
+**Application disposition.** EDIFACT `APERAK`, X12 `824`, or a proprietary
+exception process. The business accepted or rejected the claim, with reasons, at
+header and line level. Metcash rejects a whole despatch advice for spanning two
+purchase orders, spanning two deliveries, reusing an ASN number inside 24 months
+or naming a closed PO, and excepts a line for a GTIN not on the PO, an SSCC used
+in the past twelve months, a quantity over the PO, a Ti/Hi mismatch or shelf life
+outside agreed limits.
+
+That is **a counterparty's statement of record about our claim**: authored by
+them, held by them, quoted back in a chargeback. D21's definition unedited. It is
+an inbound `assertion` whose body names the assertion it responds to.
+
+**The symmetry is load-bearing and the model already had both halves.**
+`assertion_stance` is *our* position on *their* claim, and it is a fact because it
+is ours. Their position on *our* claim is *their* assertion, and it is immutable
+because it is theirs. Only one half has ever been used.
+
+#### D5 survives, and the rule is D8's
+
+> *"If the supplier does not receive a FA from Metcash after sending an ASN, the
+> supplier should not despatch stock against that ASN."*
+
+A counterparty-imposed block on our own physical act. D5 forbids the ledger
+blocking on coordination, and the two do not collide: D5 governs what the ledger
+refuses to record, and this governs what the floor should do.
+
+**Despatching against an unacknowledged advice raises a finding, not a lock.**
+
+Two reasons beyond consistency with D8. A lock is unenforceable — the truck leaves
+whether or not the software agrees — so it would produce an *unrecorded* despatch,
+which is strictly worse than a recorded one carrying a finding. And the
+requirement is per-counterparty: Metcash states it, and it has no force for a
+customer who sends no acknowledgement at all.
+
+That makes it the same shape as question 126, whose wording widens from
+message-cardinality rules to **counterparty message rules** generally, so
+acknowledgement-required and structure-required resolve wherever 126 lands.
+
+#### A retailer's purchase order is an assertion and an order
+
+D39 settled that orders are ours. D21's cut is that a copy exists outside our
+control. For a retailer-issued purchase order both are true and neither displaces
+the other: the `ORDERS` message is a document the retailer authored, holds and
+will quote back, and the `order` row is our own intention.
+
+**This is the `inbound_shipment` pattern one direction over**, and D21 already
+reasoned it: *"`inbound_shipment` is a subject, not an assertion. Filing it as an
+assertion means a resend mints a second row and orphans every FK pointing at the
+first."* A customer purchase order has the identical failure mode and takes the
+identical fix. The document is an assertion, the `order` is the subject, and the
+body carries `resolved_order_id` the way `despatch_advice` carries
+`inbound_shipment_id`.
+
+**The kind set already held the reply and not the message.** `assertion.kind` ran
+`despatch_advice | carrier_status | equipment_docket | delivery_receipt |
+order_response | price_advice`. `order_response` is the outbound ORDRSP and
+nothing held the ORDERS it answers, which is a gap the enumeration pointed at.
+It gains `purchase_order` and `document_response`.
+
+**An externally-authoritative order is amended by succession, not by amendment.**
+Metcash *"will NOT be implementing an EDI Purchase Order Change (POC) message"*,
+and instead *"there may be a need for the Stock Controller to cancel the PO and
+re-raise a new PO in its place."* D42 made an amendment to an intention a fact,
+which is right for orders we author; D39 already said an externally-authoritative
+order is amended through its own system. What was missing is the link, so a
+cancel-and-reraise pair was two unrelated rows and the second one's history
+started from nothing. `order` gains a nullable `supersedes_order_id`, the same
+shape as `assertion.supersedes_assertion_id`.
+
+#### Price is named, and deferred as its own question
+
+The Metcash purchase order acknowledgement confirms **GTIN, PO line number,
+price, quantity, pack size, Ti/Hi, unit of measure and shelf life**, and *"the
+amount payable is calculated by reference to POA confirmed price and the quantity
+received."* Every one of those has a home except price: `order_line` is
+`id, order_id, item_id, quantity_ordered`.
+
+**This is not the scope D40 declined.** D40 kept invoice rendering out and had the
+system produce charge lines and their inputs. A price on an order line is upstream
+of that — a term of the intention, which is what the counterparty asks us to
+confirm.
+
+It is **not settled here**, because it touches D40's boundary, the deferred
+`stock_movement.unit_cost_minor` and whatever a rate card becomes, and settling a
+commercial question by implication inside an EDI decision is how boundaries get
+moved without anyone deciding to move them. Question 127 carries it, with the
+cheap half stated: `order_line` wants a price and a currency before the first
+grocery order, and history before the column exists is not recoverable.
+
+#### The GTIN issuer: a namespace is not always a sequence
+
+Recorded as a **refusal with a mechanism** rather than built, on the pattern D24
+(supply side) used for `supply_custody_change`.
+
+`number_range` is `next_value` plus `block_size` claimed under `FOR UPDATE`, which
+assumes a computable serial space. Australian GTIN namespaces are not all that
+shape. A GTIN-13 from our company prefix is a sequence; a GTIN-8 is individually
+allocated by GS1 Australia; the Individual Barcode Number tier is one to ten
+granted numbers with nine more on application; variable measure numbers come from
+restricted-circulation prefixes under member-organisation rules; a UPC company
+prefix is a separate entitlement.
+
+**A pool is not a range with a next value.** Modelling granted numbers as a
+sequence means inventing a `next_value` over numbers we were handed, and the
+first tenant on the Individual Barcode Number tier breaks it. The mechanism, when
+it is built: granted numbers are **pre-created allocation rows marked unissued**,
+so the fact table is the pool and `number_range` covers only the namespaces that
+genuinely are sequences. D29's row-locked claim path for SSCCs is untouched.
+
+Two constraints on whoever builds it. Indicator digits 1 to 8 produce higher
+packaging levels from the same item reference, so allocating a fresh reference for
+a carton burns the scarce namespace eight times faster, which D34 already implies
+and the issuer must respect. And the non-reuse obligation is **permanent**, which
+`retention_floor.minimum_age` cannot express.
+
+#### The National Product Catalogue is out of scope, and here is why
+
+The logistics half is derivable from the model today. `observable`'s
+`(item_id, packaging_level, item_packing_config_id)` triple is the per-level
+subject NPC needs, versioned so a corrected case pack cannot rewrite the
+dimensions of cartons shipped last year; gross, net and tare are three metrics
+because GS1 settled it; Ti and Hi are `item_packing_config`. **This is a scope
+decision, not a capability gap**, and saying so is the point of writing it down.
+
+What makes it the wrong subsystem to own: it carries price, which the model does
+not hold; a published value is not a fold but the value we told a retailer plus
+the history of what we told them and when, which is a projection and a publication
+log serving an external catalogue; and its attribute surface is classification and
+marketing copy, which under D26 would take several extension schemes past D36's
+sixty-field ceiling. A warehouse model growing several schemes to hold marketing
+copy is the shape of a mistake, and D36's ceiling exists to make that visible
+rather than gradual.
+
+**The precedent is D40.** Hold and export the logistics attributes we observe; let
+a product-information system publish. The obligation accepted here is the export,
+not the catalogue.
+
+#### Amendments to earlier decisions
+
+- **D21** — `assertion.kind` gains `purchase_order` and `document_response`. A
+  `document_response` body names the assertion it disposes of. The direction rule
+  is stated: a counterparty's disposition is always of a claim of the opposite
+  direction.
+- **D25** — `assertion_stance` is unchanged and is explicitly *ours*. A
+  counterparty's stance on our claim is their assertion, never a stance row.
+- **D26 / principle 3** — `party_message` gains `acknowledges_party_message_id`,
+  nullable and self-referencing. No payload interpretation moves out of `bytea`.
+- **D31** — `retention_floor` admits a floor with **no expiry**. GTIN non-reuse is
+  permanent and an interval cannot say so. S34's history-depth companion is
+  unsatisfiable for such a floor by any finite archive window, which is stated
+  rather than discovered.
+- **D39** — an externally-authoritative order is amended by succession;
+  `order` gains `supersedes_order_id`.
+- **D40** — the National Product Catalogue joins the exclusions, with the
+  logistics export named as in scope.
+- **D42** — the amendment fold is for orders we author. It does not apply to an
+  order whose record of authority is external.
+- **J48** *(new)* — every outbound `party_message` on a channel whose party
+  profile requires acknowledgement has one, or a finding naming it.
+- **J49** *(new)* — no `document_response` assertion names a subject assertion of
+  the same `direction`.
+
+**Rejects.** One acknowledgement mechanism covering both layers, which would put a
+syntax error and a rejected line in the same column and make "was it accepted" two
+different questions with one answer. A status column on the outbound assertion,
+refused by D21 for the same reason it was refused inbound. Filing a counterparty's
+disposition as an `assertion_stance` row, which would make our fact table hold
+their claim. Modelling granted identifier pools as sequences. Building the GTIN
+issuer now, when nothing issues one. Settling price inside an EDI decision.
+Publishing to the National Product Catalogue.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
@@ -6116,7 +6312,7 @@ Raised by D28 (adopted 2026-08-02):
     projection to compare against, so after a truncation both sides agree and
     nothing fails. Retention floors must be declared and asserted separately.
 
-*All decisions D1–D43 are now adopted. The proposals in
+*All decisions D1–D44 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
 document where they disagree. Their open questions are carried by

@@ -21,9 +21,10 @@ disagreements are raised as findings with the evidence attached rather than bein
 quietly corrected, and most of that chasing stops existing rather than getting
 faster.
 
-The design is specified to a level it could be built from: forty-three recorded
-decisions, eighty-two rules it must always satisfy, and research against six
-comparable products. What it does not have is code, a measured baseline for the
+The design is specified to a level it could be built from: forty-four recorded
+decisions, eighty-four rules it must always satisfy, and research against six
+comparable products and the identification, labelling and trading standards
+Australian grocery requires. What it does not have is code, a measured baseline for the
 current process, or costings for the alternatives. The first two are being
 addressed. The third needs figures from the business.
 
@@ -87,9 +88,19 @@ dependency the exercise is meant to reduce being rebuilt in a new place.
 Also excluded: a configurable rules engine, a general purpose "any field on
 anything" store, a workflow designer, screens customers can rearrange, yard and
 dock scheduling, running the transport itself, tracking individual serial numbers
-through stock, rendering invoices, and forward-looking delivery promising. Each of those is a decision
+through stock, rendering invoices, forward-looking delivery promising, and
+publishing a product catalogue to retailers. Each of those is a decision
 with reasoning behind it, and several are the features that make comparable systems
 slow and hard to change.
+
+The last one is worth separating from the others, because it is a scope decision
+rather than a limit. Australian grocery retailers take product data through a
+shared catalogue, and the logistics half of what they ask for is already
+derivable here: dimensions and weights per packaging level, cartons per layer and
+layers per pallet, all recorded with how they were obtained. What the catalogue
+also carries is price, classification and marketing copy, which are not warehouse
+facts. The system exports what it observes and a product information system
+publishes it.
 
 ## Alternatives considered
 
@@ -187,7 +198,7 @@ and therefore what may be done with it.
 |---|---|---|
 | Fact | What happened | Only ever added to, never edited |
 | Intention | What is planned | Can change or be cancelled, and is checked against what actually happened |
-| Assertion | What another company stated | Cannot be edited, always names who said it, never changes a stock figure |
+| Assertion | A statement of record exchanged with another company, in either direction | Cannot be edited, always names who said it, never changes a stock figure |
 | Finding | Where two of those disagree | The output, not the failure |
 
 The second classification says how a table is used: reference data, a stored
@@ -263,9 +274,10 @@ name, and measuring goods once when they first arrive. Both are small in isolati
 and both are the kind of change that quietly does not happen unless somebody owns
 it.
 
-The boundary with NetSuite has to hold. NetSuite stays the financial system, so
-there is a seam, and seams need maintaining. The design keeps it deliberately thin
-but does not remove it.
+The boundary with NetSuite has to hold. NetSuite is the finance system in this
+deployment, so there is a seam, and seams need maintaining. The design keeps it
+deliberately thin and does not depend on it, but the seam is still there to
+maintain.
 
 Data migration is unscoped. Moving product data, locations and open orders across
 has not been planned in any detail.
@@ -276,18 +288,17 @@ of steps removed rather than a measurement.
 
 ## Where it stands
 
-There are forty-three recorded decisions, eighty-two rules the design must always
+There are forty-four recorded decisions, eighty-four rules the design must always
 satisfy, and research against six comparable products alongside the freight
 standards and Australian grocery requirements that apply. There is no code.
 
 The design has been checked repeatedly against real requirements rather than
 against itself, and the specification is detailed enough to build from directly.
 No technical question now blocks the first database work, and none is waiting on
-an answer only the business has. Forty-five remain open and every one is deferred
-against a stated trigger. All of them are listed in
-one register rather than scattered through the research. Everything else is either decided or
-deferred against a stated trigger, so nothing is waiting on a decision nobody has
-identified.
+an answer only the business has. Forty-seven remain open, all of them in one
+register rather than scattered through the research: twenty-four deferred against
+a stated trigger, nine where the model is settled and the reasoning wants writing
+down, and fourteen minor. Nothing is waiting on a decision nobody has identified.
 
 The next step is the first working slice: the database, the rules that check it,
 and the packing screen. Building that would also replace the estimate above with a
@@ -296,7 +307,7 @@ measurement.
 ## Supporting documents
 
 - `architecture.md`, the design in more detail
-- `domain-model.md`, the full decision record, forty-three decisions with the
+- `domain-model.md`, the full decision record, forty-four decisions with the
   reasoning and what each rejected
 - `invariants.md`, the rules the design must always satisfy, and which of them
   can pass while checking nothing
@@ -304,3 +315,6 @@ measurement.
 - `order-fulfilment-process.md`, the current process recorded step by step
 - `competitor-analysis.md`, `inbound-analysis.md` and `supply-side-design.md`, the
   research the decisions rest on
+- `gs1-grocery-analysis.md`, `multi-po-asn-analysis.md` and
+  `outbound-edi-analysis.md`, the research behind the grocery and trading
+  standards work
