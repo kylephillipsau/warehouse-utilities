@@ -265,26 +265,26 @@ with a pallet count on every delivery, and that is not the yard.
 
 ## Current state
 
-Thirty-eight recorded decisions, seventy-seven rules the design must always
-satisfy, no code.
+Forty-two recorded decisions, eighty rules the design must always satisfy, no
+code.
 
 That list of rules is what the design gets checked against. It is written down in
 one place, and once code exists it will be generated from the tests instead, so a
-rule and the check for it cannot drift apart. Twenty-nine of the seventy-seven
+rule and the check for it cannot drift apart. Thirty-one of the eighty
 state that something does not happen, and a rule of that shape passes when there
 is nothing to check, so each one needs a companion rule saying the thing it
 inspects is actually there.
 
-Nothing now blocks the first database migration or the first screen. Around fifty
-questions remain open, each either deferred against a stated trigger or waiting
-on a business answer, and all of them are listed in one place. The nearest of
-them is a measurement rather than a decision: the queries behind the receiving
-screen are written and their plans reasoned about, and they want timing against a
-database with a year of history in it.
+Nothing now blocks the first database migration or the first screen, and nothing
+is waiting on an answer only the business can give. Forty-two questions remain
+open and every one is deferred against a stated trigger. The nearest is a
+measurement rather than a decision: the queries behind the receiving screen are
+written and their plans reasoned about, and they want timing against a database
+with a year of history in it.
 
 ## Reading further
 
-- [domain-model.md](./domain-model.md), the decision record from D1 to D38
+- [domain-model.md](./domain-model.md), the decision record from D1 to D42
 - [invariants.md](./invariants.md), the rules the design must always satisfy
 - [open-questions.md](./open-questions.md), everything still open
 - [order-fulfilment-process.md](./order-fulfilment-process.md), the process being

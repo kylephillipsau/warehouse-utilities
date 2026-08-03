@@ -141,6 +141,9 @@ itself.
 | J41 | `expected_supply.inbound_shipment_id` equals the walk `asserted_unit_content → asserted_unit → assertion → despatch_advice` for every assertion-arm row, and is NULL for every other arm | D37 | |
 | J42 | Every GTIN in `item_barcode` is 14 characters and passes the mod-10 check digit. Asserted over the table, not the call site, because normalisation happens on write and a second write path will be added | D34 | ● |
 | J43 | The `item_barcode` exclusion constraint's `COALESCE` sentinels are present. The failure mode of their removal is that duplicate shared barcodes become insertable and nothing complains | D34 | |
+| J44 | No `order` row is written by a path that does not set `source_channel`, and no externally-authoritative order is amended locally | D39 | ● |
+| J45 | No query in the register reads across tenants except those on a declared exception list, and every entry on that list carries a cohort floor | D41 | ● |
+| J46 | Every covered `order` column equals the fold of `intention_amendment` over that order in `(occurred_at, recorded_at, id)` order; replay in **any** arrival order is identical. Same shape as J6 | D42 | |
 
 ---
 
@@ -170,12 +173,12 @@ appears here as its current whole text.
 | | |
 |---|---|
 | Structural | 34 |
-| Job-asserted | 43 |
-| **Total** | **77** |
-| Marked for vacuity | 29 |
-| `specified` | 77 |
+| Job-asserted | 46 |
+| **Total** | **80** |
+| Marked for vacuity | 31 |
+| `specified` | 80 |
 | `implemented` | 0 |
 
-Twenty-nine of seventy-seven assert an absence and pass on an empty population.
+Thirty-one of eighty assert an absence and pass on an empty population.
 That is the number worth watching, because those are the entries that will report
 success on the day they stop being checked.

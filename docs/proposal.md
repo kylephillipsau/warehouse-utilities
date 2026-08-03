@@ -21,8 +21,8 @@ disagreements are raised as findings with the evidence attached rather than bein
 quietly corrected, and most of that chasing stops existing rather than getting
 faster.
 
-The design is specified to a level it could be built from: thirty-eight recorded
-decisions, seventy-seven rules it must always satisfy, and research against six
+The design is specified to a level it could be built from: forty-two recorded
+decisions, eighty rules it must always satisfy, and research against six
 comparable products. What it does not have is code, a measured baseline for the
 current process, or costings for the alternatives. The first two are being
 addressed. The third needs figures from the business.
@@ -75,14 +75,19 @@ work faster. It stops most of it from arising.
 
 ## Non-goals
 
-NetSuite remains the financial system. This does not do purchase invoice matching,
-stock valuation or general ledger. It is a warehouse system that hands accurate,
-timestamped, non-rewritable figures to a finance system.
+This does not do purchase invoice matching, stock valuation or general ledger. It
+hands accurate, timestamped, non-rewritable figures to a finance system instead.
+
+NetSuite fills that role here, and that is a property of this deployment rather
+than of the design. Every external system it connects to is a capability with a
+working default behind it, so an operation running nothing else loses no
+necessary function. That rule is what keeps the seam thin and what stops the
+dependency the exercise is meant to reduce being rebuilt in a new place.
 
 Also excluded: a configurable rules engine, a general purpose "any field on
 anything" store, a workflow designer, screens customers can rearrange, yard and
 dock scheduling, running the transport itself, tracking individual serial numbers
-through stock, and forward-looking delivery promising. Each of those is a decision
+through stock, rendering invoices, and forward-looking delivery promising. Each of those is a decision
 with reasoning behind it, and several are the features that make comparable systems
 slow and hard to change.
 
@@ -271,15 +276,15 @@ of steps removed rather than a measurement.
 
 ## Where it stands
 
-There are thirty-eight recorded decisions, seventy-seven rules the design must always
+There are forty-two recorded decisions, eighty rules the design must always
 satisfy, and research against six comparable products alongside the freight
 standards and Australian grocery requirements that apply. There is no code.
 
 The design has been checked repeatedly against real requirements rather than
 against itself, and the specification is detailed enough to build from directly.
-No technical question now blocks the first database work. Around fifty are open,
-each either deferred against a stated trigger or waiting on an answer only the
-business has. All of them are listed in
+No technical question now blocks the first database work, and none is waiting on
+an answer only the business has. Forty-two remain open and every one is deferred
+against a stated trigger. All of them are listed in
 one register rather than scattered through the research. Everything else is either decided or
 deferred against a stated trigger, so nothing is waiting on a decision nobody has
 identified.
@@ -291,7 +296,7 @@ measurement.
 ## Supporting documents
 
 - `architecture.md`, the design in more detail
-- `domain-model.md`, the full decision record, thirty-eight decisions with the
+- `domain-model.md`, the full decision record, forty-two decisions with the
   reasoning and what each rejected
 - `invariants.md`, the rules the design must always satisfy, and which of them
   can pass while checking nothing

@@ -26,17 +26,19 @@ than left here looking like a decision nobody has made.
 
 ## Live, needing a business answer
 
-Nobody can settle these from the code.
+**None.** All seven were answered on 2026-08-03.
 
-| # | Question |
-|---|---|
-| **4 / 58** | Are `order` and `purchase_order` ours, or mirrors of NetSuite's? During coexistence they are mirrors. This decides the size of the whole inbound build. |
-| **66** | Do we bill for third-party storage and handling? D20 admitted the stock; the exclusions still decline the billing. Holding another company's stock without billing for it is not a business. |
-| **67** | Cross-tenant supplier benchmarking: forbidden, or a product capability needing a carve-out? D19 currently forbids it as a side effect of a data-scoping rule rather than as a decision. |
-| **69** | Is grocery business-to-business in the roadmap? Decides whether identifier issuance, prefix management and outbound advices are urgent. Unanswered since the competitor analysis. |
-| **49** | Are the Australian states one legal entity or several? De-risked by D20, so it changes the deployment rather than the schema, but it is still unanswered. |
-| **56** | Does an inter-company movement generate documents automatically, or flag them for the finance system? Decides how far this reaches into accounting. |
-| **77** | Is "who changed the ship-to address" a real requirement? `row_audit` was dropped. If it comes back it is an infrastructure decision with its own justification. |
+Once answered, six of them turned out to be one principle asked in six places:
+**every integration is a capability, never a dependency.** Orders, inter-company
+documents and legal entities were the same question about three subjects. The
+seventh, grocery business-to-business, was answered as roadmap rather than first
+version, and what remains of it is a verification rather than a decision, carried
+by 123.
+
+Six of the seven were settled on 2026-08-03 by D39 to D42. What they had in
+common, once answered, was one principle: **every integration is a capability,
+never a dependency.** Three of them were the same question asked about orders,
+about inter-company documents and about legal entities.
 
 ## Live, deferred against a trigger
 
@@ -61,6 +63,8 @@ Nobody can settle these from the code.
 | 120 | The `expected_supply` concurrency budget under advice ingestion | Building inbound |
 | 121 | Whether `event_subscription` needs a ceiling, and what it is | Measured outbox throughput |
 | 122 | The receiving queries are written and reasoned about, not measured. Retires 75 | The first migration, with a year of seeded history |
+| 123 | Verify the GS1 grocery surface is reachable without structural change: GTIN allocation, SSCC issuance and reuse, ITF-14 on master cartons, GS1-128 pallet labels, EDI despatch advice, National Product Catalogue. Carries the live half of 69 | Before the first grocery customer, and worth doing sooner because it is falsifiable now |
+| 124 | Benchmarking's cohort floor, suppression rule and consent model. D41 set the shape and deferred the build | Enough tenants for a cohort to mean anything |
 
 ## Live, wanting a written answer rather than a decision
 
@@ -113,6 +117,12 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 | 64 | D23 | 111 | D36 |
 | | | 75 | D37, into 122 |
 | | | 88 | D38 |
+| | | 4, 58 | D39 |
+| | | 49, 56 | D39 |
+| | | 66 | D40 |
+| | | 67 | D41 |
+| | | 77 | D42 |
+| | | 69 | answered; verification half is 123 |
 
 ## Duplicates, resolved
 
@@ -134,12 +144,12 @@ numbering. All were absorbed into 1 to 57 during adoption and are superseded.
 | | |
 |---|---|
 | Live and blocking | 0 |
-| Live, business answer | 7 |
-| Live, deferred with trigger | 19 |
+| Live, business answer | 0 |
+| Live, deferred with trigger | 21 |
 | Live, wanting a written answer | 8 |
 | Live, minor | 14 |
-| **Live total** | **47** |
-| Settled | ~56 |
+| **Live total** | **42** |
+| Settled | ~63 |
 
 All four blockers were settled the day this register was written, and settling
 two of them raised 121 and 122. 116 had been sitting in a research document since

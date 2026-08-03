@@ -5218,6 +5218,287 @@ claim rather than the newer, which would break existing citations to preserve a
 decision hours old. Generating the tests from the document, which inverts the
 dependency and produces a suite nobody can debug.
 
+---
+
+### D39 — Every integration is a capability, never a dependency
+
+*Adopted 2026-08-03, settling questions 4/58, 56 and 49. Three questions that
+looked separate turn out to be one principle asked three times.*
+
+> **The system is complete on its own. Every external system is one
+> implementation of a seam that has a working default behind it.**
+
+The design previously read as though NetSuite stays the financial system, which
+quietly made it required. It is not required. It is what this deployment happens
+to have, and a deployment without it must lose no necessary function.
+
+#### Orders are ours, and NetSuite is a channel (question 4/58)
+
+`order` and `purchase_order` are **ours**. They are created here, they are
+complete here, and an operation running nothing else works.
+
+An order arriving from NetSuite is **not an assertion**, and getting this wrong
+would be expensive. D21's assertion category exists for claims by parties outside
+our control, whose defining property is that somebody outside holds a copy and
+will quote it back. NetSuite is *us*. An order arriving from it is **our own
+intention reaching us through a channel**, which is the vocabulary D23 already
+established for observations. Filing it as an assertion would make our own orders
+unretractable and require an acceptance before they could be acted on.
+
+**One system of record per order, declared at creation and recorded on the row.**
+`order.source_channel` names where it came from and `order.external_ref` holds
+the identifier there. An order whose record of authority is external is amended
+through that system, not here.
+
+**Bidirectional merge is refused outright.** Two systems that both accept edits to
+one order need a conflict resolution nobody can explain to a person on a dock,
+and every product that has tried this ships a reconciliation screen as the
+apology. One authority per row, recorded, is the whole mechanism.
+
+#### Inter-company documents generate by default (question 56)
+
+A movement between two of our own legal entities is a sale, and something must
+raise the paperwork.
+
+**The system generates it.** A deployment that has a finance system may configure
+the movement to raise a flag for that system instead. Both paths exist and
+neither is required, which is the principle applied rather than a preference
+expressed.
+
+Foodcare will use the flag path, because NetSuite is here and doing it twice is
+worse than doing it once. That is a configuration of this deployment, not a
+property of the design, and the distinction is exactly what the previous framing
+lost.
+
+#### Multiple legal entities are already supported and cost nothing (question 49)
+
+The answer is that the schema has held this since D20 and nobody checked.
+`site.legal_entity_id` exists, D32 made a legal entity a `party` carrying the
+`legal_entity` role, and stock ownership already points at a party. An
+inter-company movement is a movement whose owners are two parties both holding
+that role. **No new table, no new column, no migration.**
+
+So the default is one entity with several sites, and several entities is
+available to any deployment that needs it, at no cost to the one that does not.
+
+**Why one is the right default here, and why that is a fact rather than a
+choice.** Australia does not incorporate at state level: companies register
+federally with ASIC under the Corporations Act 2001, and one ACN operates
+nationally. What is state-based is registration rather than incorporation, being
+payroll tax, land tax and workers' compensation, none of which requires a
+separate company. Separate entities in Australia come from acquisitions never
+merged, liability ring-fencing or joint ventures, not from geography. This is the
+opposite of the United States, where state incorporation is the norm.
+
+**The competitor set converges from the other direction.** NetSuite sells
+multi-subsidiary as OneWorld, a paid edition, and a vendor only does that when
+the common case does not need it. Manhattan assumes multi-entity because it sells
+to enterprises that are. ShipHero and Peoplevox are single-entity and
+multi-warehouse. CartonCloud, the Australian one, organises around the client
+boundary rather than the legal-entity boundary. **Every product treats
+multi-warehouse as universal and multi-entity as an upsell**, and the Australian
+ones do not model it at all.
+
+An Australian company operating overseas needs it, which is the case that makes
+availability the right call rather than merely a harmless one.
+
+*Marked for confirmation rather than decision: whether any Foodcare state
+operation sits in its own ACN for historical reasons. That is a lookup with the
+accountant, and either answer leaves the schema unchanged.*
+
+#### Amendments to earlier decisions
+
+- **D15** — `order` gains `source_channel` and `external_ref`; exactly one system
+  of record per order, recorded.
+- **D20** — the multi-entity capability is confirmed as already present, with the
+  Australian default stated so nobody adds a table for it later.
+- **D23** — the ingestion-channel vocabulary covers inbound orders, not only
+  observations.
+- **Non-goals** — "NetSuite remains the financial system" is restated as a
+  property of this deployment rather than of the design.
+- **J44** *(new)* — no `order` row is written by a path that does not set
+  `source_channel`, and no externally-authoritative order is amended locally.
+
+**Rejects.** Orders as mirrors of NetSuite's, which makes the whole inbound build
+a synchronisation project. Bidirectional merge on any shared entity. Filing
+internally-sourced orders as assertions. A `legal_entity` table separate from
+`party`, refused because D32 already covers it and a second identity table is how
+the party question got asked in the first place.
+
+---
+
+### D40 — Third-party stock is billable, and the mechanism already exists
+
+*Adopted 2026-08-03, settling question 66. D20 admitted the stock and the
+exclusions still declined the billing, which is not a business.*
+
+Storage and handling for another company's stock are **billable, off by default,
+and built from what is already there**.
+
+**Nothing new is needed to measure it.** Pallet-days fall out of
+`package_containment`'s intervals, which exist because D24 made placement a fold
+over events with a validity range. Handling in and out are `stock_movement`
+facts. The two questions a storage invoice asks are already answerable, and this
+is what the containment decision bought without being justified on it.
+
+**Rates are two new kinds under D22's lattice, not a new mechanism.** A rate card
+is most-specific-wins over client, item class and site, which is precisely what
+the scope lattice does. `storage_rate` and `handling_rate` join the eight
+existing kinds and inherit the resolver, the explain view and the
+policy-change record.
+
+**Capability follows data.** A deployment with no rate rows bills nothing and
+never encounters the feature, which is the same pattern as batch tracking, catch
+weight and multiple entities.
+
+**The invoice is out of scope and stays out.** This produces the charge lines and
+what they were computed from. Rendering and sending an invoice is a finance
+system's job, and D39's rule applies: a deployment without one gets the lines and
+can export them.
+
+#### Amendments to earlier decisions
+
+- **D22** — `policy_kind` gains `storage_rate` and `handling_rate`. S13's
+  three-way diff covers them with no change.
+- **D24** — pallet-day derivation from `package_containment` is named as a
+  consumer, so a later change to that table knows it has one.
+- **Non-goals** — third-party billing moves out of the exclusions.
+
+**Rejects.** A separate rate-card table with its own precedence, which would be
+D22 built twice. Storing computed charges as facts before an invoice exists, when
+they are derivable and D25 forbids unrebuildable maintained tables. Invoice
+rendering.
+
+---
+
+### D41 — Telemetry and benchmarking are two products, and only one is buildable now
+
+*Adopted 2026-08-03, settling question 67, which had been forbidden as a side
+effect of a data-scoping rule rather than by anyone deciding it.*
+
+The question bundled two things with different subjects, and separating them is
+most of the answer.
+
+**Product telemetry is about our software.** Which screens are used, how long a
+pack takes, error and crash rates. It is collected with **per-tenant opt-out**,
+and what is collected is a **declared enumerated list** rather than whatever
+happens to be logged. A list nobody wrote is how a telemetry feature becomes a
+privacy incident.
+
+**Benchmarking is about other companies' commercial performance**, and calling it
+anonymised does not make it so.
+
+> With a small tenant set, an aggregate plus your own contribution recovers
+> everyone else's. At three contributors it recovers them exactly.
+
+**Opt-out makes this worse rather than better**, which is the counter-intuitive
+part worth writing down: withdrawing a tenant shrinks the cohort, and small
+cohorts are the re-identifiable ones. A feature whose privacy control degrades
+privacy is not a control.
+
+The honest version needs a **minimum cohort floor with suppression below it**,
+conventionally five contributors, so a supplier used by four tenants returns
+nothing at all. That is a real and defensible product. It is not buildable now,
+because there is one tenant.
+
+**So the general rule, stated as a decision rather than inherited from D19:**
+cross-tenant reads are forbidden. Any exception is a named decision carrying a
+cohort floor and a suppression rule. D19's scoping continues to enforce it; what
+changes is that switching it off now requires overturning a decision rather than
+noticing a rule was inconvenient.
+
+#### Amendments to earlier decisions
+
+- **D19** — cross-tenant isolation is a decision with its own reasoning, not a
+  consequence of RLS shape.
+- **D18** — telemetry is named as the one egress path and is bound by the
+  declared list.
+- **J45** *(new)* — no query in the register reads across tenants except those on
+  a declared exception list, and every entry on that list carries a cohort floor.
+
+**Rejects.** Benchmarking without a cohort floor. Treating opt-out as sufficient
+privacy control for aggregates. Collecting telemetry against an undeclared list.
+
+---
+
+### D42 — An amendment to an intention is a fact, and the model has done this four times
+
+*Adopted 2026-08-03, settling question 77. `row_audit` was refused and the
+requirement behind it was never answered.*
+
+"Do we need an audit log" imports a mechanism from systems where mutable rows are
+normal. **This system mostly does not have mutable rows, and everywhere it
+removed them the audit question dissolved rather than being answered:**
+
+| Was mutable | Became |
+|---|---|
+| `stock` balances | A fold of `stock_movement` |
+| Pallet placement and identity | A fold of `package_event` (D24) |
+| Policy values | Paired with `policy_change` |
+| Expected quantities | A projection with its sources kept |
+
+Four instances of one move, never named as one. **The order is the significant
+mutable entity left, which is exactly why the question kept coming back about the
+ship-to address specifically.**
+
+So there is no audit requirement. **There is a missing fact.** *"On Tuesday, Kyle
+changed the ship-to address from A to B"* has an author, a time, a device and a
+reason, which is this model's definition of a fact, and there is already a table
+shape for it and a rebuild-and-assert job that checks it for free.
+
+**It is cheaper than what was rejected, not more expensive.** `row_audit` was
+refused partly because a generic changelog doubles the write volume of the
+largest tables to record nothing, since fact tables cannot be edited. That
+argument reverses here: orders are hundreds a day and amendments to them are
+rare. **The expensive version was refused on the tables where it was worthless,
+and the cheap version was never considered on the table where it is valuable.**
+
+```
+intention_amendment           -- FACT
+  id, tenant_id
+  order_id | purchase_order_id | transfer_order_id    -- CHECK num_nonnulls = 1
+  kind        -- ship_to_changed | requested_date_changed | quantity_changed
+              -- | line_added | line_removed | cancelled | reopened
+  <typed payload columns per kind>
+  reason_code, note
+  occurred_at, recorded_at, client_event_id
+  recorded_by_id / automation_key, authorised_by_id
+```
+
+Two rules keep it from becoming the generic changelog wearing a different label.
+
+**No `field` column.** S11's denylist already forbids that name for policy
+tables, and for the same reason here: `field`, `before` and `after` is untyped
+soup relabelled. The `kind` enum is closed and adding a value is a decision,
+which is what keeps the set honest.
+
+**No `before` column.** The previous value is the previous amendment, or the
+original. You fold, exactly as `stock_movement` does.
+
+**What belongs in the enum has a test you already have.** If nobody would ever
+investigate a change to a field, it is not an event and the column stays mutable.
+That is principle 3's queryability test pointed at changes rather than at values.
+
+The covered columns on `order` become `@projection` of the original plus the
+amendments, under D35's maintainer. The rest stay ordinary mutable intention
+columns, which is the same hybrid D24 applied to `package`.
+
+#### Amendments to earlier decisions
+
+- **D25** — `row_audit` stays refused, and the requirement behind it is now
+  answered by a typed fact rather than left open.
+- **D15** — `order`'s covered columns are demoted to `@projection`.
+- **D35** — `intention_amendment` folds are maintained by the same function set.
+- **J46** *(new)* — every covered `order` column equals the fold of
+  `intention_amendment` over that order, in `(occurred_at, recorded_at, id)`
+  order, and replay in any arrival order is identical. Same shape as J6.
+
+**Rejects.** A generic `(table, row_id, before, after)` changelog, refused twice
+now and on stronger grounds. A `field` column. Storing the previous value. One
+amendment table per intention type, which is the polymorphic problem inverted
+into three near-identical tables. Demoting every `order` column, which would make
+routine pre-release editing an event stream nobody reads.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
