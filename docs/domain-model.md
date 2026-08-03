@@ -4372,6 +4372,202 @@ sound and D23 uses it, but the foreign key would forbid ever changing an item's
 tracking, which is a legitimate operation. A kind table for `activity_event`.
 Deriving tracking obligations from the presence of related rows.
 
+---
+
+### D34 — `item_barcode`, and one identifier is not the way it was printed
+
+*Adopted 2026-08-03, settling question 116. Referenced twice by D19 and defined
+by no decision until now, which is the position `device` was in before D27. It
+blocks the first migration and every scan.*
+
+#### The scheme is what the identifier is, not how it reached the scanner
+
+The inbound sketch proposed `kind` as `gtin13 | gtin14 | itf14 | internal |
+supplier_ref`. Two axes are collapsed there and both collapses cause a defect.
+
+ITF-14 is a **symbology**, one of several ways to print a GTIN-14, and
+`symbology` is already a table (D24, from Q89). Putting it in the identity column
+is `package.sscc` again in a different place: a carton read from an ITF-14 and the
+same carton read from the GS1-128 beside it would resolve through different rows.
+
+GTIN-13 and GTIN-14 are not two schemes either. A GTIN-13 right-justified to 14
+with indicator digit 0 **is** the same trade item, which is why GS1's own storage
+guidance is to hold every GTIN in 14 characters. Indicators 1 to 8 denote higher
+packaging levels and are genuinely different trade items; indicator 0 is the
+same one. Store the unnormalised form and `9312345678907` scanned from an EAN-13
+and `09312345678907` scanned from AI 01 on the carton are two rows for one
+product, so the carton scan misses. That is the most common integration defect in
+this area and it is silent.
+
+So `scheme` is `gtin | internal | supplier_reference`, GTINs are normalised to 14
+on write, and how a barcode was printed is recorded on the scan rather than on
+the identity. The raw string as read already has a home on `activity_event`
+(D24).
+
+#### One constraint does three jobs, and the obvious spelling of it does none
+
+```
+item_barcode                  -- REFERENCE (D19 shape)
+  id, tenant_id               -- NULL = shared catalogue
+  item_id
+  issuer_party_id             -- NULL = the brand owner or us
+  barcode                     -- fixed-width text, GTINs normalised to 14.
+                              --   Never numeric: leading zeros are significant.
+  scheme                      -- gtin | internal | supplier_reference
+  unit_id                     -- D23's unit vocabulary
+  quantity                    -- base units per scan of this barcode.
+                              --   NULL = variable measure; the AI carries it.
+  effective  daterange        -- NOT NULL, DEFAULT daterange(CURRENT_DATE, NULL)
+
+  CHECK (quantity IS NOT NULL OR scheme = 'gtin')
+  EXCLUDE USING gist (
+    COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid) WITH =,
+    COALESCE(issuer_party_id, '00000000-0000-0000-0000-000000000000'::uuid) WITH =,
+    barcode WITH =,
+    effective WITH &&
+  )
+  INDEX (barcode)             -- the scan-resolution path
+```
+
+`active boolean` with `UNIQUE (tenant_id, barcode) WHERE active` is the shape
+this wants to be written in, and it enforces nothing across the shared
+catalogue. `tenant_id` is NULL for every shared row, a NULL comparison yields
+NULL rather than true, and a unique index therefore permits any number of
+duplicate shared barcodes. **`UNIQUE NULLS NOT DISTINCT` fixes that for a unique
+index and has no equivalent for an exclusion constraint**, so the sentinel
+`COALESCE` is load-bearing rather than stylistic. It carries a schema comment
+saying so, because the first reviewer to read it will try to simplify it back
+into the hole.
+
+Written as an exclusion over a range instead, one constraint gives three things:
+
+1. A barcode resolves to at most one item per scope **at any instant**.
+2. Deactivation closes the range rather than flipping a boolean, so a scan
+   recorded in March is still explainable in September. Under D31 nothing here is
+   deleted anyway, and this is the shape that makes the retained row useful
+   rather than merely present.
+3. GTIN reuse after GS1's waiting period is a later non-overlapping range, which
+   the same constraint permits while continuing to forbid the overlap.
+
+The idiom is already named in the model for `%_policy.effective`,
+`package_containment.valid` and `order_tolerance_band.quantity_range`, so this is
+a fourth line in an existing CI assertion template rather than a new mechanism.
+
+#### Supplier carton codes collide, and the scoping is one nullable column
+
+A supplier's own code on a carton is not globally unique and two suppliers will
+eventually use the same string for different products. As a bare row in a table
+keyed on the barcode alone, `supplier_reference` is wrong the first time that
+happens, and wrong by resolving confidently.
+
+`issuer_party_id` scopes it. NULL means the brand owner issued it (a GTIN) or we
+did (an internal code); set means it is this party's code and means nothing
+outside that. Receiving passes the expected supplier from the advice. Without
+one, the scan is ambiguous by construction, which is already a recorded outcome:
+D24's `identifier_ambiguous`. This is the one addition beyond the inbound sketch,
+and it is a nullable foreign key in an exclusion key that already exists.
+
+#### Assertions may not write reference data
+
+`item_barcode` is reference, and D19's two RLS policy shapes apply unchanged.
+A GS1 National Product Catalogue feed, a supplier price file or a wholesaler's
+catalogue export is an **assertion** under D21, not reference data. It lands as
+an assertion and something with a name promotes it.
+
+If a feed writes here directly, a supplier silently rewrites what a scan means.
+That is the poisoning D19 exists to prevent, one level below measurements and
+with a worse blast radius, because a wrong measurement produces a bad autofill
+and a wrong barcode binding produces stock movements against the wrong item. The
+pressure to auto-ingest the National Product Catalogue will arrive early and this
+refuses it once.
+
+#### D19's missing sentence
+
+A carton GTIN's **level** is intrinsic, assigned by the brand owner. The **count
+it implies** depends on the case pack a given tenant receives, which is D19's own
+reason `item_packing_config` is tenant-scoped.
+
+A shared row therefore carries the brand owner's declared unit and quantity. A
+tenant receiving a different case pack writes a tenant-scoped row for the same
+barcode and it wins, resolved by `ORDER BY tenant_id NULLS LAST LIMIT 1`.
+Deterministic, and never ambiguous between the two scopes. A tenant row pointing
+at a **different item** is also legitimate, for a private-label variant or a
+supplier reusing a code, and resolves the same way.
+
+#### Resolution is a function with three arms in a fixed order
+
+The three identifier surfaces are `package_identifier` (D24, a projection of
+`package_event`), `item_barcode` (reference, this decision) and `location`. They
+stay three tables because they sit in different provenance categories: a
+package's identity is something that happened at a place and time, and an item's
+barcode is a durable fact about a product class. One table for both would put a
+projection and a reference row under one primary key.
+
+Resolution is nonetheless **one function**, because the scanner does not know
+which it is holding:
+
+1. **Parse.** A GS1-128 or DataMatrix string yields application identifiers: 00
+   is an SSCC, 01 is a GTIN, 10 is a batch, 17 an expiry, 21 a serial, 310n a
+   weight. A bare numeric string with a valid mod-10 check digit is a GTIN by
+   length. Anything else is passed through raw. The parser is the vendor
+   `gs1-syntax-engine`, per the inbound finding, and unrecognised AIs are stored
+   opaquely and never rejected.
+2. **Dispatch.** AI 00 to `package_identifier`, AI 01 to `item_barcode`, a raw
+   string to all three.
+3. **Narrow.** The screen supplies `expected_entity_kind`, which already exists
+   on `activity_event`. Zero hits is `identifier_unknown` when well-formed and
+   `identifier_unrecognised` otherwise. More than one surviving hit is
+   `identifier_ambiguous`. All four kinds are D24's and none is new.
+
+**One scan yields item, lot and expiry.** A GS1-128 carton label carries AI 01,
+AI 10 and AI 17 in a single string, so resolution returns the binding and the lot
+attributes together. Receiving stops keying batch numbers and expiry dates, which
+is most of the operational value of doing this properly, and it is what makes
+D33's lot-tracking assertion cheap to satisfy rather than a burden on the dock.
+
+**Variable measure is why `quantity` is nullable.** A variable-measure GTIN
+carries the weight in the barcode under AI 310n rather than in a table, so the
+table cannot hold a fixed count. A NULL `quantity` means the scan supplies it,
+and the CHECK confines that to GTINs because no other scheme has a place to carry
+one.
+
+#### Amendments to earlier decisions
+
+- **D19** — the missing sentence stated: shared rows carry the brand owner's
+  declared unit and quantity, tenant-scoped rows win, resolution is
+  `tenant_id NULLS LAST LIMIT 1`. `item_barcode` joins the reference set formally
+  rather than by mention.
+- **D21** — reference data may not be written by an assertion. Stated as a rule
+  here because the National Product Catalogue is the first thing that will try.
+- **D23** — `item_barcode.unit_id` is the named consumer, replacing the
+  `unit_level` enum in the inbound sketch. The unit vocabulary carries packaging
+  levels and measures in one table, as already recorded.
+- **D24** — the four identification kinds are reused unchanged. `expected_entity_kind`
+  gains no values. The resolver is named as the single consumer of all three
+  identifier surfaces.
+- **D25** — `item_barcode` is reference, so it takes UPDATE and DELETE grants on
+  the application role like the rest of the reference set. `effective` closing is
+  an UPDATE, not a DELETE, and D31's retention floors apply to the closed row.
+- **D31** — `item_barcode` is retained indefinitely. A closed range is the
+  evidence for what a historical scan meant, and truncating it makes historical
+  resolution quietly start returning nothing.
+- **J34** *(new)* — every GTIN in `item_barcode` is 14 characters and passes the
+  mod-10 check digit. Asserted over the table, not at the call site, because the
+  normalisation happens on write and a second write path will be added.
+- **J35** *(new)* — the exclusion constraint's `COALESCE` sentinels are present.
+  Asserted from `pg_constraint`, because the failure mode of their removal is
+  that duplicate shared barcodes become insertable and nothing complains.
+
+**Rejects.** One identifier table for packages, items and locations: it puts a
+projection and a reference row under one key and would make `package_identifier`
+directly writable, which D24 refused by name. `active boolean`: it cannot express
+GS1's reuse waiting period, it cannot explain a historical scan, and its unique
+index does not constrain the shared catalogue. A `kind` enum carrying symbologies.
+Storing the raw scanned string here rather than on `activity_event`, which would
+duplicate D24's home for it and split the diagnostic query in two. Auto-promotion
+of National Product Catalogue rows into reference data. A `gtin13` column beside
+a `gtin14` column, which is the unnormalised defect written down deliberately.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
