@@ -3141,7 +3141,7 @@ System-versioned temporal shadow tables. `row_audit`. An event log for intention
 ### D26 — Extensibility: a schema compiler, an outbox, and no document store
 
 *Adopted 2026-08-01 from [mechanism-design.md](./mechanism-design.md), with four
-amendments applied. **This completes D1–D26; nothing remains proposed.***
+amendments applied. **This completed D1–D26; D27 onward followed.***
 
 **Decision.** Extensibility decomposes into exactly three things a tenant can
 want, and each gets one primitive:
@@ -5904,8 +5904,10 @@ Raised by D28 (adopted 2026-08-02):
     projection to compare against, so after a truncation both sides agree and
     nothing fails. Retention floors must be declared and asserted separately.
 
-*All decisions D1–D32 are now adopted. The proposals in
+*All decisions D1–D42 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
-document where they disagree; their open questions (73–88) remain there as
-working notes.*
+document where they disagree. Their open questions are carried by
+[open-questions.md](./open-questions.md) and their invariant tables by
+[invariants.md](./invariants.md); both registers are authoritative over the text
+left behind in those documents.*
