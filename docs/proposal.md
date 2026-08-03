@@ -21,7 +21,7 @@ disagreements are raised as findings with the evidence attached rather than bein
 quietly corrected, and most of that chasing stops existing rather than getting
 faster.
 
-The design is specified to a level it could be built from: thirty-four recorded
+The design is specified to a level it could be built from: thirty-five recorded
 decisions, around sixty rules it must always satisfy, and research against six
 comparable products. What it does not have is code, a measured baseline for the
 current process, or costings for the alternatives. The first two are being
@@ -271,13 +271,13 @@ of steps removed rather than a measurement.
 
 ## Where it stands
 
-There are thirty-four recorded decisions, around sixty rules the design must always
+There are thirty-five recorded decisions, around sixty rules the design must always
 satisfy, and research against six comparable products alongside the freight
 standards and Australian grocery requirements that apply. There is no code.
 
 The design has been checked repeatedly against real requirements rather than
 against itself, and the specification is detailed enough to build from directly.
-Three technical questions want settling before or during the first database
+Two technical questions want settling before or during the first database
 work, and around fifty others are open, each either deferred against a stated
 trigger or waiting on an answer only the business has. All of them are listed in
 one register rather than scattered through the research. Everything else is either decided or
@@ -291,7 +291,7 @@ measurement.
 ## Supporting documents
 
 - `architecture.md`, the design in more detail
-- `domain-model.md`, the full decision record, thirty-four decisions with the
+- `domain-model.md`, the full decision record, thirty-five decisions with the
   reasoning and what each rejected
 - `order-fulfilment-process.md`, the current process recorded step by step
 - `competitor-analysis.md`, `inbound-analysis.md` and `supply-side-design.md`, the

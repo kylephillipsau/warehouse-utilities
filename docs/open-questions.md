@@ -21,7 +21,6 @@ These stop something specific. Each names what.
 
 | # | Question | Blocks |
 |---|---|---|
-| **102 / 117** | Who may write a derived total while it is being rebuilt. The maintainer role has grants the application role does not, so the rebuild path is the documented way around every other guard. D26 answered it for the schema compiler; the projection maintainer is still open, and the reaper cannot run until it is. | First migration grants; the reaper (D30) |
 | **75** | The receiving screen's query must be written and explained once, as its own acceptance test. Six designs each added joins to that path and none could measure the total. | Building the receiving screen |
 | **111** | Do the extensibility ceilings need enforcement or only assertion? A tenant hitting the limit mid-declaration needs defined behaviour; "the job complains tomorrow" is not one. | Building the schema compiler (D26) |
 
@@ -107,7 +106,7 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 | 53, 57 | D32 | | |
 | 59 | D24 | | |
 | 61 | D21 | 116 | D34 |
-| 63 | D22 | | |
+| 63 | D22 | 102, 117 | D35 |
 | 64 | D23 | | |
 
 ## Duplicates, resolved
@@ -117,7 +116,7 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 | 79 | 93 | 93 |
 | 82 | 66 | 66 |
 | 83 | 67 | 67 |
-| 117 | 102 | both, as a dependency note |
+| 117 | 102 | both, settled together by D35 |
 | supply-side 110, 111 | domain-model 110, 111 | renumbered; the live one is 120 |
 
 The competitor analysis carried its own sequence of eleven questions predating this
@@ -129,14 +128,14 @@ numbering. All were absorbed into 1 to 57 during adoption and are superseded.
 
 | | |
 |---|---|
-| Live and blocking | 3 |
+| Live and blocking | 2 |
 | Live, business answer | 7 |
 | Live, deferred with trigger | 17 |
 | Live, wanting a written answer | 9 |
 | Live, minor | 14 |
-| **Live total** | **50** |
-| Settled | ~51 |
+| **Live total** | **48** |
+| Settled | ~53 |
 
-116 was settled by D34 on the day this register was written. It had been sitting
-in a research document since the inbound pass without being carried across, which
-is the failure this register exists to stop repeating.
+116, 102 and 117 were settled the day this register was written. 116 had been
+sitting in a research document since the inbound pass without ever being carried
+across, which is the failure this register exists to stop repeating.

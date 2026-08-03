@@ -4568,6 +4568,166 @@ duplicate D24's home for it and split the diagnostic query in two. Auto-promotio
 of National Product Catalogue rows into reference data. A `gtin13` column beside
 a `gtin14` column, which is the unnormalised defect written down deliberately.
 
+---
+
+### D35 — The projection maintainer is a set of named functions, not a role
+
+*Adopted 2026-08-03, settling questions 102 and 117. D26 answered this for the
+schema compiler through ownership; the projection maintainer was left open, and
+D30's reaper has been blocked on it since.*
+
+#### A role is ambient privilege, a function is privilege attached to code
+
+The model says *"nothing writes to `stock` directly, ever"* and D25 makes that a
+grant rather than a sentence. Something must still write it, so the guard is
+deliberately open in one place, and the question is what shape that opening has.
+
+Granting `UPDATE` on `stock` to a `projection_maintainer` **role** reduces the
+rule to *"nothing writes to `stock` except this role, which does five jobs."*
+Role privilege is ambient: anything running in a session with that role can write
+any value to any projection column, for any reason, and the audit can only ever
+say that the role did it. "Who may write a projection" has no better answer than
+a role name.
+
+Attach the privilege to code instead and the answer becomes a list of names:
+
+> **No login role holds a write grant on any projection column. The grants are
+> held by `projection_owner`, a `NOLOGIN` role with no members, and every write
+> happens inside a `SECURITY DEFINER` function it owns.**
+
+Nobody can `SET ROLE` to it and no connection string can be it, so the only way
+to exercise the privilege is to call one of the functions, and each function body
+is the entire surface of what that privilege can do. `stock` is written by
+`projection_stock_apply()` and `projection_stock_rebuild()` and by nothing else,
+and that sentence is verifiable from `pg_proc` rather than asserted.
+
+This is D26's move one level across. Ownership made schema drift
+*unrepresentable* rather than detected; function-scoped privilege makes *"someone
+with maintainer access ran an UPDATE"* unrepresentable rather than audited.
+
+#### Three escalations Postgres enables by default, all one line to close
+
+The opening is only as narrow as the function definitions, and Postgres's
+defaults widen all three of them silently.
+
+**`EXECUTE` is granted to `PUBLIC` on every new function.** A `SECURITY DEFINER`
+projection writer is therefore callable by the application role, directly, with
+hand-made arguments. That is precisely *"the way around every other rule here"*
+this question was raised about, and it is on by default. Every function in the
+set carries `REVOKE EXECUTE ... FROM PUBLIC` in the same migration that creates
+it, and `EXECUTE` is then granted only to the scheduler role and, for the rebuild
+entry points, an operator role.
+
+**A mutable `search_path` in a `SECURITY DEFINER` function is remote code
+execution as the owner.** A caller who can create objects in any schema earlier
+in the path shadows an unqualified name, and their function body runs with the
+owner's grants. Every function in the set is defined with
+`SET search_path = pg_catalog, <schema>`.
+
+**Table owners bypass row-level security.** `projection_owner` owns nothing, but
+the functions run as it, so without `FORCE ROW LEVEL SECURITY` on every
+projection table a rebuild is unscoped by tenant. D25 already stated this
+requirement; it is restated here because it is the third member of the same
+family and the three are worth reading together.
+
+All three are catalogue assertions, not review items: `rolcanlogin = false` and
+zero rows in `pg_auth_members` for `projection_owner`; no `SECURITY DEFINER`
+function in the set with `EXECUTE` to `PUBLIC`; no `SECURITY DEFINER` function
+in the set without `search_path` in `proconfig`; `relforcerowsecurity` true on
+every table carrying an `@projection` column.
+
+#### Forcing RLS makes the rebuild per-tenant, which is the better design anyway
+
+With RLS forced, a rebuild can only touch rows its tenant predicate admits, so
+**there is no global rebuild**. The scheduled job iterates tenants and rebuilds
+each in its own transaction. That is a constraint accepted rather than worked
+around, and four things improve:
+
+- A rebuild defect cannot cross a tenant boundary, so the largest blast radius in
+  the maintenance path is one tenant.
+- Drift in one tenant no longer stalls the check for every other tenant.
+- `projection_check.scope_kind`/`scope_id` gains a natural value instead of
+  usually being null, and stays clear of the cell-naming defect D30 found.
+- A full rebuild of `stock` at scale stops being one long transaction holding
+  back vacuum on the busiest table in the schema.
+
+**The honest limit.** This bounds a *bug*, not an attacker holding the
+connection. `current_tenant()` is a session setting and any session can set it,
+so tenant isolation still rests on the application's authentication layer, as it
+already does everywhere else. What the database enforces here is that a rebuild
+predicate which forgot its tenant filter writes nothing rather than writing
+everything.
+
+#### Every invocation writes a `projection_check` row, drift or not
+
+The audit q102 asked for is a table the model already has. `projection_check` is
+a fact meaning *"we checked a projection against its source"*, and every
+invocation of a maintainer function writes one whether or not it found anything.
+
+That answers three questions with one query. What was rebuilt and when. Who
+asked, since a scheduled run and an operator forcing a rebuild after a suspected
+drift are different acts and `invoked_by_id` distinguishes them. And, most
+usefully, **what has not been rebuilt**, because a scope with no recent row is a
+scheduler that stopped, which is otherwise the quietest failure in the system.
+
+A separate audit table was the alternative and it would record the same facts in
+a second place, against D25's one-mechanism rule.
+
+#### The reaper is the rebuild's delete phase, not a job
+
+D30 is titled *"the predicate belongs to the rebuild"* and then gives the reaper
+its own schedule, its own role and its own execution. Completing the decision in
+its own direction removes the gap: **the reap is a phase inside
+`projection_stock_rebuild()`**, running before the fold, under the same scope, in
+the same transaction, writing `rows_removed` on the same `projection_check` row.
+
+J32 said reap, rebuild and assert together produce zero `projection_drift`. As
+two jobs that is a property to test and a window where it is false. As one
+function it is structurally true, because nothing can observe the intermediate
+state.
+
+The weekly cadence D30 gave the reaper is preserved as a parameter: the reap
+phase runs when the schedule says so and is skipped otherwise. One function, one
+scope, one audit row, and the reaper is unblocked.
+
+#### Amendments to earlier decisions
+
+- **D25** — the maintainer is defined: `projection_owner` is `NOLOGIN` with no
+  members, holds every projection write grant, and owns one `SECURITY DEFINER`
+  function per projection per operation. The bidirectional CI diff already
+  required for `@projection` comments extends to the function set, so a
+  projection column with no maintainer function and a maintainer function with no
+  projection column both fail.
+- **D25** — `projection_check` gains `invoked_by_id` (nullable; null means the
+  scheduler), `rows_removed`, and a row on every invocation rather than only on a
+  check that ran.
+- **D26** — the compiler role is the same pattern named differently, and the two
+  are stated as one rule with two instances rather than two similar decisions.
+- **D30** — the reaper is a phase of the rebuild rather than a job. Its role
+  question is answered by there being no role. J32 is restated as structural.
+- **D18** — the tenant-isolation claim for the maintenance path is stated with
+  its limit, so nothing downstream reads it as stronger than it is.
+- **J36** *(new)* — no login role holds `INSERT`, `UPDATE` or `DELETE` on any
+  column commented `@projection`. Asserted from
+  `information_schema.column_privileges` joined to `pg_roles` on `rolcanlogin`.
+- **J37** *(new)* — every `SECURITY DEFINER` function in the maintainer set has
+  `search_path` set in `proconfig` and no `EXECUTE` grant to `PUBLIC`. Asserted
+  from `pg_proc` and `pg_default_acl`. **This is the invariant that catches a new
+  maintainer function written correctly and deployed with Postgres defaults**,
+  which is the likely failure rather than a deliberate one.
+- **J38** *(new)* — `relforcerowsecurity` is true on every table carrying an
+  `@projection` column.
+
+**Rejects.** A `projection_maintainer` login role, refused as ambient privilege
+with a five-job surface. A separate maintainer audit table, refused against
+`projection_check`. A global cross-tenant rebuild, refused because forcing RLS
+makes the per-tenant form mandatory and it is better on four counts. Exempting
+the maintainer from RLS instead of forcing it, which is the shape of the hole
+D18 exists to prevent. Granting the application role `EXECUTE` on the rebuild
+functions so a screen can trigger one: a rebuild is an operator act, and a screen
+that can start one at will is a denial-of-service surface on the busiest table in
+the schema.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
