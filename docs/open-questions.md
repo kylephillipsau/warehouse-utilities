@@ -65,11 +65,12 @@ Nobody can settle these from the code.
 ## Live, wanting a written answer rather than a decision
 
 Nothing blocks on these. They are places where the model is right and the reasoning
-is undocumented, which is how the five bad invariants happened.
+is undocumented, which is how the five bad invariants happened. The largest of
+them, 88, was settled by D38; [invariants.md](./invariants.md) is now the same
+fix applied to invariants that this file is to questions.
 
 | # | Question |
 |---|---|
-| **88** | **The invariant register needs an owner and a home.** It is the artefact that would have caught every silent breakage, it is currently prose, and it will erode exactly as principle 3's census did. This register is the same fix applied to questions. |
 | 93 / 79 | The eleven per-kind precedence orderings are declared in code and justified nowhere. A manager who assumes wrong misconfigures confidently. |
 | 84 | Bitemporal queries are easy to write backwards. "What did the pallet weigh on Monday" and "what did we believe on Monday" differ by one predicate, and getting it wrong in a dispute is worse than not having the capability. |
 | 85 | The falsifier for new event tables is gameable by adding a decorative column. Reviewers must apply the provenance rule first. |
@@ -111,6 +112,7 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 | 63 | D22 | 102, 117 | D35 |
 | 64 | D23 | 111 | D36 |
 | | | 75 | D37, into 122 |
+| | | 88 | D38 |
 
 ## Duplicates, resolved
 
@@ -134,10 +136,10 @@ numbering. All were absorbed into 1 to 57 during adoption and are superseded.
 | Live and blocking | 0 |
 | Live, business answer | 7 |
 | Live, deferred with trigger | 19 |
-| Live, wanting a written answer | 9 |
+| Live, wanting a written answer | 8 |
 | Live, minor | 14 |
-| **Live total** | **48** |
-| Settled | ~55 |
+| **Live total** | **47** |
+| Settled | ~56 |
 
 All four blockers were settled the day this register was written, and settling
 two of them raised 121 and 122. 116 had been sitting in a research document since

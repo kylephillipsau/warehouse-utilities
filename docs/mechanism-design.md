@@ -924,6 +924,9 @@ Where two or more designs invented the same thing. Collapsing these is the highe
 
 ## The invariant register
 
+> **The invariants below have moved to [invariants.md](./invariants.md)**, the single register and the canonical numbering. The entries here are retained as written; the register is authoritative on text, numbering and status.
+
+
 The artefact §1 asked for. Owner, and how it is asserted. The three known silent breakages are marked — each would have been caught here.
 
 **Structural (CI, from `information_schema` / `pg_catalog`)**

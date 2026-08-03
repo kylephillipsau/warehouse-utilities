@@ -387,6 +387,9 @@ Mechanics that must be in the decision because the natural implementation gets t
 
 ## Invariants created
 
+> **The invariants below have moved to [invariants.md](./invariants.md)**, the single register and the canonical numbering. The entries here are retained as written; the register is authoritative on text, numbering and status.
+
+
 | # | Invariant | Owner | Check |
 |---|---|---|---|
 | **S2** *(corrected)* | Every table naming a stock cell carries **the complete column set**. The "or FK to `stock.id`" disjunction is removed — under a reapable `stock` the two are not equivalent | D24, Q91 | Catalogue diff over a declared list |

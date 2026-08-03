@@ -4551,10 +4551,10 @@ one.
 - **D31** — `item_barcode` is retained indefinitely. A closed range is the
   evidence for what a historical scan meant, and truncating it makes historical
   resolution quietly start returning nothing.
-- **J34** *(new)* — every GTIN in `item_barcode` is 14 characters and passes the
+- **J42** *(new)* — every GTIN in `item_barcode` is 14 characters and passes the
   mod-10 check digit. Asserted over the table, not at the call site, because the
   normalisation happens on write and a second write path will be added.
-- **J35** *(new)* — the exclusion constraint's `COALESCE` sentinels are present.
+- **J43** *(new)* — the exclusion constraint's `COALESCE` sentinels are present.
   Asserted from `pg_constraint`, because the failure mode of their removal is
   that duplicate shared barcodes become insertable and nothing complains.
 
@@ -5090,6 +5090,133 @@ than remembered later:
 > in an operator's hand per carton. `EXPLAIN (ANALYZE, BUFFERS)` on both, with the
 > plans committed beside the test so a later regression is a diff rather than a
 > memory.
+
+---
+
+### D38 — The invariant register has one home, and an absence is only as strong as its population
+
+*Adopted 2026-08-03, settling question 88. The register was 77 entries across
+four documents. Consolidating it found a numbering collision created hours
+earlier, one invariant that had never been numbered at all, and four entries
+whose current text could not be read from a single document.*
+
+#### The evidence arrived while the question was being answered
+
+Question 88 predicted the register would erode as principle 3's census did. It
+had already begun, and the sharpest instance is the most recent one.
+
+**D34 allocated J34 and J35 on the day this decision was adopted, and D28 and D29
+already held them.** That happened in the same document that had been
+consolidated hours earlier to stop exactly this failure for questions, and it
+happened for exactly the same reason: numbers hand-allocated in prose across
+several files, with no mechanism that could notice. The earlier claim wins, so
+D34's two entries are renumbered J42 and J43.
+
+Two more, both quieter:
+
+**D31's retention-floor coverage assertion had no number.** The decision states
+that for every declared floor either the oldest live partition or the archive
+must reach back to it, and that assertion entered no register. It is S34.
+
+**Four entries could not be stated from one document.** J3 was annotated in one
+place and defined in another; J6 was extended twice, in two files; J19 was
+widened in one and scoped in a second; S2 was corrected in a third. J6 is one of
+the five invariants previously found encoding its own bug, and reconstructing its
+current text required reading two documents. **An invariant nobody can quote is
+not one.**
+
+#### An anti-join is only as strong as the assertion that its population exists
+
+The most useful finding is not the collision. It is a property that cuts across
+the whole register and had been noticed for exactly one entry.
+
+`stock_movement` can lose half its rows and J1 fails immediately, because a fold
+compares a projection against its source and the two stop matching. That is
+self-guarding.
+
+An **absence** is not. *"No serial is reissued within twelve months"* passes
+perfectly when the twelve months of history have been truncated. So does *"the
+model contains no `jsonb` column"* before any tables exist, and *"no resolver
+call appears inside a loop"* before any resolver does, and *"no login role holds
+UPDATE on a projection column"* before any projections exist.
+
+> **Every invariant asserted as an absence passes when its population is empty,
+> and therefore reports success on the day it stops being checked.**
+
+This was recorded once, for the SSCC reuse guard, as a class the register could
+not check. It is not a class. **Twenty-nine of the seventy-seven entries have
+this property**, and each needs a companion assertion that its population is
+non-empty and reaches back far enough. S34 is the general one where the bound is
+history depth. The rest are named per entry as they are implemented, and an entry
+that reaches `implemented` without one is a lie the suite tells itself.
+
+That number, 29 of 77, is the one worth watching. It is invisible while the
+register is prose.
+
+#### The register is generated from the suite, not maintained beside it
+
+Question 88 stated the direction: *"it should be the CI suite, with this table
+generated from it, not the other way round."* Made concrete:
+
+Each invariant is a test carrying its own metadata: identifier, class, statement,
+the decisions that own it, the assertion method, whether it asserts an absence,
+and its companion population assertion if so. `docs/invariants.md` is generated
+from that set, and CI fails when the generated file differs from the committed
+one.
+
+**The identifier is then a constant in code**, so allocating one twice is a
+compile error rather than something a careful reader might notice. That is the
+same move as D26's ownership and D35's function-scoped privilege: the failure
+becomes unrepresentable rather than detected. It is also the mechanism D25
+already uses for `@projection` columns, applied to the register itself.
+
+**The register has no owner, and that is the answer to the half of question 88
+that asked for one.** An artefact generated from the thing it describes does not
+need a person to keep it true. What needs an owner is *adding* an entry, and that
+is the same rule the question register already runs on: an invariant stated in a
+decision's amendments is added in the same commit that adopts the decision. A
+decision may state an invariant; it does not own the numbering.
+
+#### Until the backend exists
+
+The file is hand-written today and the numbers are allocated in it, which is the
+stopgap that already failed once. What makes the stopgap safer than the previous
+arrangement is that there is one file rather than four, so a collision is visible
+to anyone adding an entry.
+
+Every entry carries `status`, and all 77 are `specified`, meaning stated and
+reasoned about with nothing executing. **The count of `specified` entries can
+only go down**, which makes it a better measure of progress than the count of
+decisions, since decisions can be added indefinitely and invariants without tests
+cannot.
+
+#### Amendments to earlier decisions
+
+- **D34** — J34 and J35 renumbered to J42 and J43. Nothing outside D34's own text
+  cited them.
+- **D31** — the retention-floor coverage assertion is numbered S34 and is named
+  as the companion population assertion for every absence-asserting entry bounded
+  by history depth.
+- **D36** — J21 is superseded as a job. The ceiling is enforced at declaration by
+  claimed slots, so the job form narrows to asserting that no tenant holds more
+  claimed slots than issued.
+- **D35** — J32 is noted as structural rather than job-asserted, because the reap
+  is a phase inside the rebuild function and the intermediate state cannot be
+  observed.
+- **D25** — the bidirectional registry diff already required for `@projection`
+  columns is the same mechanism this register uses, stated once rather than
+  described twice.
+- **mechanism-design.md, supply-side-design.md, d24-open-questions.md** — their
+  invariant tables are retained as written and annotated to say that
+  [invariants.md](./invariants.md) is authoritative on text, numbering and status.
+
+**Rejects.** A third invariant class for retention floors, refused because the
+property is not a class: it is a per-entry attribute that twenty-nine entries
+share. Leaving the numbering in prose with a convention about checking first,
+which is what was in place when the collision happened. Renumbering the older
+claim rather than the newer, which would break existing citations to preserve a
+decision hours old. Generating the tests from the document, which inverts the
+dependency and produces a suite nobody can debug.
 
 ## Open questions
 

@@ -257,6 +257,8 @@ Amending the register. J8 and J9 are **restated**; J3's predicate is written dow
 |---|---|---|---|
 | S3 *(scoped)* | The `<= 1` rule binds demand/cause CHECKs on **grouping** tables. A projection's provenance-arm CHECK is `= 1`, and the exception is enumerated | D10, D23, D24s | Grep + declared exception list |
 | S4 *(amended)* | Every table registers exactly one role. A table with role `projection` registers the **set** of provenances it folds, and CI asserts that set equals the sources named by its registered rebuild functions | D21, D25, D24s | Bidirectional diff |
+> **The invariants below have moved to [invariants.md](./invariants.md)**, the single register and the canonical numbering. The entries here are retained as written; the register is authoritative on text, numbering and status.
+
 | S24 | `expected_supply` has one partial unique index per provenance arm, and **no** unique index over `(item_id, owner_id, status_id)` | D24s | Catalogue scan |
 | S25 | The availability indexes on `stock` and `expected_supply` both carry `owner_id` and `status_id` in the key and the promisable measure in `INCLUDE`; no query on the availability path joins `inventory_status` | D12, D20, D24s | Catalogue + query register |
 | S26 | `expected_supply` carries at most five maintained quantity columns. A sixth requires a recorded decision | D24s | Column count |

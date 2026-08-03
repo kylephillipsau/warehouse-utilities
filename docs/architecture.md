@@ -265,12 +265,15 @@ with a pallet count on every delivery, and that is not the yard.
 
 ## Current state
 
-Thirty-seven recorded decisions, around sixty rules the design must always
+Thirty-eight recorded decisions, seventy-seven rules the design must always
 satisfy, no code.
 
-That list of rules is what the design gets checked against. It is currently
-written as prose, and it should be generated from the tests instead, so a rule and
-the check for it cannot drift apart.
+That list of rules is what the design gets checked against. It is written down in
+one place, and once code exists it will be generated from the tests instead, so a
+rule and the check for it cannot drift apart. Twenty-nine of the seventy-seven
+state that something does not happen, and a rule of that shape passes when there
+is nothing to check, so each one needs a companion rule saying the thing it
+inspects is actually there.
 
 Nothing now blocks the first database migration or the first screen. Around fifty
 questions remain open, each either deferred against a stated trigger or waiting
@@ -281,7 +284,9 @@ database with a year of history in it.
 
 ## Reading further
 
-- [domain-model.md](./domain-model.md), the decision record from D1 to D37
+- [domain-model.md](./domain-model.md), the decision record from D1 to D38
+- [invariants.md](./invariants.md), the rules the design must always satisfy
+- [open-questions.md](./open-questions.md), everything still open
 - [order-fulfilment-process.md](./order-fulfilment-process.md), the process being
   replaced, as it runs today
 - [warehouse-data-model.md](./warehouse-data-model.md), the shared data layer and
