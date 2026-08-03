@@ -22,7 +22,6 @@ These stop something specific. Each names what.
 | # | Question | Blocks |
 |---|---|---|
 | **75** | The receiving screen's query must be written and explained once, as its own acceptance test. Six designs each added joins to that path and none could measure the total. | Building the receiving screen |
-| **111** | Do the extensibility ceilings need enforcement or only assertion? A tenant hitting the limit mid-declaration needs defined behaviour; "the job complains tomorrow" is not one. | Building the schema compiler (D26) |
 
 ## Live, needing a business answer
 
@@ -56,9 +55,10 @@ Nobody can settle these from the code.
 | 78 | Taxonomy re-parenting silently changing which settings win | Building the taxonomy editor |
 | 80 | Resolver cache invalidation | Building the resolver |
 | 86 | The closed decision-point set | If `decision_rule` is ever built |
-| 118 | Where the reaper's kill switch lives and who may flip it | Building the reaper |
+| 118 | Where the reaper's kill switch lives and who may flip it | Building the reaper (now a phase of the rebuild, D35) |
 | 119 | Whether the internal licence plate format is shipped or tenant-configurable | The second tenant |
 | 120 | The `expected_supply` concurrency budget under advice ingestion | Building inbound |
+| 121 | Whether `event_subscription` needs a ceiling, and what it is | Measured outbox throughput |
 
 ## Live, wanting a written answer rather than a decision
 
@@ -107,7 +107,7 @@ Noticed thresholds and consistency questions, none urgent: 5, 16, 22, 23, 27, 35
 | 59 | D24 | | |
 | 61 | D21 | 116 | D34 |
 | 63 | D22 | 102, 117 | D35 |
-| 64 | D23 | | |
+| 64 | D23 | 111 | D36 |
 
 ## Duplicates, resolved
 
@@ -128,14 +128,16 @@ numbering. All were absorbed into 1 to 57 during adoption and are superseded.
 
 | | |
 |---|---|
-| Live and blocking | 2 |
+| Live and blocking | 1 |
 | Live, business answer | 7 |
-| Live, deferred with trigger | 17 |
+| Live, deferred with trigger | 18 |
 | Live, wanting a written answer | 9 |
 | Live, minor | 14 |
 | **Live total** | **48** |
-| Settled | ~53 |
+| Settled | ~54 |
 
-116, 102 and 117 were settled the day this register was written. 116 had been
-sitting in a research document since the inbound pass without ever being carried
-across, which is the failure this register exists to stop repeating.
+116, 102, 117 and 111 were settled the day this register was written, and 121 was
+raised by settling 111. 116 had been sitting in a research document since the
+inbound pass without ever being carried across, which is the failure this register
+exists to stop repeating. 121 was migrated here in the commit that adopted the
+decision raising it, which is the rule working.

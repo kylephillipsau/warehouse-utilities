@@ -4728,6 +4728,170 @@ functions so a screen can trigger one: a rebuild is an operator act, and a scree
 that can start one at will is a denial-of-service surface on the busiest table in
 the schema.
 
+---
+
+### D36 — Extension ceilings are claimed slots, enforced before the DDL runs
+
+*Adopted 2026-08-03, settling question 111. D26 declared three numbers (50
+schemes per tenant, 60 fields per scheme, 100 tenant metrics) and left them as
+figures a job would check.*
+
+#### A ceiling checked tomorrow has no remedy, which is why it must be a constraint
+
+The usual argument against deferred enforcement is that undefined behaviour is
+bad. The argument here is narrower and stronger: **by the time the job runs there
+is no action left that is not worse than the violation.**
+
+The tenant declared, the compiler ran DDL, the table exists and rows are landing
+in it. Tomorrow's job can drop the table, destroying tenant data in a model whose
+generated tables carry `ON DELETE RESTRICT` precisely so evidence is never
+destroyed as a side effect. Or it can raise a finding and change nothing, which
+makes the ceiling a note. There is no third option, so the ceiling has to hold
+**before** the DDL, or it does not hold.
+
+The ceiling is also not a resource limit. D26 says so directly: *"not because 51
+breaks anything, but because the ceiling is what keeps this a schema extension
+rather than a schema escape."* Resource limits can be soft, because exceeding one
+degrades gradually and an operator wants headroom. A design boundary cannot be
+soft, because a negotiable design boundary is not a boundary. Salesforce's
+flex-column pivot, which D26 names, is what a soft one looks like after five
+years.
+
+`CREATE TABLE` is transactional in Postgres, so this works: a failed claim inside
+the materialisation transaction rolls back the DDL with it. The tenant gets a
+named error and an unchanged schema, and "mid-declaration" is not a state that
+exists.
+
+#### The ceiling is data, so there is no number to disagree with
+
+D25 forbids validation triggers by name, so `BEFORE INSERT ... SELECT count(*)`
+is not available and should not be smuggled in. A counter column is a projection
+with no fact behind it. A `CHECK` cannot hold a subquery, so a per-tenant limit
+cannot be read from the tenant row.
+
+Slots are issued instead, and the ceiling **is** the number of slot rows.
+
+```
+extension_slot                -- REFERENCE. OPERATOR-OWNED, like number_range.
+  tenant_id, kind, ordinal    -- kind: record_scheme | metric
+  claimed_key                 -- NULL = free
+  claimed_at, withdrawn_at
+  PRIMARY KEY (tenant_id, kind, ordinal)
+  UNIQUE (tenant_id, kind, claimed_key)
+```
+
+Provisioning a tenant issues 50 `record_scheme` slots and 100 `metric` slots.
+Declaring a scheme claims one:
+
+```sql
+UPDATE extension_slot SET claimed_key = $key, claimed_at = now()
+ WHERE tenant_id = $t AND kind = 'record_scheme'
+   AND claimed_key IS NULL AND withdrawn_at IS NULL
+ ORDER BY ordinal LIMIT 1 RETURNING ordinal;
+```
+
+Zero rows returned is the ceiling, and it is a defined, testable outcome rather
+than an error class. `record_scheme` carries a foreign key to the claiming slot,
+so a scheme without one cannot exist.
+
+There is no ceiling constant anywhere. **A number in a `CHECK` and a number in a
+plan description are two representations that will eventually disagree**, and
+this design has one. Raising a tenant's ceiling is inserting slot rows, which is
+an operator act with a row and a timestamp behind it rather than a migration.
+That is the same posture as `number_range`, and it is what the model means by
+capability determined by data.
+
+**The concurrent-declaration race resolves correctly and is worth stating.** Two
+transactions claiming simultaneously both target the lowest free ordinal; one
+blocks on the row lock, then re-evaluates its predicate under READ COMMITTED,
+finds `claimed_key` no longer null, updates zero rows and moves to the next
+ordinal or hits the ceiling honestly. No lost update, no double claim, no
+advisory lock.
+
+#### Fields need no new machinery
+
+`record_scheme_field.ordinal` already exists. `CHECK (ordinal BETWEEN 1 AND 60)`
+with `UNIQUE (record_scheme_id, ordinal)` gives the 61st field nowhere to go,
+declaratively and with no trigger.
+
+A fixed constant is right here where it was wrong above, and the test between the
+two shapes is stated rather than left to taste:
+
+> **A ceiling that is per-tenant and commercially variable is issued slots. A
+> ceiling that is per-parent and fixed by design is an ordinal with a `CHECK`.**
+
+Sixty fields is a statement about what one table should hold before it wants to
+be two, which is the same for every tenant on every plan.
+
+#### Two ceilings were conflated, and the release rule separates them
+
+*"50 schemes per tenant"* is ambiguous between 50 rows in `record_scheme` and 50
+distinct keys, and D26's own evolution rule drives those apart quickly: version
+N+1 mints a new table and **the old table stays**. Under the row reading a tenant
+with ten well-maintained schemes is punished for maintaining them, having spent
+50 on five revisions each.
+
+So the slot is claimed by the **key**, and every version of that key shares it.
+The design boundary counts distinct schemes, which is what it was always about.
+
+That leaves the resource question the row reading was accidentally answering:
+live tables in the catalogue are now unbounded even though keys are capped. It is
+answered by the release condition rather than by a second number:
+
+> **A slot is released only when every table its scheme ever materialised has
+> been archived under D31.**
+
+Retiring a scheme does not free the slot while its data is still queryable. One
+ceiling counts keys, and the thing it was silently also bounding is bounded by
+what releasing costs.
+
+#### Lowering a ceiling never destroys a schema
+
+An operator downgrading a tenant cannot delete claimed slots, because the foreign
+key from `record_scheme` would either refuse or cascade, and cascading here means
+deleting tenant tables to enforce a billing change.
+
+`withdrawn_at` is set instead. A withdrawn slot keeps its scheme, is excluded
+from the claim predicate, and cannot be reclaimed when released. The tenant
+descends to the new ceiling by attrition and nothing is destroyed, which is the
+same posture D31 takes everywhere else.
+
+#### Amendments to earlier decisions
+
+- **D26** — the three ceilings are enforced at declaration, not asserted by a
+  job. The scheme and metric ceilings become issued slots; the field ceiling
+  becomes an ordinal `CHECK`. The stated numbers become provisioning defaults.
+- **D26** — the slot is claimed by `key`, not by `record_scheme` row, so versions
+  do not consume the budget.
+- **D26 / D31** — a slot is released only when every table its scheme
+  materialised has been archived. Archival of a superseded scheme version's table
+  is named as the mechanism bounding catalogue growth.
+- **D19** — `extension_slot` is operator-owned reference data with `tenant_id NOT
+  NULL`, the same shape as `number_range`. A tenant may read its own slots, which
+  is how a screen shows what is left, and may not write them.
+- **D25** — this is a validation, and it is enforced with keys and a `CHECK`
+  rather than a trigger, which is the rule holding rather than an exception to it.
+- **J39** *(new)* — every `record_scheme` row has a claiming `extension_slot`, and
+  no slot is claimed by two keys. A plain foreign key and a unique constraint, so
+  the invariant is the schema rather than a job.
+- **J40** *(new)* — no `record_scheme` whose slot is released has an unarchived
+  materialised table.
+
+**Rejects.** A job that checks ceilings after materialisation, refused because it
+has no remedy that is not worse than the violation. A `BEFORE INSERT` counting
+trigger, refused by D25. A ceiling constant in a `CHECK` alongside a plan
+description, refused as two representations of one number. A counter column on
+`tenant`, refused as a projection with no source. Deleting claimed slots on
+downgrade. Freeing a slot on retirement while the scheme's tables are still live,
+which would cap keys while leaving the catalogue unbounded and is the conflation
+this decision separates.
+
+**Raises question 121.** `event_subscription` is the third of D26's three
+extension primitives and it has no ceiling, while the other two now have enforced
+ones. An unbounded subscription set is a real load surface on the outbox, but the
+number depends on outbox throughput that has not been measured, so this is a gap
+named rather than a number invented.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
