@@ -110,8 +110,8 @@ trained on it.
 What it does not do cannot be fixed by configuration. NetSuite records one line per
 product with no carton count, so what is physically in a box exists nowhere until
 somebody types it into the freight system. It has no cartonisation. Its discrepancy
-handling adjusts figures rather than recording findings. These are consequences of
-its data model rather than settings that can be changed.
+handling adjusts the figure and keeps no finding. All three follow from its data
+model, and none of them is a setting anyone can change.
 
 The cost of staying is the reactive work, which continues and grows with volume.
 
@@ -124,9 +124,9 @@ fit on market and scale, being Australian and aimed at operations this size.
 Several findings apply across the whole set. None of them models package contents
 in a way that answers what is physically in a carton. Cartonisation is either
 absent or, in the one case where it is marketed, a historical guess that can be a
-day stale. Every one of them treats discrepancies as adjustments rather than as
-investigable findings. Pallet account tracking, which is an uncontrolled loss line,
-is modelled by none of them.
+day stale. Every one of them settles a discrepancy by correcting a number, leaving
+no record of what disagreed. All six ignore pallet accounts, which are an
+uncontrolled loss line.
 
 Buying also does not remove the integration work. Any of these has to be connected
 to NetSuite and to the freight system, which is a substantial part of the effort
@@ -144,15 +144,15 @@ system.
 The limits are the same as staying, because the data model is the constraint.
 Adding a carton count to a system with nowhere to put it means adding a custom
 record, which is where part of the current process already lives. It also deepens
-the dependency on the system the exercise is meant to reduce dependency on.
+the reliance on the system this exercise exists to reduce.
 
 ### Build
 
-The argument for building is not that the alternatives are bad. It is that the
-specific gap in all of them is the same gap, and it is structural rather than a
-missing feature. Every one of them treats the database as the authority. The design
-work is largely done, the research behind it is documented, and the parts that are
-unusual are unusual because that stance is unusual.
+The alternatives are not bad. They share one gap: every one of them treats the
+database as the authority. That is a structural property, not a feature anybody
+forgot, which is why no amount of configuration reaches it. The design work is
+largely done and the research behind it is documented. Where the design looks
+unusual, it is because that stance is unusual.
 
 The argument against it is real and stated in the risks below.
 
@@ -173,17 +173,16 @@ with its own code to maintain.
 
 Two pickers taking the last unit will drive the count to minus one. That is
 allowed, because rejecting the second pick would mean discarding a true record of
-something that happened to keep a number tidy, and the unit has gone
-either way.
+something that happened to keep a number tidy, and the unit has gone either way.
 
-Disagreement then becomes the most valuable thing the system produces. A count of
-minus one means something physical happened that nobody wrote down. Competing
-systems treat that as an adjustment to be made and forgotten. Here it becomes a
-finding with an owner, the evidence behind it and a resolution, and it raises a
-ticket so a manager can look into it without stopping the floor.
+That makes disagreement useful. A count of minus one means something physical
+happened that nobody wrote down. Competing systems treat it as an adjustment to be
+made and forgotten. Here it becomes a finding with an owner, the evidence behind it
+and a resolution, and it raises a ticket so a manager can look into it without
+stopping the floor.
 
-That is why naming the person is built into the structure rather than added as a
-feature. Every movement records an individual, the device used, and two timestamps.
+That is why the structure names the person. Every movement records an individual,
+the device used, and two timestamps.
 A crew name in place of a person makes the whole apparatus decorative, because
 nobody can follow up a question with "Casual Melbourne".
 
@@ -292,7 +291,7 @@ The design has been checked against real requirements rather than against itself
 and the specification is detailed enough to build from directly. No technical
 question now blocks the first database work, and none is waiting on an answer
 only the business has. Forty-seven remain open, all of them in one register
-rather than scattered through the research: twenty-four deferred against a stated
+instead of scattered through the research: twenty-four deferred against a stated
 trigger, nine where the model is settled and the reasoning wants writing down,
 and fourteen minor. Nothing is waiting on a decision nobody has identified.
 
