@@ -23,10 +23,8 @@ adjustment nobody sees, and most of that chasing never starts.
 The design is specified to a level it could be built from: forty-four recorded
 decisions, eighty-four rules it must always satisfy, research against six
 comparable products, and the labelling and trading standards Australian grocery
-imposes. What it does not have is code, a timed baseline for the current process,
-or costings for the alternatives. Code is being addressed. The baseline below is
-an estimate from the person who runs the sequence and wants confirming with a
-stopwatch. The costings need figures from the business.
+imposes. What it does not have is code or costings for the alternatives. Code is
+being addressed. The costings need figures from the business.
 
 ## The problem
 
@@ -45,9 +43,9 @@ several hundred times a day.
 Two costs sit inside that sequence, and they behave differently.
 
 The first is navigation: loading screens, switching tabs, re-entering things one
-system already knows. A standard order takes one minute forty-five seconds, when
-every detail has been entered correctly and the consignment is going to Direct
-Transport.
+system already knows. Timed with a stopwatch, a standard order takes one minute
+forty-five seconds when every detail has been entered correctly and the
+consignment is going to Direct Transport.
 
 That is the clean case on one carrier, so it is a floor. A missing detail pushes
 it up. So does a carrier whose rules have to be recalled, and so does a manifest
@@ -286,12 +284,11 @@ thin and does not depend on it, but it does not remove it either.
 Data migration is unscoped. Moving product data, locations and open orders across
 has not been planned in any detail.
 
-The baseline is an estimate, not a stopwatch reading. One minute forty-five
-seconds comes from the person who runs the sequence, and the daily figure
-multiplies it by an order count that is itself approximate. Timing a sample,
-including the orders that go wrong, would either confirm it or move it. The
-improvement is measured against that number whichever way it lands, so it is
-worth having before the first slice is built.
+The baseline is a single timed run. One minute forty-five seconds was measured on
+a standard order, and the daily figure multiplies it by an order count that is
+itself approximate. Timing more orders, including the ones that go wrong, would
+either confirm it or move it. The improvement is measured against that number
+whichever way it lands, so it is worth having before the first slice is built.
 
 ## Where it stands
 
