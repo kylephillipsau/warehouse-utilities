@@ -23,9 +23,10 @@ adjustment nobody sees, and most of that chasing never starts.
 The design is specified to a level it could be built from: forty-four recorded
 decisions, eighty-four rules it must always satisfy, research against six
 comparable products, and the labelling and trading standards Australian grocery
-imposes. What it does not have is code, a measured baseline for the current
-process, or costings for the alternatives. The first two are being addressed. The
-third needs figures from the business.
+imposes. What it does not have is code, a timed baseline for the current process,
+or costings for the alternatives. Code is being addressed. The baseline below is
+an estimate from the person who runs the sequence and wants confirming with a
+stopwatch. The costings need figures from the business.
 
 ## The problem
 
@@ -44,9 +45,17 @@ several hundred times a day.
 Two costs sit inside that sequence, and they behave differently.
 
 The first is navigation: loading screens, switching tabs, re-entering things one
-system already knows. That cost is measurable and has not yet been measured. The
-design removes almost all of it, because the sequence exists to satisfy two
-systems rather than to do the work.
+system already knows. That cost is measurable, and the working figure is one
+minute forty-five seconds for a standard order, with every detail entered
+correctly and the consignment going to Direct Transport.
+
+That figure is a floor and not an average. It describes the clean case on one
+carrier, so a missing detail, a carrier whose rules differ, or a manifest that
+has to be printed separately all sit on top of it. Even as a floor it is the
+whole argument: at three hundred orders a day it is over eight hours of someone's
+time, spent telling two systems what the operator already knew. The design
+removes almost all of it, because the sequence exists to satisfy two systems
+rather than to do the work.
 
 The second is reactive work, which is the larger cost and much harder to put a
 number on. When the software insists it is right and the floor is wrong, every
@@ -277,9 +286,12 @@ thin and does not depend on it, but it does not remove it either.
 Data migration is unscoped. Moving product data, locations and open orders across
 has not been planned in any detail.
 
-The speed claim rests on counting the steps removed, not on a stopwatch. Until
-someone times the current process, it is an informed estimate and should be read
-as one.
+The baseline is an estimate and not a stopwatch reading. One minute forty-five
+seconds comes from the person who runs the sequence, for the clean case on one
+carrier, and the daily figure multiplies it by an order count that is itself
+approximate. Timing a real sample, including the orders that go wrong, would
+either confirm it or move it. The improvement is measured against that number
+whichever way it lands, so it is worth getting before the first slice is built.
 
 ## Where it stands
 
