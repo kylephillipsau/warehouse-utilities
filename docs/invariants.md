@@ -94,6 +94,7 @@ itself.
 | S33 | No `party.gs1_company_prefix` is all-zero or absent-yet-used; no literal default prefix appears in code; SSCC issuance is gated on an explicit `number_range` row | D20, Q90 | CHECK + grep | ● |
 | S34 | For every row in `retention_floor`, either the oldest live partition or the archive index covers back to `now() - minimum_age`. **This is the companion assertion for every vacuity-marked entry whose population is bounded by history depth** | D31 | Partition catalogue + archive index | |
 | S35 | Every `asserted_unit` node with a non-physical `level_code` has a NULL `sscc` and contributes no `package` row at receipt. **The check that stops document nodes leaking into the physical projection** once the order level is stored as a node | D43 | Catalogue scan + anti-join over the collapse | ● |
+| S36 | No table in the receipt set carries a stored received quantity, variance or accumulator column. Received is a fold over `stock_movement`, so the number cannot disagree with the ledger that produces it | D45 | Column-name denylist over a declared table set | ● |
 
 ## Job-asserted
 
@@ -124,7 +125,7 @@ itself.
 | J23 | The five ingestion channels produce identical content columns | D23 | |
 | J24 | Projection cascades are at most two hops from the originating fact | D25 | |
 | J25 | `refines_expected_supply_id` is acyclic and of depth exactly 1; violations raise `refinement_too_deep`. **Asserted by a job, never a CHECK**: a CHECK on a projection column wedges the rebuild | D24 supply side | ● |
-| J26 | `expected_supply.quantity_received` = the fold of `goods_receipt_line` rows naming this row or any row refining it | D24 supply side | |
+| J26 *(corrected)* | `expected_supply.quantity_received` = the fold of `stock_movement` rows whose `goods_receipt_line_id` names this supply row or any row refining it. **The original folded `goods_receipt_line` rows, which carry no quantity**: D45 defined the table and found the invariant naming the right relationship over the wrong one, so it could not have run | D24 supply side, D45 | |
 | J27 | Transfer arm: **no unit is simultaneously counted** in origin `stock.available_quantity` and destination `quantity_promisable` | D24 supply side | ● |
 | J28 | No open row with `quantity_outstanding > 0` past `expected_to + grace` → `supply_overdue` | D24 supply side | ● |
 | J29 | No active allocation references a closed or overdue row → `supply_withdrawn` / `commitment_unbacked`. The allocation is **not** released by the job | D24 supply side | ● |
@@ -176,13 +177,13 @@ appears here as its current whole text.
 
 | | |
 |---|---|
-| Structural | 35 |
+| Structural | 36 |
 | Job-asserted | 49 |
-| **Total** | **84** |
-| Marked for vacuity | 35 |
-| `specified` | 84 |
+| **Total** | **85** |
+| Marked for vacuity | 36 |
+| `specified` | 85 |
 | `implemented` | 0 |
 
-Thirty-five of eighty-four assert an absence and pass on an empty population.
+Thirty-six of eighty-five assert an absence and pass on an empty population.
 That is the number worth watching, because those are the entries that will report
 success on the day they stop being checked.

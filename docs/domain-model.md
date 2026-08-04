@@ -5938,6 +5938,152 @@ their claim. Modelling granted identifier pools as sequences. Building the GTIN
 issuer now, when nothing issues one. Settling price inside an EDI decision.
 Publishing to the National Product Catalogue.
 
+---
+
+### D45 — `goods_receipt_line`, and the invariant that folds a column which does not exist
+
+*Adopted 2026-08-04. Three decisions depend on this table's columns and none
+defines it, which is where `item_barcode` sat before D34 and `device` before D27.
+Defining it corrects J26.*
+
+#### What depends on it today
+
+D23 cites `goods_receipt_line.expected_quantity` as the precedent for freezing a
+resolution on first use. D24 (supply side) makes it a cause arm on
+`stock_movement`. J26 folds `expected_supply.quantity_received` across it. The
+inbound analysis sketched it before `expected_supply` existed. Nothing adopted
+says what it holds.
+
+```
+goods_receipt_line            -- GROUPING
+  id, tenant_id, goods_receipt_id
+  item_id (NOT NULL)          -- unresolvable content is a finding, not a row
+
+  expected_supply_id          -- nullable: NULL is a blind or unexpected line
+  expected_quantity           -- SNAPSHOT at capture, never read live
+
+  entered_quantity, entered_unit_id, item_packing_config_id
+  lot_id                      -- nullable; absence is a finding, never a refusal
+
+  accepted_at, accepted_by_id
+  rejected_at, rejected_by_id, rejected_reason_id
+  matched_at, matched_by_id   -- a blind line reconciled to supply afterwards
+  recorded_at, client_event_id, recorded_by_id / automation_key
+```
+
+#### One supply arm, because the sketch predates `expected_supply`
+
+The inbound sketch gave the line two nullable arms, `purchase_order_line_id` and
+`asserted_unit_content_id`. Those are two of the four arms that D24 (supply side)
+later unified into `expected_supply`, whose whole purpose is that a promise of
+goods arriving has one identity regardless of which document produced it.
+
+Carrying the old pair now would rebuild the union one level down, and it would
+break on the two arms the sketch never had. A transfer receipt and a return
+receipt would each need a third and fourth column, and D37's shipment-scoped
+screen would have four join paths instead of one.
+
+**So the line names `expected_supply` and nothing else.** Blind receipt sets it
+NULL, which is the same `<= 1` argument the model has now made three times: an
+internal move has no demand-side cause, an unsolicited delivery has no demand-side
+cause, and S3 already forbids writing that as `= 1`.
+
+**The refinement case works out.** An ASN row refining a purchase order row is the
+child; the receipt names the child; J26's fold reaches the parent through
+`refines_expected_supply_id`. The operator receives against the delivery and the
+purchase order's outstanding quantity falls, with no second write.
+
+#### There is no received quantity on this table, and that is the point
+
+Received is `SUM(stock_movement.quantity)` grouped by `goods_receipt_line_id`,
+which is a batch load rather than an N+1 because D10 made the cause a typed FK.
+
+A stored accumulator is the defect the inbound analysis found shipped in a
+competitor, where a documented double-count bug follows directly from keeping a
+running total beside the ledger that produces it. Here the total is structurally
+impossible to disagree with the movements, because there is nowhere to write it.
+
+**This is what corrects J26.** As adopted it reads *"`expected_supply.
+quantity_received` = the fold of `goods_receipt_line` rows naming this row or any
+row refining it"*. There is nothing on a `goods_receipt_line` to fold. The
+invariant names the right relationship and the wrong table, and it would have been
+written as a query that sums a column somebody then had to add.
+
+> **J26 (corrected).** `expected_supply.quantity_received` = the fold of
+> `stock_movement` rows whose `goods_receipt_line_id` names this supply row or any
+> row refining it.
+
+That is the J8 shape once more, and worth counting: an invariant that cannot fail
+because it cannot run. It was caught by defining a table rather than by reviewing
+the invariant, which is an argument for defining tables before writing checks over
+them.
+
+#### `expected_quantity` is a snapshot, and so is the packing config
+
+`expected_quantity` is copied onto the line at capture and never read live.
+Reading it live makes variance unreproducible the moment a purchase order is
+amended, and the variance is the output D8 exists to produce. Precedent is
+`stock_count.challenge_context` and `package` dimensions frozen at seal.
+
+`item_packing_config_id` is the same idea for units and it is the tier-0 item that
+has no other home. `entered_quantity` and `entered_unit_id` record what the
+operator actually keyed, forty-eight of something, and the config says what that
+meant on the day. D23 already versions `item_packing_config` by `effective_from`
+for exactly this reason; without the FK on the receipt, correcting a case pack
+silently rewrites the meaning of every historical receipt, which is the half of
+the mechanism that was missing.
+
+#### Acceptance is a fact with a time on it, never a status column
+
+`accepted_at` and `rejected_at` are timestamps with people attached, not a status
+enum, because acceptance extinguishes a right and the moment it happened is the
+thing in dispute. Under the Food and Grocery Code of Conduct fresh produce may be
+rejected only within 24 hours of delivery and only if not already accepted, so
+"accepted at 14:32 by this person" is the record that matters and a mutable
+status column cannot hold it.
+
+Where the clock lives is question 62's, unchanged. This decision only insists the
+timestamps exist to hang it on.
+
+`goods_receipt.status` stays a projection over lines and movements, per D25.
+
+#### What is deliberately not on it
+
+**No `package_id`.** D24 made containment a fold over `package_event` and retired
+`package_content` as a base table. A package reference here would be a second
+representation of where the goods went, and the receiving LPN is already on the
+`stock` cell.
+
+**No `quantity_received`, no `variance`.** Both are folds. A variance column would
+additionally freeze a comparison whose inputs move.
+
+**No `blind` flag.** It is on the header, captured rather than inferred.
+
+**No status.** See above.
+
+#### Amendments to earlier decisions
+
+- **D16** — `goods_receipt_line` is defined. The demand link is
+  `expected_supply_id`, singular and nullable, replacing the inbound sketch's two
+  arms.
+- **D23** — the freezing precedent it cites now points at a defined column.
+- **D24 (supply side)** — the cause arm on `stock_movement` names a defined table;
+  **J26 is corrected to fold `stock_movement` rather than the receipt line.**
+- **D37** — the receiving screen's line list scopes through `expected_supply`, and
+  the receipt line's single supply FK is what keeps that one join rather than four.
+- **D44** — one `goods_receipt` per delivery per demand document, so a line's
+  supply row always resolves within its header's document.
+- **S36** *(new)* — no table in the receipt set carries a stored received quantity,
+  variance or accumulator column. Received is a fold over `stock_movement`.
+
+**Rejects.** `purchase_order_line_id` and `asserted_unit_content_id` as separate
+arms, which rebuilds `expected_supply`'s union one level down and breaks on the
+transfer and return arms. A stored `quantity_received`, which is the competitor
+bug written into the schema. A `variance` column. A status enum in place of
+acceptance timestamps. `package_id`, refused because containment is a fold.
+Reading `expected_quantity` live from the purchase order, which makes historical
+variance unreproducible.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
@@ -6343,7 +6489,7 @@ Raised by D28 (adopted 2026-08-02):
     projection to compare against, so after a truncation both sides agree and
     nothing fails. Retention floors must be declared and asserted separately.
 
-*All decisions D1–D44 are now adopted. The proposals in
+*All decisions D1–D45 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
 document where they disagree. Their open questions are carried by

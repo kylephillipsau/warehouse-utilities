@@ -106,14 +106,16 @@ with `location.zone_id`, *"not a bare column, the Space dimension needs somethin
 to FK to and a depth to read"*. The policy lattice does not work without it, and
 it is cheaper in migration 1 than as a later split of a text column.
 
-**`goods_receipt_line` has no adopted DDL anywhere.** Three decisions depend on
-its columns: D23 cites `goods_receipt_line.expected_quantity` as the freezing
-precedent, D24 (supply side) makes it a cause arm on `stock_movement`, and J26
-folds `quantity_received` across it. No decision defines the table.
+**~~`goods_receipt_line` has no adopted DDL anywhere.~~ Settled by D45.** Three
+decisions depended on its columns while none defined it, which is where
+`item_barcode` sat before D34 and `device` before D27.
 
-That is exactly the position `item_barcode` was in before D34 and `device` was in
-before D27, and both times the fix was a decision rather than a migration note.
-It should be written before the migration, not during it.
+Defining it found a defect rather than merely filling a gap. J26 folded
+`expected_supply.quantity_received` across `goods_receipt_line` rows, and the
+table carries no quantity, so the invariant named the right relationship over the
+wrong table and could not have run. It now folds `stock_movement`. The line also
+takes a single `expected_supply_id` in place of the inbound sketch's two arms,
+which predated `expected_supply` and would have rebuilt its union one level down.
 
 ---
 
@@ -121,10 +123,10 @@ It should be written before the migration, not during it.
 
 1. **`zone`, `item_class`, `item_classification`.** Reference data with no
    dependencies, and the policy lattice needs them.
-2. **Define `goods_receipt_line`**, as a decision rather than in passing.
+2. ~~**Define `goods_receipt_line`.**~~ Done, D45.
 3. **The four outstanding column sets**, of which three can land immediately and
    `unit_cost_minor` waits on 127.
-4. **The structural invariants.** Thirty-five of the eighty-four need no data and
+4. **The structural invariants.** Thirty-six of the eighty-five need no data and
    run against the empty schema, so they can be written alongside the migration
    and fail honestly until it exists.
 
