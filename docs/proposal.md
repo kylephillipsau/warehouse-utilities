@@ -45,17 +45,17 @@ several hundred times a day.
 Two costs sit inside that sequence, and they behave differently.
 
 The first is navigation: loading screens, switching tabs, re-entering things one
-system already knows. That cost is measurable, and the working figure is one
-minute forty-five seconds for a standard order, with every detail entered
-correctly and the consignment going to Direct Transport.
+system already knows. A standard order takes one minute forty-five seconds, when
+every detail has been entered correctly and the consignment is going to Direct
+Transport.
 
-That figure is a floor and not an average. It describes the clean case on one
-carrier, so a missing detail, a carrier whose rules differ, or a manifest that
-has to be printed separately all sit on top of it. Even as a floor it is the
-whole argument: at three hundred orders a day it is over eight hours of someone's
-time, spent telling two systems what the operator already knew. The design
-removes almost all of it, because the sequence exists to satisfy two systems
-rather than to do the work.
+That is the clean case on one carrier, so it is a floor. A missing detail pushes
+it up. So does a carrier whose rules have to be recalled, and so does a manifest
+that has to be printed separately afterwards. The floor is enough to make the
+case: at three hundred orders a day it comes to more than eight hours of
+someone's day, spent telling two systems what the operator already knew. The
+design removes almost all of it, because the sequence exists to satisfy two
+systems rather than to do the work.
 
 The second is reactive work, which is the larger cost and much harder to put a
 number on. When the software insists it is right and the floor is wrong, every
@@ -286,12 +286,12 @@ thin and does not depend on it, but it does not remove it either.
 Data migration is unscoped. Moving product data, locations and open orders across
 has not been planned in any detail.
 
-The baseline is an estimate and not a stopwatch reading. One minute forty-five
-seconds comes from the person who runs the sequence, for the clean case on one
-carrier, and the daily figure multiplies it by an order count that is itself
-approximate. Timing a sample, including the orders that go wrong, would
-either confirm it or move it. The improvement is measured against that number
-whichever way it lands, so it is worth getting before the first slice is built.
+The baseline is an estimate, not a stopwatch reading. One minute forty-five
+seconds comes from the person who runs the sequence, and the daily figure
+multiplies it by an order count that is itself approximate. Timing a sample,
+including the orders that go wrong, would either confirm it or move it. The
+improvement is measured against that number whichever way it lands, so it is
+worth having before the first slice is built.
 
 ## Where it stands
 
