@@ -7,7 +7,7 @@ with no code written yet.
 
 Packing and despatching an order currently spans two systems and about a dozen
 screens. Almost none of that is judgement. The operator already knows what to do
-and spends the time telling the software about it. The one genuine decision in the
+and spends the time telling the software about it. The one decision in the
 process is how many cartons there are and what they weigh, and even that is mostly
 derivable from data the business already holds. The design collapses the whole
 sequence to a single screen.
@@ -37,7 +37,7 @@ three fields that are the same every time, switch to a different tab, enter the
 carton dimensions and weight, save, print an A4 sheet from a page that opens in a
 new tab, then move to the freight system, find the matching consignment by
 eyeballing the delivery address, choose the carrier, apply that carrier's
-particular rules from memory, correct the carton count because the first system
+rules from memory, correct the carton count because the first system
 never recorded it, tick a declaration, download a PDF, print it, and for some
 carriers go back afterwards and print a manifest separately. That sequence runs
 several hundred times a day.
@@ -59,7 +59,7 @@ rather than to do the work.
 
 The second is reactive work, which is the larger cost and much harder to put a
 number on. When the software insists it is right and the floor is wrong, every
-genuine physical event the software did not expect turns into an investigation with
+physical event the software did not expect turns into an investigation with
 no evidence attached. Stock that does not match. A carton count nobody recorded. A
 carrier invoice that disagrees with what was declared. A supplier delivery that was
 short, discovered weeks later with no record of what was originally promised.
@@ -181,7 +181,7 @@ dropout turns into a few late arrivals rather than into a separate offline mode
 with its own code to maintain.
 
 Two pickers taking the last unit will drive the count to minus one. That is
-allowed, because rejecting the second pick would mean discarding a true record of
+allowed, because rejecting the second pick would mean discarding a record of
 something that happened to keep a number tidy, and the unit has gone either way.
 
 That makes disagreement useful. A count of minus one means something physical
@@ -239,7 +239,7 @@ versions for separate industries.
 
 ## What this makes possible that NetSuite cannot
 
-It can say what is physically in a carton. Cartons are real records and their
+It can say what is physically in a carton. Cartons are records in their own right, and their
 contents link back to order lines, so a packing list is per carton, a damage claim
 can name the carton the item was in, and a declared weight can be checked against
 its contents before a carrier charges for the difference.
@@ -272,7 +272,7 @@ one head and one pair of hands. That is the main risk to the business, and the
 one most affected by how the work is resourced.
 
 No code exists yet. The design is thorough and the research is documented, but
-nothing has been built, so the estimates are estimates. The first real validation
+nothing has been built, so the estimates are estimates. The first validation
 is a working database and a failing test rather than another review.
 
 The floor has to change two habits: individual logins rather than a shared crew
@@ -289,7 +289,7 @@ has not been planned in any detail.
 The baseline is an estimate and not a stopwatch reading. One minute forty-five
 seconds comes from the person who runs the sequence, for the clean case on one
 carrier, and the daily figure multiplies it by an order count that is itself
-approximate. Timing a real sample, including the orders that go wrong, would
+approximate. Timing a sample, including the orders that go wrong, would
 either confirm it or move it. The improvement is measured against that number
 whichever way it lands, so it is worth getting before the first slice is built.
 
