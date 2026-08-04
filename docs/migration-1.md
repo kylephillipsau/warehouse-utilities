@@ -101,10 +101,13 @@ adding them and D44 added `supersedes_order_id` without revisiting them.
 
 ## Two prerequisites the list never had
 
-**`zone` becomes a real table.** D22's prerequisites: `zone(id, site_id, code, …)`
-with `location.zone_id`, *"not a bare column, the Space dimension needs something
-to FK to and a depth to read"*. The policy lattice does not work without it, and
-it is cheaper in migration 1 than as a later split of a text column.
+**~~`zone` becomes a real table.~~ Settled by D46.** The table is identity,
+membership and a name, because everything else a zone might carry is either a
+property of a location or a policy bound to the zone, which is what D22 built the
+Space dimension for. Flat, matching the lattice's `any → site → zone`; nesting is
+deferred to question 129. `location.zone_id` is nullable, since a dock belongs to
+no zone, and its foreign key is composite on `site_id` so a location cannot join
+another site's zone.
 
 **~~`goods_receipt_line` has no adopted DDL anywhere.~~ Settled by D45.** Three
 decisions depended on its columns while none defined it, which is where
@@ -122,13 +125,17 @@ which predated `expected_supply` and would have rebuilt its union one level down
 ## Suggested order
 
 1. **`zone`, `item_class`, `item_classification`.** Reference data with no
-   dependencies, and the policy lattice needs them.
+   dependencies, and the policy lattice needs them. All three are now defined,
+   `zone` by D46 and the other two by D22's prerequisites.
 2. ~~**Define `goods_receipt_line`.**~~ Done, D45.
 3. **The four outstanding column sets**, of which three can land immediately and
    `unit_cost_minor` waits on 127.
-4. **The structural invariants.** Thirty-six of the eighty-five need no data and
+4. **The structural invariants.** Thirty-seven of the eighty-six need no data and
    run against the empty schema, so they can be written alongside the migration
    and fail honestly until it exists.
+
+Nothing in the decision record now blocks writing the migration. What is left on
+this list is column additions and the suite.
 
 Only after those does anything read or write rows worth keeping.
 

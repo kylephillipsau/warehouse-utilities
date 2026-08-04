@@ -20,8 +20,8 @@ opposite assumption. The scanner is more reliable than the record, so a
 disagreement becomes a finding with the evidence attached rather than an
 adjustment nobody sees, and most of that chasing never starts.
 
-The design is specified to a level it could be built from: forty-five recorded
-decisions, eighty-five rules it must always satisfy, research against six
+The design is specified to a level it could be built from: forty-six recorded
+decisions, eighty-six rules it must always satisfy, research against six
 comparable products, and the labelling and trading standards Australian grocery
 imposes. What it does not have is code or costings for the alternatives. Code is
 being addressed. The costings need figures from the business.
@@ -292,15 +292,15 @@ whichever way it lands, so it is worth having before the first slice is built.
 
 ## Where it stands
 
-There are forty-five recorded decisions, eighty-five rules the design must always
+There are forty-six recorded decisions, eighty-six rules the design must always
 satisfy, and research against six comparable products alongside the freight
 standards and Australian grocery requirements that apply. There is no code.
 
 The design has been checked against real requirements rather than against itself,
 and the specification is detailed enough to build from directly. No technical
 question now blocks the first database work, and none is waiting on an answer
-only the business has. Forty-seven remain open, all of them in one register
-instead of scattered through the research: twenty-four deferred against a stated
+only the business has. Forty-eight remain open, all of them in one register
+instead of scattered through the research: twenty-five deferred against a stated
 trigger, nine where the model is settled and the reasoning wants writing down,
 and fourteen minor. Nothing is waiting on a decision nobody has identified.
 
@@ -311,7 +311,7 @@ measurement.
 ## Supporting documents
 
 - `architecture.md`, the design in more detail
-- `domain-model.md`, the full decision record, forty-five decisions with the
+- `domain-model.md`, the full decision record, forty-six decisions with the
   reasoning and what each rejected
 - `invariants.md`, the rules the design must always satisfy, and which of them
   can pass while checking nothing

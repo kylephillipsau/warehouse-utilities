@@ -286,19 +286,19 @@ with a pallet count on every delivery, and that is not the yard.
 
 ## Current state
 
-Forty-five recorded decisions, eighty-five rules the design must always satisfy,
+Forty-six recorded decisions, eighty-six rules the design must always satisfy,
 no code.
 
 That list of rules is what the design gets checked against. It is written down in
 one place, and once code exists it will be generated from the tests instead, so a
-rule and the check for it cannot drift apart. Thirty-six of the eighty-five
+rule and the check for it cannot drift apart. Thirty-six of the eighty-six
 state that something does not happen, and a rule of that shape passes when there
 is nothing to check, so each one needs a companion rule saying the thing it
 inspects is actually there.
 
 Nothing now blocks the first database migration or the first screen, and nothing
-is waiting on an answer only the business can give. Forty-seven questions remain
-open: twenty-four deferred against a stated trigger, nine wanting a written
+is waiting on an answer only the business can give. Forty-eight questions remain
+open: twenty-five deferred against a stated trigger, nine wanting a written
 answer rather than a decision, and fourteen minor. The nearest is a
 measurement rather than a decision: the queries behind the receiving screen are
 written and their plans reasoned about, and they want timing against a database
@@ -306,7 +306,7 @@ with a year of history in it.
 
 ## Reading further
 
-- [domain-model.md](./domain-model.md), the decision record from D1 to D45
+- [domain-model.md](./domain-model.md), the decision record from D1 to D46
 - [invariants.md](./invariants.md), the rules the design must always satisfy
 - [open-questions.md](./open-questions.md), everything still open
 - [order-fulfilment-process.md](./order-fulfilment-process.md), the process being

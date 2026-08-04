@@ -67,6 +67,7 @@ about inter-company documents and about legal entities.
 | 124 | Benchmarking's cohort floor, suppression rule and consent model. D41 set the shape and deferred the build | Enough tenants for a cohort to mean anything |
 | 126 | Whether a counterparty's **message rules** are a `policy_kind` under D22 or a `party_profile` capability column under D20. Both fit; they differ in whether the rule resolves by scope. Raised by D43 as cardinality; widened by D44 to cover acknowledgement-required and structure-required, which resolve the same way | The second counterparty with a stated message rule |
 | 127 | Whether `order_line` carries a price and a currency, and where the boundary with D40 sits. The cheap half is a column pair; the commercial half touches the deferred `stock_movement.unit_cost_minor` and whatever a rate card becomes. A grocery customer's order acknowledgement confirms price contractually, so this is not optional for that market. Raised by D44 | Before the first customer order arrives by EDI, and before `order_line` has history |
+| 129 | Whether `zone` needs to nest. D46 made it flat because D22's Space dimension is `any → site → zone` with no ancestors level, and a chilled area holding a chilled pick face and a chilled bulk run is the shape that would want one. It costs a closure table and one lattice row, exactly as Product already has | A tenant with sub-zones |
 | 128 | What links a cancelled order to the one raised in its place. Metcash's stated amendment channel for an externally-authoritative order is cancel-and-reraise, and D44 added `order.supersedes_order_id` for the link without deciding what else the succession carries. Raised by D44 | The first EDI customer |
 
 ## Live, wanting a written answer rather than a decision
@@ -157,10 +158,10 @@ numbering. All were absorbed into 1 to 57 during adoption and are superseded.
 |---|---|
 | Live and blocking | 0 |
 | Live, business answer | 0 |
-| Live, deferred with trigger | 24 |
+| Live, deferred with trigger | 25 |
 | Live, wanting a written answer | 9 |
 | Live, minor | 14 |
-| **Live total** | **47** |
+| **Live total** | **48** |
 | Settled | ~63 |
 
 **The previous total was one short of its own sections.** It read 42 against

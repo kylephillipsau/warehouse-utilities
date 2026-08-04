@@ -6084,6 +6084,119 @@ acceptance timestamps. `package_id`, refused because containment is a fold.
 Reading `expected_quantity` live from the purchase order, which makes historical
 variance unreproducible.
 
+---
+
+### D46 — A zone is a name for a set of locations, and everything else about it is a policy
+
+*Adopted 2026-08-04, completing D22's prerequisites and raising 129. The last
+thing standing between the decision record and the first migration.*
+
+D22 asked for it in one line: *"`zone` becomes a real table (`zone(id, site_id,
+code, …)`, `location.zone_id`), not a bare column, the Space dimension needs
+something to FK to and a depth to read."* The interesting part is the `…`, and the
+answer is that almost nothing goes in it.
+
+```
+zone                          -- REFERENCE. Tenant-scoped (D19 shape 3).
+  id
+  tenant_id (NOT NULL)
+  site_id (NOT NULL)
+  code, name
+  active
+  FK (site_id, tenant_id) -> site(id, tenant_id)
+  UNIQUE (tenant_id, site_id, code)
+  UNIQUE (id, site_id)        -- composite target for location's FK below
+
+location                      -- amended
+  zone_id                     -- nullable: a dock belongs to no zone
+  FK (zone_id, site_id) -> zone(id, site_id)
+```
+
+#### It is thin because the lattice is the place to say things
+
+The temptation is a temperature class, a pick sequence, an equipment restriction,
+a pickable flag. Every one of those belongs somewhere else and putting it here
+would be the accretion this model exists to refuse.
+
+Temperature, priority and putaway preference are **policies bound to the zone**,
+which is what D22 built the Space dimension for: *"vendor X's goods go to zone 3"*
+is a `putaway` binding, and D22 already names it as the example of a rule that
+evaporated once the lattice existed. A `zone.temperature_class` column would be a
+second way to say the same thing, and the two would disagree.
+
+Pickable, blocked, active, sequence and reachability are **properties of a
+location**, which already carries `kind`, `reachable_by` and its coordinates. A
+zone that repeated them would be a grouping pretending to be a thing.
+
+So a zone is an identity, a membership and a name. **Everything you want to say
+about a zone is said by binding a policy to it**, and that is the whole reason the
+Space dimension exists.
+
+#### Flat within a site, which is what the lattice already says
+
+D22's Space dimension is `any → site → zone`, two nodes, no ancestors. Product is
+the only dimension carrying an ancestors level, because item taxonomies genuinely
+nest and the closure table earns its cost there. Counterparty is flat for the same
+reason zones are: the set is small and the nesting is usually a naming convention
+rather than a structure.
+
+Real warehouses do sometimes nest, a chilled area holding a chilled pick face and
+a chilled bulk run. **If that arrives it costs a closure table and one lattice
+row**, exactly as Product has, and the precedent is written rather than invented.
+Question 129 carries it, deferred against a tenant that actually has sub-zones,
+because building the tree now means maintaining a closure table over a handful of
+rows for a shape nobody has asked for.
+
+#### `location.zone_id` is nullable, and the composite FK is load-bearing
+
+A dock belongs to no zone. Neither does a staging lane, in most layouts. Making
+the column NOT NULL forces every site to invent a catch-all zone, which is a
+fiction that then has policies bound to it.
+
+A NULL simply means zone-scoped bindings do not match that location, which is the
+correct answer rather than a special case.
+
+**The composite FK is the part a reviewer will try to simplify.**
+`FK (zone_id, site_id) -> zone(id, site_id)` stops a location joining a zone that
+belongs to a different site. Written as a plain `zone_id` FK it permits exactly
+that, and the failure is silent: every zone-scoped policy resolution for that
+location returns another site's answer, and nothing complains because both rows
+exist and both are valid on their own. It is declarative, so D25's ban on
+validation triggers is untouched, and it needs the `UNIQUE (id, site_id)` on
+`zone` to have something to point at.
+
+J15 already forbids a *binding* naming a zone outside its site. This forbids the
+same disagreement one level down, in the data the binding resolves against, which
+J15 cannot see.
+
+#### `tenant_id` is denormalised on purpose
+
+A zone reaches its tenant through its site, so the column is redundant. It is
+there anyway for two reasons: D19's third RLS shape wants `tenant_id NOT NULL` on
+tenant-scoped reference data, and J14 asserts that every scope FK resolves within
+the binding's tenant, which is a local join with the column and a two-hop join
+without it. The composite FK to `site(id, tenant_id)` makes disagreement
+unrepresentable rather than merely unlikely.
+
+#### Amendments to earlier decisions
+
+- **D22** — the Space dimension has a real table behind it. Its prerequisites are
+  complete.
+- **D19** — `zone` joins the tenant-scoped reference set, RLS shape 3.
+- **D25** — the site and zone agreement checks are foreign keys, not triggers.
+- **S37** *(new)* — `location.zone_id` is a composite foreign key including
+  `site_id`, and `zone` carries the matching unique key. Asserted from
+  `pg_constraint`, because replacing it with a simple FK silently allows a
+  location to sit in another site's zone.
+
+**Rejects.** `zone.temperature_class`, `zone.pick_sequence`, `zone.pickable` and
+the rest, all of which are either a location's property or a policy bound to the
+zone. A nested zone tree with a closure table, deferred to 129 rather than built
+for a shape nobody has. `location.zone_id NOT NULL`, which forces a fictional
+catch-all zone per site. A plain `zone_id` foreign key, which permits a
+cross-site zone silently. A `zone` without `tenant_id`, which would make J14 a
+two-hop join and D19's RLS shape non-uniform.
+
 ## Open questions
 
 **These have moved.** [open-questions.md](./open-questions.md) is the single
@@ -6489,7 +6602,7 @@ Raised by D28 (adopted 2026-08-02):
     projection to compare against, so after a truncation both sides agree and
     nothing fails. Retention floors must be declared and asserted separately.
 
-*All decisions D1–D45 are now adopted. The proposals in
+*All decisions D1–D46 are now adopted. The proposals in
 [mechanism-design.md](./mechanism-design.md), [inbound-analysis.md](./inbound-analysis.md)
 and [supply-side-design.md](./supply-side-design.md) are superseded by this
 document where they disagree. Their open questions are carried by

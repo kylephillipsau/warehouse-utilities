@@ -95,6 +95,7 @@ itself.
 | S34 | For every row in `retention_floor`, either the oldest live partition or the archive index covers back to `now() - minimum_age`. **This is the companion assertion for every vacuity-marked entry whose population is bounded by history depth** | D31 | Partition catalogue + archive index | |
 | S35 | Every `asserted_unit` node with a non-physical `level_code` has a NULL `sscc` and contributes no `package` row at receipt. **The check that stops document nodes leaking into the physical projection** once the order level is stored as a node | D43 | Catalogue scan + anti-join over the collapse | ● |
 | S36 | No table in the receipt set carries a stored received quantity, variance or accumulator column. Received is a fold over `stock_movement`, so the number cannot disagree with the ledger that produces it | D45 | Column-name denylist over a declared table set | ● |
+| S37 | `location.zone_id` is a **composite** foreign key including `site_id`, and `zone` carries the matching `UNIQUE (id, site_id)`. Replacing it with a simple FK lets a location sit in another site's zone, and every zone-scoped policy resolution for that location then returns another site's answer with nothing complaining | D46 | `pg_constraint` | |
 
 ## Job-asserted
 
@@ -177,13 +178,13 @@ appears here as its current whole text.
 
 | | |
 |---|---|
-| Structural | 36 |
+| Structural | 37 |
 | Job-asserted | 49 |
-| **Total** | **85** |
+| **Total** | **86** |
 | Marked for vacuity | 36 |
-| `specified` | 85 |
+| `specified` | 86 |
 | `implemented` | 0 |
 
-Thirty-six of eighty-five assert an absence and pass on an empty population.
+Thirty-six of eighty-six assert an absence and pass on an empty population.
 That is the number worth watching, because those are the entries that will report
 success on the day they stop being checked.
