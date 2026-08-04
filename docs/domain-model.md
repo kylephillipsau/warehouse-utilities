@@ -103,6 +103,37 @@ N+1 shows up in production.
 **7. Deliberate omission is a feature.** Every capability we do not build is
 complexity we do not carry. See "What we are deliberately not building".
 
+## One word that meant three things
+
+*(Split 2026-08-04. Nothing about the design changed; one noun was doing three
+jobs and the schema comments were the worst place for it.)*
+
+**Operator** is the customer side: the people who run a warehouse with this
+system, from the picker holding the scanner to the manager deciding what counts
+as a variance worth raising. D11 built the attribution vocabulary on it,
+separating the operator from the workers and the accountable; D24's
+`package_event.source` carries `operator_scan` as a value; D9 gives the operator
+the tolerance call. The outward documents use it the same way. That sense keeps
+the word.
+
+**Platform** is us: whoever runs this system for the tenants on it. It owns the
+rows no tenant may write, which are the ones carrying `tenant_id IS NULL` in a
+table that otherwise has one. `number_range` and `extension_slot` are
+platform-owned. A policy binding with a NULL tenant is platform-shipped, and a
+tenant's own binding always beats it. Issuing a tenant more extension slots is a
+platform act with a row and a timestamp behind it.
+
+Those two were both called operator until now, including in the same file, and
+`OPERATOR-OWNED (tenant_id IS NULL)` read as though a picker owned the row. The
+collision would have got worse rather than better, because the platform sense is
+the one that grows: every question about who may approve a schema extension, who
+holds a company prefix, or who sees across tenants is a question about the
+platform.
+
+The third sense is an operator such as "greater than", which appears in D13 and
+D22's rule that a setting may never name a database field or an operator. That is
+standard usage and the sentence disambiguates itself, so it stays.
+
 ## The spine: two fact tables
 
 Everything else hangs off these.
@@ -504,7 +535,7 @@ Nosdesk already is. A short pick that becomes a ticket, routed to the right
 person, with the pick task linked, is better than anything in the competitor set.
 None of them have a real exception-management surface; they have status codes.
 
-**What we share.** The platform, not the entity: Rust/Actix/Diesel/Postgres, auth,
+**What we share.** The stack, not the entity: Rust/Actix/Diesel/Postgres, auth,
 the sync transport (D5), and the plugin SDK. Whether that means a shared workspace
 or a service boundary is open — see question 14.
 
@@ -1741,7 +1772,7 @@ as clamped.
 
 | Dimension | Nodes, least to most specific | Columns |
 |---|---|---|
-| **Tenancy** | operator (NULL) → tenant | `tenant_id` |
+| **Tenancy** | platform (NULL) → tenant | `tenant_id` |
 | **Product** | any → `item_class` ancestors → `item_class` → `item` | `item_class_id`, `item_id` |
 | **Counterparty** | any → `party_class` → `party` | `party_class_id`, `party_id` |
 | **Space** | any → `site` → `zone` | `site_id`, `zone_id` |
@@ -1749,7 +1780,7 @@ as clamped.
 | **Metric** | any → `metric` (flat) | `metric_id` |
 
 **Tenancy is not a declarable dimension** — it is the mandatory first component of
-every depth vector, so a tenant's binding always beats an operator-shipped one.
+every depth vector, so a tenant's binding always beats a platform-shipped one.
 Without this, a per-kind order ranking Product above Tenancy would let our default
 outrank a tenant's own configuration: a correctness hole, not a support surface.
 
@@ -1759,7 +1790,7 @@ a high-weight one. CSS is twenty years of proof; there is no `specificity` colum
 
 **A scope is a conjunction.** The columns are independent nullable axes, NULL
 meaning "any". There is deliberately **no `num_nonnulls` CHECK** — one would
-reverse the semantics and forbid the all-NULL operator default that shipped
+reverse the semantics and forbid the all-NULL platform default that shipped
 defaults and clamping require.
 
 **The entire matching language has cardinality one:** *is this node an
@@ -1778,7 +1809,7 @@ id (deterministic — never stop the floor) and raise
 
 ```
 policy_binding                -- WHERE a policy applies. Scope is IMMUTABLE.
-  id, tenant_id               -- NULL = operator-shipped default
+  id, tenant_id               -- NULL = platform-shipped default
   kind
   item_class_id, item_id, party_class_id, party_id
   site_id, zone_id, owner_party_id, metric_id
@@ -1817,7 +1848,7 @@ from a site binding, because weights are only meaningful relative to each other.
 The one exception is **per-field clamping declared on the Rust value type**: the
 winner's value, clamped against every less-specific match. That is what "customer
 × item class, plus a site floor" (q33, q39) actually asks for, and it gives a
-commercial product an operator-shipped ceiling no tenant can exceed.
+commercial product a platform-shipped ceiling no tenant can exceed.
 
 **No per-row override flag.** That is `!important`, and it exists precisely to
 escape the precedence order it was supposed to live in. If an operation needs both
@@ -1891,7 +1922,7 @@ taxonomy_change               -- FACT. Append-only.
   recorded_by_id, authorised_by_id
 ```
 
-Two things follow. The operator sees *"this move changes N active resolutions"*
+Two things follow. The manager sees *"this move changes N active resolutions"*
 before confirming, so the blast radius is a decision rather than a discovery. And
 *"why did this item's shelf-life rule change last March"* becomes answerable by
 the same anti-join that answers it for `policy_change` — which is the point: a
@@ -1936,7 +1967,7 @@ shared item survives.
   in a config table.
 - **D8** — `discrepancy.kind += policy_ambiguous`; `respond_by` populated from
   `receiving_policy.respond_by_hours`.
-- **D19** — a third RLS shape, for operator-shipped shared bindings.
+- **D19** — a third RLS shape, for platform-shipped shared bindings.
 
 **Rejects.** A polymorphic `policy_scope(scope_kind, scope_id, precedence)` pair,
 structurally unable to express *(customer AND item class)*. A scalar or packed
@@ -3790,7 +3821,7 @@ class of error is undetectable afterwards.
 number range.
 
 ```
-number_range              -- REFERENCE. OPERATOR-OWNED (tenant_id IS NULL).
+number_range              -- REFERENCE. PLATFORM-OWNED (tenant_id IS NULL).
   id
   issuer_party_id         -- the LEGAL ENTITY holding the prefix (D20), not the tenant
   key                     -- 'sscc' | 'internal_lp'
@@ -3894,7 +3925,7 @@ load-bearing work for the reaper that nobody wrote it for.**
 1. **D26's schema compiler.** `record_scheme_field.field_type = 'ref'` generates a
    real FK with `ON DELETE RESTRICT`, and D26 derives `attaches_to` from the code
    registry — which contains `stock`. So **a tenant could declare a scheme that
-   creates a durable FK to `stock.id` at runtime**, disabling an operator
+   creates a durable FK to `stock.id` at runtime**, disabling a platform
    invariant with no privilege required, surfacing as a maintenance job erroring.
 2. **`package_content` is a view exposing `stock.id`.** Any export or `ref_entity`
    naming it persists a reapable surrogate.
@@ -4659,7 +4690,7 @@ hand-made arguments. That is precisely *"the way around every other rule here"*
 this question was raised about, and it is on by default. Every function in the
 set carries `REVOKE EXECUTE ... FROM PUBLIC` in the same migration that creates
 it, and `EXECUTE` is then granted only to the scheduler role and, for the rebuild
-entry points, an operator role.
+entry points, a platform role.
 
 **A mutable `search_path` in a `SECURITY DEFINER` function is remote code
 execution as the owner.** A caller who can create objects in any schema earlier
@@ -4708,7 +4739,7 @@ a fact meaning *"we checked a projection against its source"*, and every
 invocation of a maintainer function writes one whether or not it found anything.
 
 That answers three questions with one query. What was rebuilt and when. Who
-asked, since a scheduled run and an operator forcing a rebuild after a suspected
+asked, since a scheduled run and the platform forcing a rebuild after a suspected
 drift are different acts and `invoked_by_id` distinguishes them. And, most
 usefully, **what has not been rebuilt**, because a scope with no recent row is a
 scheduler that stopped, which is otherwise the quietest failure in the system.
@@ -4767,7 +4798,7 @@ with a five-job surface. A separate maintainer audit table, refused against
 makes the per-tenant form mandatory and it is better on four counts. Exempting
 the maintainer from RLS instead of forcing it, which is the shape of the hole
 D18 exists to prevent. Granting the application role `EXECUTE` on the rebuild
-functions so a screen can trigger one: a rebuild is an operator act, and a screen
+functions so a screen can trigger one: a rebuild is a platform act, and a screen
 that can start one at will is a denial-of-service surface on the busiest table in
 the schema.
 
@@ -4795,7 +4826,7 @@ makes the ceiling a note. There is no third option, so the ceiling has to hold
 The ceiling is also not a resource limit. D26 says so directly: *"not because 51
 breaks anything, but because the ceiling is what keeps this a schema extension
 rather than a schema escape."* Resource limits can be soft, because exceeding one
-degrades gradually and an operator wants headroom. A design boundary cannot be
+degrades gradually and the platform wants headroom. A design boundary cannot be
 soft, because a negotiable design boundary is not a boundary. Salesforce's
 flex-column pivot, which D26 names, is what a soft one looks like after five
 years.
@@ -4815,7 +4846,7 @@ cannot be read from the tenant row.
 Slots are issued instead, and the ceiling **is** the number of slot rows.
 
 ```
-extension_slot                -- REFERENCE. OPERATOR-OWNED, like number_range.
+extension_slot                -- REFERENCE. PLATFORM-OWNED, like number_range.
   tenant_id, kind, ordinal    -- kind: record_scheme | metric
   claimed_key                 -- NULL = free
   claimed_at, withdrawn_at
@@ -4840,7 +4871,7 @@ so a scheme without one cannot exist.
 There is no ceiling constant anywhere. **A number in a `CHECK` and a number in a
 plan description are two representations that will eventually disagree**, and
 this design has one. Raising a tenant's ceiling is inserting slot rows, which is
-an operator act with a row and a timestamp behind it rather than a migration.
+a platform act with a row and a timestamp behind it rather than a migration.
 That is the same posture as `number_range`, and it is what the model means by
 capability determined by data.
 
@@ -4890,7 +4921,7 @@ what releasing costs.
 
 #### Lowering a ceiling never destroys a schema
 
-An operator downgrading a tenant cannot delete claimed slots, because the foreign
+The platform downgrading a tenant cannot delete claimed slots, because the foreign
 key from `record_scheme` would either refuse or cascade, and cascading here means
 deleting tenant tables to enforce a billing change.
 
@@ -4909,7 +4940,7 @@ same posture D31 takes everywhere else.
 - **D26 / D31** — a slot is released only when every table its scheme
   materialised has been archived. Archival of a superseded scheme version's table
   is named as the mechanism bounding catalogue growth.
-- **D19** — `extension_slot` is operator-owned reference data with `tenant_id NOT
+- **D19** — `extension_slot` is platform-owned reference data with `tenant_id NOT
   NULL`, the same shape as `number_range`. A tenant may read its own slots, which
   is how a screen shows what is left, and may not write them.
 - **D25** — this is a validation, and it is enforced with keys and a `CHECK`
@@ -6119,7 +6150,7 @@ Raised by D19:
 
 52. **Who governs the shared catalogue?** If tenant A edits a shared item's
     description, tenant B sees it. Either shared reference data is
-    operator-managed and read-only to tenants, or a tenant needing a change forks
+    platform-managed and read-only to tenants, or a tenant needing a change forks
     it into a tenant-scoped copy. The fork is more flexible and quietly
     reintroduces the duplication that sharing was meant to avoid.
 53. ~~Are carriers and `package_type` shared too?~~ Answered for carriers by D32:
@@ -6288,7 +6319,7 @@ Raised by D26 (adopted 2026-08-01):
 
 110. **What is the materialisation authority?** The compiler role owns generated
     tables and runs DDL from tenant-supplied declarations. Who may *invoke* it —
-    the tenant directly, an operator approval step, or a signed plugin bundle —
+    the tenant directly, a platform approval step, or a signed plugin bundle —
     is a product decision with a privilege-escalation surface behind it.
 111. **Do the ceilings need enforcement, or only assertion?** 50 schemes and 60
     fields are declared numbers checked by a job. A tenant hitting the ceiling

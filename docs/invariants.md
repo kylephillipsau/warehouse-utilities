@@ -112,7 +112,7 @@ itself.
 | J11 | A counterparty-asserted observation enters `observation_current` only with an `acceptance` | D23, D25 | ● |
 | J12 | `package` dimensions equal `observation_current` **for unsealed packages only** | D23 | |
 | J13 | Every policy value version has a matching `policy_change`, anti-joined both ways | D22 | |
-| J14 | Every scope FK **and every value-table FK** resolves within the binding's tenant; an operator-shipped binding references only shared rows | D22, D18 | ● |
+| J14 | Every scope FK **and every value-table FK** resolves within the binding's tenant; a platform-shipped binding references only shared rows | D22, D18 | ● |
 | J15 | No binding names a node inconsistent with a coarser node on the same dimension: item ∉ item_class, zone ∉ site, party ∉ party_class | D22 | ● |
 | J16 | Zero `discrepancy` rows of kind `policy_ambiguous` after the suite | D22 | ● |
 | J17 | `assertion.supersedes` is acyclic; at most one in-force assertion per `(tenant, author, kind, author_reference)` | D21 | ● |
