@@ -90,9 +90,9 @@
             const meta = SYMBOLOGY_META[field.symbology];
             if (meta && meta.gs1) { return '(01)09501101530003(17)261200(10)LOT1'; }
             if (meta && meta.digitsOnly) { return `${meta.lengths[0]} digits (check digit added)`; }
-            return 'Barcode value — token menu works too';
+            return 'Barcode value, or use the token menu';
         }
-        return 'Field text — use the token menu for dates';
+        return 'Field text, or use the token menu for dates';
     }
 
     function onDialogClick(event) { if (event.target === dlg) { closeFields(); } }

@@ -68,7 +68,7 @@ export function validate(value, symbology) {
     // Code 39 is uppercase-only; JsBarcode auto-uppercases, so we check the
     // uppercased value and only flag genuinely unsupported characters.
     if (symbology === 'code39' && /[^0-9A-Z\-. $/+%]/.test(v.toUpperCase())) {
-        return { ok: false, error: 'Code 39 allows A–Z, 0–9 and - . $ / + % and space only.' };
+        return { ok: false, error: 'Code 39 allows capital letters, digits, space, and these symbols: - . $ / + %' };
     }
     if (symbology === 'ean13' || symbology === 'upca') {
         const meta = SYMBOLOGY_META[symbology];

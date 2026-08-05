@@ -110,14 +110,14 @@
             const spec = pageFromMedia(media, store.page);
             if (!spec) {
                 printer.detectState = 'unsupported';
-                printer.detectMsg = "Couldn't read a size — try calibrating the printer, then retry.";
+                printer.detectMsg = "Couldn't read a size. Calibrate the printer, then retry.";
                 return;
             }
             store.page = spec; // flows to applySize + @page reactively
             printer.detectState = 'done';
             printer.detectMsg = media.lengthMm != null
-                ? `Length ${media.lengthMm} mm set from the printer. Width isn't sensed — confirm it below.`
-                : `Width suggested at ${media.widthMm} mm — confirm the size below.`;
+                ? `Length ${media.lengthMm} mm set from the printer. Width isn't sensed, so check it below.`
+                : `Width suggested at ${media.widthMm} mm. Check the size below.`;
         } catch (e) {
             if (e && e.code === 'not-detected') { printer.detectState = 'unsupported'; printer.detectMsg = 'Browser Print not reachable.'; }
             else { printer.detectState = 'error'; printer.detectMsg = 'Query failed.'; }
@@ -152,7 +152,7 @@
             <li>Open it and leave it running in the background.</li>
             <li>On an HTTPS page, open <a class="font-bold text-purple underline" href={BROWSER_PRINT_SSL_URL} target="_blank" rel="noopener">localhost:9101</a> once and accept the certificate.</li>
         </ol>
-        <p class="m-0 mt-1.5">Then <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button>. No Zebra handy? Switch the method to <strong>Download ZPL</strong>.</p>
+        <p class="m-0 mt-1.5">Then <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button>. If you have no Zebra, switch the method to <strong>Download ZPL</strong>.</p>
     </div>
 {/snippet}
 
@@ -180,7 +180,7 @@
             {/if}
             {#if tooWide}
                 <p class="m-0 mt-1 text-[0.78rem] leading-[1.45] font-bold text-orange" role="alert">
-                    ⚠ {pageDims.width} mm is wider than a 4-inch printhead ({MAX_PRINT_WIDTH_MM} mm) — the printer will clip the right edge. Check the width is across the head, not the feed.
+                    ⚠ {pageDims.width} mm is wider than a 4-inch printhead ({MAX_PRINT_WIDTH_MM} mm). The printer will clip the right edge. Check the width is across the head, not the feed.
                 </p>
             {/if}
         </div>
@@ -197,7 +197,7 @@
             <div class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
                 <span id="orient-media-label" class="text-[0.8rem] text-ink/70">Media</span>
                 <div class="segmented" role="group" aria-labelledby="orient-media-label"
-                     title={thermal ? 'Label stock feeds one way — the printhead width is fixed. Switch output to Browser / PDF to turn sheet media.' : null}>
+                     title={thermal ? 'Label stock feeds one way because the printhead width is fixed. Switch output to Browser / PDF to turn sheet media.' : null}>
                     {#each MEDIA_ORIENTATIONS as opt}
                         <input type="radio" id={`media-${opt.value}`} name="media-orientation" value={opt.value} disabled={thermal} bind:group={store.page.orientation} />
                         <label for={`media-${opt.value}`}>{opt.label}</label>
@@ -288,7 +288,7 @@
             {:else if printer.bpState === 'unavailable'}
                 {@render browserPrintHelp()}
             {:else}
-                <p class="m-0 text-[0.8rem] text-ink/70">Browser Print is running but no printer was found. <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button> after checking your Zebra is on and connected.</p>
+                <p class="m-0 text-[0.8rem] text-ink/70">Browser Print is running but found no printer. Check your Zebra is on and connected, then <button type="button" class="font-bold text-purple underline" onclick={loadPrinters}>Retry</button>.</p>
             {/if}
         {:else if method.controls === 'zebraDpi'}
             <div class="control-group">

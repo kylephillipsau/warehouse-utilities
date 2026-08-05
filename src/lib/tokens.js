@@ -77,10 +77,10 @@ export function hasTokens(str) {
 
 // Ready-made tokens for the picker in the fields editor.
 export const TOKEN_PRESETS = [
-    { label: 'Date — 2026-07-22', token: '{{date:YYYY-MM-DD}}' },
-    { label: 'Date — 22 Jul 2026', token: '{{date:DD MMM YYYY}}' },
-    { label: 'Weekday — Wednesday', token: '{{date:dddd}}' },
-    { label: 'Time — 14:05', token: '{{time:HH:mm}}' },
-    { label: 'Time — 2:05 pm', token: '{{time:h:mm a}}' },
+    { label: 'Date: 2026-07-22', token: '{{date:YYYY-MM-DD}}' },
+    { label: 'Date: 22 Jul 2026', token: '{{date:DD MMM YYYY}}' },
+    { label: 'Weekday: Wednesday', token: '{{date:dddd}}' },
+    { label: 'Time: 14:05', token: '{{time:HH:mm}}' },
+    { label: 'Time: 2:05 pm', token: '{{time:h:mm a}}' },
     { label: 'Date & time', token: '{{datetime}}' },
 ];

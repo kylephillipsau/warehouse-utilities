@@ -125,7 +125,7 @@ export function validateGs1(raw) {
             return { ok: false, error: `AI (${s.ai}) ${meta.label} needs ${meta.n} digits.` };
         }
         if (meta.max != null && (s.value.length < 1 || s.value.length > meta.max)) {
-            return { ok: false, error: `AI (${s.ai}) ${meta.label} is 1–${meta.max} characters.` };
+            return { ok: false, error: `AI (${s.ai}) ${meta.label} is 1 to ${meta.max} characters.` };
         }
         if (meta.check === 'gtin') {
             const body = s.value.slice(0, -1), cd = s.value.charCodeAt(s.value.length - 1) - 48;

@@ -34,7 +34,7 @@ function downloadBlob(blob, filename) {
 // --- handlers: each returns { ok, message, tone:'ok'|'error', notDetected? } ---
 
 async function runZebra({ store, dpi }) {
-    if (!hasPrintable(store)) { return { ok: false, tone: 'error', message: 'Add a label first — there is nothing to print.' }; }
+    if (!hasPrintable(store)) { return { ok: false, tone: 'error', message: 'Nothing to print yet. Add a label first.' }; }
     if (!selectedDevice()) { await ensurePrinters(); }
     const device = selectedDevice();
     if (!device) {
@@ -53,7 +53,7 @@ async function runZebra({ store, dpi }) {
 }
 
 async function runZpl({ store, dpi }) {
-    if (!hasPrintable(store)) { return { ok: false, tone: 'error', message: 'Add a label first — there is nothing to print.' }; }
+    if (!hasPrintable(store)) { return { ok: false, tone: 'error', message: 'Nothing to print yet. Add a label first.' }; }
     try {
         const { zpl } = await buildZpl(store, Number(dpi));
         downloadBlob(new Blob([zpl], { type: 'application/octet-stream' }), 'labels.zpl');
@@ -64,7 +64,7 @@ async function runZpl({ store, dpi }) {
 }
 
 function runBrowser({ store }) {
-    if (!hasPrintable(store)) { return { ok: false, tone: 'error', message: 'Add a label first — there is nothing to print.' }; }
+    if (!hasPrintable(store)) { return { ok: false, tone: 'error', message: 'Nothing to print yet. Add a label first.' }; }
     window.print();
     return { ok: true, tone: 'ok', message: '' };
 }
@@ -84,9 +84,9 @@ export const OUTPUT_METHODS = [
     { id: 'zebra',   label: 'Zebra Browser Print', exact: true,  needsPrinter: true,  controls: 'zebra',      actionLabel: 'Print to Zebra', busyLabel: 'Printing…',    run: runZebra,
       note: 'Prints at exact physical size straight to the Zebra.', noteTone: 'ok' },
     { id: 'zpl',     label: 'Download ZPL file',   exact: true,  needsPrinter: false, controls: 'zebraDpi',   actionLabel: 'Download ZPL',   busyLabel: 'Generating…',  run: runZpl,
-      note: 'Exact-size .zpl — send it raw to the printer (a "Generic / Text Only" queue or the printer share).', noteTone: 'ok' },
+      note: 'Exact-size .zpl. Send it raw to the printer, either a "Generic / Text Only" queue or the printer share.', noteTone: 'ok' },
     { id: 'browser', label: 'Browser / PDF print', exact: false, needsPrinter: false, controls: 'browserNote', actionLabel: 'Print',         busyLabel: null,           run: runBrowser,
-      note: 'Browser print can mis-scale on thermal printers (Chrome renders at ~300 dpi). Set Scale 100% and Margins None — or use Zebra / ZPL for guaranteed exact size.', noteTone: 'warn' },
+      note: 'Browser print can mis-scale on thermal printers (Chrome renders at ~300 dpi). Set Scale 100% and Margins None. For guaranteed exact size, use Zebra or ZPL.', noteTone: 'warn' },
     { id: 'file',    label: 'Save label file',     exact: true,  needsPrinter: false, controls: 'saveFormat', actionLabel: 'Save file',      busyLabel: null,           run: runSaveFile,
       note: 'Saves your labels (with images) so you can re-open or share them later.', noteTone: 'muted' },
 ];
