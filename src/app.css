@@ -480,11 +480,35 @@ li.text-container.drag-over {
     flex-direction: column;
     overflow: hidden;
 }
+/* One row of the template grid. Its height share comes from rowStyle; the cells
+   inside divide its width by their own weights. A single-cell row is exactly
+   the full-width band a template had before grids existed. */
+.field-row {
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Rules between rows and between cells, opt-in per template (label.rules). Drawn
+   as borders on the second and later row/cell so no line lands on the label's
+   own edge, where it would double up with the border. The ZPL canvas strokes
+   the same lines at the same fractions, so preview and paper agree. */
+.fields-ruled .field-row + .field-row {
+    border-top: var(--rule-w, 2px) solid black;
+}
+
+.fields-ruled .field-band + .field-band {
+    border-left: var(--rule-w, 2px) solid black;
+}
+
 .field-band {
     display: flex;
     align-items: center;
     overflow: hidden;
     min-height: 0;
+    min-width: 0;
     padding: 0 1mm;
     box-sizing: border-box;
     /* flex-grow / justify-content / text-align / font-weight come from the

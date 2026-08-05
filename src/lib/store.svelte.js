@@ -47,6 +47,7 @@ export function hydrateStore(data) {
             };
             const fields = normalizeFields(l && l.fields);
             if (fields.length) { label.fields = fields; }  // keep classic labels classic
+            if (l && l.rules) { label.rules = true; }
             return label;
         });
     }
@@ -75,10 +76,14 @@ export function hydrateStore(data) {
 // A transient stack of deleted labels for the undo toast
 export const undo = $state({ items: [] });
 
-export function makeLabel(text = '', image = null, adjust, fields) {
+export function makeLabel(text = '', image = null, adjust, fields, rules) {
     const l = { id: newId(), text, image: image || null, adjust: normalizeAdjust(adjust) };
     const nf = normalizeFields(fields);
     if (nf.length) { l.fields = nf; }   // only template labels carry `fields`
+    // Rules between the grid's cells. Opt-in per template and attached only when
+    // on, so every template that predates the grid keeps its exact shape and
+    // draws no lines it did not draw before.
+    if (rules) { l.rules = true; }
     return l;
 }
 
@@ -105,7 +110,7 @@ export function duplicateLabel(id) {
     const i = indexOf(id);
     if (i === -1) { return; }
     const l = store.labels[i];
-    store.labels.splice(i + 1, 0, makeLabel(l.text, l.image, l.adjust, cloneFields(l.fields)));
+    store.labels.splice(i + 1, 0, makeLabel(l.text, l.image, l.adjust, cloneFields(l.fields), l.rules));
 }
 
 export function deleteLabel(id) {
@@ -220,6 +225,13 @@ export function moveField(id, fieldId, dir) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
 }
 
+// Rules between the grid's cells, a property of the whole template.
+export function setRules(id, on) {
+    const l = store.labels[indexOf(id)];
+    if (!l) { return; }
+    if (on) { l.rules = true; } else { delete l.rules; }
+}
+
 export function patchField(id, fieldId, partial) {
     const l = store.labels[indexOf(id)];
     if (!l || !l.fields) { return; }
@@ -249,6 +261,7 @@ export function savePresetFromLabel(id, name) {
         adjust: normalizeAdjust(l.adjust),
     };
     if (l.fields && l.fields.length) { preset.fields = normalizeFields(l.fields); }
+    if (l.rules) { preset.rules = true; }
     store.presets.push(preset);
     return presetId;
 }
@@ -259,7 +272,7 @@ export function savePresetFromLabel(id, name) {
 export function insertPreset(presetId, index) {
     const p = store.presets.find((x) => String(x.id) === String(presetId));
     if (!p) { return; }
-    const label = makeLabel(p.text || '', p.image || null, p.adjust, cloneFields(p.fields));
+    const label = makeLabel(p.text || '', p.image || null, p.adjust, cloneFields(p.fields), p.rules);
     if (typeof index === 'number' && index >= 0 && index <= store.labels.length) {
         store.labels.splice(index, 0, label);
     } else {

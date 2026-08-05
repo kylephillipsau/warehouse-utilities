@@ -5,7 +5,7 @@
 // ^PW/^LL lock the physical extents so the output is exact by construction.
 import { resolvePage, tiling, clampSpacing, clampDivisions, clampCopies, clampRotation } from './size.js';
 import { normalizeAdjust } from './adjust.js';
-import { fieldWeight, labelIsEmpty } from './fields.js';
+import { toRows, cellWeight, labelIsEmpty } from './fields.js';
 import { resolveTemplate } from './tokens.js';
 import { encodeBarcode, barcodeLayout, barcodeZplField } from './barcode.js';
 
@@ -73,24 +73,62 @@ function drawText(ctx, text, x, y, w, h, align = 'center', bold = true) {
     for (const line of lines) { ctx.fillText(line, tx, cy); cy += lineH; }
 }
 
-// Draw a stack of template fields into (x,y,w,h): each band's height is its
-// relative weight, tokens resolved, drawn per the field's align/bold. Mirrors
-// the on-screen flex stack so screen and print divide the label identically.
-function drawFields(ctx, fields, x, y, w, h, native) {
-    const weights = fields.map(fieldWeight);
-    const total = weights.reduce((a, b) => a + b, 0) || 1;
-    const gapD = Math.round(h * 0.02);
-    const avail = h - gapD * (fields.length - 1);
+// Draw a template's grid into (x,y,w,h). Rows come from toRows (the same
+// grouping the screen uses); a row's height is its weight's share of h, and a
+// cell's width is its weight's share of the row. Tokens resolved, drawn per the
+// field's align/bold. Mirrors the on-screen flex grid so screen and print divide
+// the label identically.
+//
+// There is deliberately no gap between bands. There used to be one here (2% of
+// the label height) and none in the CSS, so the two renderers disagreed about
+// where every boundary after the first fell — invisible while nothing was drawn
+// at a boundary, and impossible to miss once rules are. Pure weight division is
+// what the stylesheet does, so it is what this does.
+//
+// The last row and the last cell take the remainder rather than their computed
+// share, so rounding can never leave an unpainted sliver against the border.
+function drawFields(ctx, fields, x, y, w, h, native, rules) {
+    const rows = toRows(fields);
+    const total = rows.reduce((a, r) => a + r.weight, 0) || 1;
+    // Thinner than the label's own border (1%), matching a ruled grid's look:
+    // heavy outside, light within.
+    const ruleW = rules ? Math.max(1, Math.round(Math.min(w, h) * 0.006)) : 0;
     let cy = y;
-    fields.forEach((f, i) => {
-        const bh = Math.round(avail * weights[i] / total);
-        const resolved = resolveTemplate(f.value);
-        if (f.type === 'barcode') {
-            drawBarcodeField(ctx, f, resolved, x, cy, w, bh, native);
-        } else if (resolved && resolved.trim()) {
-            drawText(ctx, resolved, x, cy, w, bh, f.align, f.bold);
-        }
-        cy += bh + gapD;
+    rows.forEach((row, ri) => {
+        const last = ri === rows.length - 1;
+        const rh = last ? (y + h) - cy : Math.round(h * row.weight / total);
+        const cellTotal = row.cells.reduce((a, c) => a + cellWeight(c), 0) || 1;
+        let cx = x;
+        row.cells.forEach((f, ci) => {
+            const lastCell = ci === row.cells.length - 1;
+            const cw = lastCell ? (x + w) - cx : Math.round(w * cellWeight(f) / cellTotal);
+            const resolved = resolveTemplate(f.value);
+            if (f.type === 'barcode') {
+                drawBarcodeField(ctx, f, resolved, cx, cy, cw, rh, native);
+            } else if (resolved && resolved.trim()) {
+                drawText(ctx, resolved, cx, cy, cw, rh, f.align, f.bold);
+            }
+            cx += cw;
+        });
+        cy += rh;
+    });
+    if (!ruleW) { return; }
+    // Rules last, so a cell's content can never paint over its own boundary.
+    // Drawn on the boundary itself, which is where the CSS border sits.
+    ctx.fillStyle = '#000';
+    let ry = y;
+    rows.forEach((row, ri) => {
+        const last = ri === rows.length - 1;
+        const rh = last ? (y + h) - ry : Math.round(h * row.weight / total);
+        if (ri > 0) { ctx.fillRect(x, ry - Math.floor(ruleW / 2), w, ruleW); }
+        const cellTotal = row.cells.reduce((a, c) => a + cellWeight(c), 0) || 1;
+        let rx = x;
+        row.cells.forEach((f, ci) => {
+            const cw = ci === row.cells.length - 1 ? (x + w) - rx : Math.round(w * cellWeight(f) / cellTotal);
+            if (ci > 0) { ctx.fillRect(rx - Math.floor(ruleW / 2), ry, ruleW, rh); }
+            rx += cw;
+        });
+        ry += rh;
     });
 }
 
@@ -150,7 +188,7 @@ function drawLabel(ctx, label, x, y, w, h, img, showBorder = true, native) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(x, y, w, h);
     if (hasFields) {
-        drawFields(ctx, label.fields, x, y, w, h, native);
+        drawFields(ctx, label.fields, x, y, w, h, native, label.rules);
     } else if (hasImage) {
         drawImage(ctx, img, x, y, w, h, label.adjust);
         if (hasText) {

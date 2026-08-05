@@ -1,17 +1,21 @@
 <script>
-    // Renders a template label: a vertical stack of text fields, each in its own
-    // band sized by the field's weight. Editable bands use the editableField
-    // action (which owns textContent so the caret is never clobbered and tokens
-    // swap raw↔resolved on focus/blur); static bands (preview/print) just show
-    // the resolved text and auto-fit it. Used by Label.svelte and FieldsDialog.
+    // Renders a template label: a grid of text fields. Rows come from toRows
+    // (the shared grouping, so print divides the label the same way); a row's
+    // height and each cell's width come from the same S/M/L weights. Editable
+    // cells use the editableField action (which owns textContent so the caret is
+    // never clobbered and tokens swap raw↔resolved on focus/blur); static cells
+    // (preview/print) just show the resolved text and auto-fit it. Used by
+    // Label.svelte and FieldsDialog.
     import { store, patchField } from '../lib/store.svelte.js';
-    import { fieldStyle } from '../lib/fields.js';
+    import { toRows, rowStyle, cellStyle } from '../lib/fields.js';
     import { resolveTemplate } from '../lib/tokens.js';
     import { editableField } from '../actions/editableField.js';
     import { fitText } from '../actions/fitText.js';
     import BarcodeView from './BarcodeView.svelte';
 
     let { label, editable = false } = $props();
+
+    const rows = $derived(toRows(label.fields));
 
     // Re-fit trigger on any page/size/orientation change (bands resize too, but
     // this covers content-independent geometry changes).
@@ -21,9 +25,11 @@
     );
 </script>
 
-<div class="fields-stack">
-    {#each label.fields as field (field.id)}
-        <div class="field-band" style={fieldStyle(field)}>
+<div class="fields-stack" class:fields-ruled={label.rules}>
+    {#each rows as row, ri (row.cells[0].id)}
+        <div class="field-row" style={rowStyle(row)}>
+        {#each row.cells as field (field.id)}
+        <div class="field-band" style={cellStyle(field)}>
             {#if field.type === 'barcode'}
                 <BarcodeView value={resolveTemplate(field.value)} symbology={field.symbology} hri={field.hri} scale={field.scale} ecLevel={field.ecLevel} />
             {:else if editable}
@@ -45,6 +51,8 @@
             {:else}
                 <span class="text" use:fitText={`${resolveTemplate(field.value)}|${fitKey}`}>{resolveTemplate(field.value)}</span>
             {/if}
+        </div>
+        {/each}
         </div>
     {/each}
 </div>

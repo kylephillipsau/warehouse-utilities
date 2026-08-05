@@ -1,10 +1,10 @@
 <script>
-    // The template / fields editor: a live resolved preview on top, then one row
-    // per field (reorder, delete, value, size, align, bold) and a token inserter.
-    // Structural edits live here so the tiny on-canvas label stays a quick-tweak
-    // surface. Modeled on AdjustDialog.
+    // The template / fields editor: a live resolved preview on top, then one card
+    // per field (reorder, delete, value, size, column, align, bold) and a token
+    // inserter. Structural edits live here so the tiny on-canvas label stays a
+    // quick-tweak surface. Modeled on AdjustDialog.
     import { ui, closeFields } from '../lib/ui.svelte.js';
-    import { store, addField, removeField, moveField, patchField } from '../lib/store.svelte.js';
+    import { store, addField, removeField, moveField, patchField, setRules } from '../lib/store.svelte.js';
     import { resolveContent } from '../lib/size.js';
     import { SIZE_OPTIONS, ALIGN_OPTIONS } from '../lib/fields.js';
     import { SYMBOLOGY_OPTIONS, QR_EC_OPTIONS, SYMBOLOGY_META, validate } from '../lib/barcode.js';
@@ -25,6 +25,17 @@
 
     const label = $derived(store.labels.find((l) => l.id === ui.fieldsTargetId));
     const open = $derived(ui.fieldsTargetId != null);
+
+    // How many cells share field i's row. A field alone on its row already has
+    // the full width, so there is nothing to divide and no Col control to show.
+    function rowSize(i) {
+        const f = (label && label.fields) || [];
+        let start = i;
+        while (start > 0 && f[start].inline) { start--; }
+        let end = start + 1;
+        while (end < f.length && f[end].inline) { end++; }
+        return end - start;
+    }
 
     let tokenOpen = $state(false);
     let tokenEl;
@@ -135,12 +146,33 @@
                                 <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.type !== 'barcode'} aria-pressed={field.type !== 'barcode'} onclick={() => patchField(label.id, field.id, { type: 'text' })}>Text</button>
                                 <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.type === 'barcode'} aria-pressed={field.type === 'barcode'} onclick={() => patchField(label.id, field.id, { type: 'barcode' })}>Barcode</button>
                             </div>
-                            <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} size`}>
+                            <!-- Size weights the ROW's height, Col the cell's share of
+                                 that row's width. Only the second and later cells of a
+                                 row have a width to argue about, so Col appears once a
+                                 field has joined one. -->
+                            <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} row height`}>
                                 <span class="group-label mr-1">Size</span>
                                 {#each SIZE_OPTIONS as opt}
                                     <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.size === opt.value} aria-pressed={field.size === opt.value} onclick={() => patchField(label.id, field.id, { size: opt.value })}>{opt.label}</button>
                                 {/each}
                             </div>
+                            <button
+                                type="button"
+                                class="btn px-[0.6rem] py-[0.25rem]"
+                                class:btn-active={!!field.inline}
+                                aria-pressed={!!field.inline}
+                                disabled={i === 0}
+                                title={i === 0 ? 'The first field always starts the top row' : 'Put this field beside the one above instead of on its own row'}
+                                onclick={() => patchField(label.id, field.id, { inline: !field.inline })}
+                            >Same row</button>
+                            {#if rowSize(i) > 1}
+                                <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} column width`}>
+                                    <span class="group-label mr-1" title="This cell's share of its row's width">Col</span>
+                                    {#each SIZE_OPTIONS as opt}
+                                        <button type="button" class="btn px-[0.6rem] py-[0.25rem]" class:btn-active={field.width === opt.value} aria-pressed={field.width === opt.value} onclick={() => patchField(label.id, field.id, { width: opt.value })}>{opt.label}</button>
+                                    {/each}
+                                </div>
+                            {/if}
                             <div class="flex items-center gap-1" role="group" aria-label={`Field ${i + 1} alignment`}>
                                 <span class="group-label mr-1">Align</span>
                                 {#each ALIGN_OPTIONS as opt}
@@ -180,6 +212,11 @@
                     </div>
                 {/each}
             </div>
+
+            <label class="flex items-center gap-2 text-[0.85rem]">
+                <input type="checkbox" id="field-rules" class="size-4 accent-purple" checked={!!label.rules} onchange={(e) => setRules(label.id, e.target.checked)} />
+                <span>Draw rules between cells <span class="text-ink/60">(prints)</span></span>
+            </label>
 
             <div class="flex flex-wrap items-center gap-2">
                 <button type="button" class="btn" id="add-field" onclick={() => addField(label.id)}>+ Add field</button>

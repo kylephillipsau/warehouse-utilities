@@ -32,6 +32,7 @@ export function serializeLabels() {
             // `fields` written only for template labels, so classic labels
             // serialize byte-identically to older files (additive, still v2).
             ...(l.fields && l.fields.length ? { fields: normalizeFields(l.fields) } : {}),
+            ...(l.rules ? { rules: true } : {}),
         })),
         presets: store.presets,
     };
@@ -53,6 +54,7 @@ export function openLabelFile(data, { confirmReplace } = {}) {
             entry && entry.image ? entry.image : null,
             entry && entry.adjust,
             entry && entry.fields,
+            entry && entry.rules,
         ),
     );
     if (data.presets) { mergePresets(data.presets); }
