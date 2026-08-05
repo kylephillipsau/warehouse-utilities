@@ -1,17 +1,26 @@
 // The printable "page" is the physical label/media the printer feeds. Following
 // the thermal-printer convention, every size is Width × Length where WIDTH is
-// across the print head (fixed by the hardware) and LENGTH is the feed
-// direction. A label printer's head width is fixed, so media has ONE native
-// orientation — we never swap width/height (swapping is what made 4×3 stock
-// print "too tall", and Chrome auto-rotates any page wider than tall). The
-// @page is emitted at the exact media size; the media divides into N equal
-// labels down its length, so cut guides always run across the feed.
+// across the print head and LENGTH is the feed direction. The @page is emitted
+// at the exact media size; the media divides into N equal labels down its
+// length, so cut guides always run across the feed.
 //
-// ORIENTATION is therefore never a page dimension — it is a property of the
-// ARTWORK, exactly as ^FW/field rotation is in ZPL. Portrait lays the content
-// out on the label as-is; landscape lays it out on a box with the label's width
-// and height swapped and rotates it 90° into place. The media, the @page and
-// ^PW/^LL are identical either way, which is what keeps output exact.
+// There are TWO independent rotations here, and conflating them is what made
+// 4×3 stock print "too tall". Keep them apart:
+//
+//   MEDIA ORIENTATION (page.orientation) is a real page dimension: it swaps the
+//   media's width and length, and @page and ^PW/^LL follow. It is only ever a
+//   choice for SHEET stock (A4/Letter on a normal printer), where feeding a
+//   sheet the long way round is ordinary. A label printer's head width is fixed
+//   hardware, so thermal stock has exactly ONE way to feed and callers pin this
+//   to portrait for thermal output — see the invariant in App.svelte.
+//
+//   ARTWORK ROTATION (store.rotation, 0 or 90) is a property of the ARTWORK,
+//   exactly as ^FW/field rotation is in ZPL. 0 lays the content out on the label
+//   as-is; 90 lays it out on a box with the label's width and height swapped and
+//   rotates it into place. The media, the @page and ^PW/^LL are identical either
+//   way, which is what keeps output exact on stock that cannot be re-fed.
+//
+// So: rotating the MEDIA changes the page. Rotating the ARTWORK never does.
 // All dimensions resolve to millimetres; custom sizes may be entered in inches.
 
 const MM_PER_IN = 25.4;
@@ -30,9 +39,19 @@ export const MEDIA_PRESETS = {
     'letter': { group: 'Sheet', label: 'Letter (216 × 279 mm)', width: 215.9, height: 279.4 },
 };
 
-export const DEFAULT_PAGE = { preset: 'zebra-4x6', width: '', height: '', unit: 'mm' };
+export const DEFAULT_PAGE = { preset: 'zebra-4x6', width: '', height: '', unit: 'mm', orientation: 'portrait' };
 export const DEFAULT_DIVISIONS = 5;
 export const MAX_DIVISIONS = 50;
+
+// Artwork rotation in degrees — the ^FW analogue. Only the two right angles a
+// label design actually uses; anything else coerces to 0 rather than throwing,
+// since this value comes back from persisted state and shared files.
+export const DEFAULT_ROTATION = 0;
+export const clampRotation = (v) => (parseInt(v, 10) === 90 ? 90 : 0);
+
+// Media orientation is a real choice only for sheet stock; whether the current
+// output is thermal is output.isThermalMethod's job, not this module's.
+export const clampMediaOrientation = (v) => (v === 'landscape' ? 'landscape' : 'portrait');
 
 // Max printable width across a 4-inch/203-dpi thermal head (~832 dots). Media
 // wider than this is clipped by the printer — there is no way to fit it, since
@@ -80,26 +99,36 @@ export function clampSpacing(v) {
     return round(Math.min(MAX_SPACING, n));
 }
 
-// The physical media size in mm — width (across head) × length (feed). The
-// printer's stock is fixed in this native orientation, and this is the ONE size
-// used for @page and for ^PW/^LL, so output is 1:1 in either orientation.
+// The physical media size in mm — width (across head) × length (feed). This is
+// the ONE size used for @page and for ^PW/^LL, so output is 1:1.
+//
+// MEDIA orientation is applied here, because it genuinely is a page dimension:
+// a landscape A4 sheet is 297 × 210, and @page must say so. ARTWORK rotation is
+// deliberately absent — it never changes the media (see resolveContent). For
+// thermal output the caller pins orientation to portrait, so a fixed-width head
+// can never be handed a page wider than itself.
 export function resolvePage(page) {
+    let native;
     if (page.preset === 'custom') {
-        return { width: clampMm(page.width, page.unit, 101.6), height: clampMm(page.height, page.unit, 152.4) };
+        native = { width: clampMm(page.width, page.unit, 101.6), height: clampMm(page.height, page.unit, 152.4) };
+    } else {
+        const p = MEDIA_PRESETS[page.preset] || MEDIA_PRESETS.a4;
+        native = { width: p.width, height: p.height };
     }
-    const p = MEDIA_PRESETS[page.preset] || MEDIA_PRESETS.a4;
-    return { width: p.width, height: p.height };
+    if (page.orientation === 'landscape') { return { width: native.height, height: native.width }; }
+    return native;
 }
 
 // The CONTENT box inside one label — the surface the artwork is actually laid
-// out on. Portrait is the label itself; landscape swaps the label's width and
-// height, and the result is rotated 90° back into the label (by CSS on screen,
+// out on. At rotation 0 it is the label itself; at 90 it swaps the label's width
+// and height, and the result is rotated back into the label (by CSS on screen,
 // by a canvas transform in zpl.buildZpl). The LABEL and the MEDIA never change
 // shape, so this is a pure artwork rotation — the ZPL analogue of ^FW, not a
-// different page size.
-export function resolveContent(page, divisions, margin = 0, gap = 0, orientation = 'portrait') {
+// different page size. Contrast resolvePage, which is where media orientation
+// legitimately does change the page.
+export function resolveContent(page, divisions, margin = 0, gap = 0, rotation = 0) {
     const l = resolveLabel(page, divisions, margin, gap);
-    return orientation === 'landscape' ? { width: l.height, height: l.width } : l;
+    return clampRotation(rotation) === 90 ? { width: l.height, height: l.width } : l;
 }
 
 // Build a store.page spec from a device media query (browserPrint.queryMedia).
@@ -115,6 +144,9 @@ export function pageFromMedia(media, currentPage) {
         width: media.widthMm != null ? media.widthMm : cur.width,
         height: media.lengthMm != null ? media.lengthMm : cur.height,
         unit: 'mm',
+        // Sensed from a label printer, so by definition the native feed: the
+        // numbers already describe the stock the way it loads.
+        orientation: 'portrait',
     };
 }
 
@@ -138,14 +170,16 @@ export function tiling(divisions) {
     return { cols: 1, rows: n, perPage: n };
 }
 
-// Push resolved dimensions into root CSS custom properties. The screen shows the
-// NATIVE media at its true size in both orientations — only --content-w/h differ,
-// and the stylesheet rotates that box into the label (see .label-rotate).
-// `data-orientation` on <html> is what the CSS keys the rotation off.
-export function applySize(page, divisions, margin = 0, gap = 0, orientation = 'portrait') {
+// Push resolved dimensions into root CSS custom properties. The media is shown
+// at its true resolved size (media orientation included, since that IS the page)
+// — artwork rotation changes only --content-w/h, and the stylesheet rotates that
+// box into the label (see .label-rotate), then rotates the whole SHEET back by
+// the inverse so the artwork is edited upright (see .page-frame).
+// `data-rotation` on <html> is what both of those CSS rules key off.
+export function applySize(page, divisions, margin = 0, gap = 0, rotation = 0) {
     const p = resolvePage(page);
     const label = resolveLabel(page, divisions, margin, gap);
-    const content = resolveContent(page, divisions, margin, gap, orientation);
+    const content = resolveContent(page, divisions, margin, gap, rotation);
     const n = clampDivisions(divisions);
     const root = document.documentElement.style;
     root.setProperty('--page-w', p.width + 'mm');
@@ -158,5 +192,23 @@ export function applySize(page, divisions, margin = 0, gap = 0, orientation = 'p
     root.setProperty('--tile-rows', String(n));
     root.setProperty('--page-margin', clampSpacing(margin) + 'mm');
     root.setProperty('--gap', clampSpacing(gap) + 'mm');
-    document.documentElement.dataset.orientation = orientation === 'landscape' ? 'landscape' : 'portrait';
+    document.documentElement.dataset.rotation = String(clampRotation(rotation));
+}
+
+// Where a pointer falls in a list of label elements. Labels always stack down
+// the feed, but on screen at rotation 90 the sheet is turned -90° so artwork can
+// be edited upright (see .page-frame in app.css), and that turns the stack into
+// a left-to-right row. Insertion therefore has to measure along the axis the
+// labels VISUALLY run on — reading clientY there picks a target from a
+// coordinate that no longer varies between labels. Returns an INSERT position
+// in 0..elements.length; callers moving an existing item clamp to length - 1.
+export function insertionIndex(elements, event) {
+    const acrossX = document.documentElement.dataset.rotation === '90';
+    const pos = acrossX ? event.clientX : event.clientY;
+    for (let i = 0; i < elements.length; i++) {
+        const r = elements[i].getBoundingClientRect();
+        const mid = acrossX ? r.left + r.width / 2 : r.top + r.height / 2;
+        if (pos < mid) { return i; }
+    }
+    return elements.length;
 }

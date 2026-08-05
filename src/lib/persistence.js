@@ -3,7 +3,10 @@
 // Legacy localStorage keys from the pre-IndexedDB app are migrated once.
 import { idbAvailable, idbGet, idbSet } from './idb.js';
 
-const KEYS = ['labels', 'presets', 'page', 'divisions', 'margin', 'gap', 'orientation', 'showBorders', 'output'];
+// `orientation` is still read so work saved before media/artwork were split
+// migrates on load (store.readRotation); only `rotation` is written now, and
+// media orientation rides along inside `page`.
+const KEYS = ['labels', 'presets', 'page', 'divisions', 'margin', 'gap', 'rotation', 'orientation', 'showBorders', 'output'];
 
 // --- legacy localStorage (read-only, for one-time migration) ---
 const LS_PAGE = 'labelMakerPage';

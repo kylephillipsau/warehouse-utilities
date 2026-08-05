@@ -1,10 +1,12 @@
 // Save/load the full label set as a self-contained JSON file (schema v2): images
-// embedded as base64 data URIs, plus per-label adjust, size, orientation, and
-// the preset library so presets travel between devices. Still opens v1 files.
+// embedded as base64 data URIs, plus per-label adjust, size, media orientation,
+// artwork rotation, and the preset library so presets travel between devices.
+// Still opens v1 files, and files written before media orientation and artwork
+// rotation were separate concepts (see store.readRotation).
 import { normalizeAdjust } from './adjust.js';
 import { normalizeFields } from './fields.js';
-import { clampDivisions, clampSpacing } from './size.js';
-import { store, makeLabel, mergePresets } from './store.svelte.js';
+import { clampDivisions, clampSpacing, clampMediaOrientation } from './size.js';
+import { store, makeLabel, mergePresets, readRotation } from './store.svelte.js';
 
 export const LABEL_FILE_FORMAT = 'warehouse-utilities-labels';
 export const LABEL_FILE_VERSION = 2;
@@ -13,11 +15,15 @@ export function serializeLabels() {
     return {
         format: LABEL_FILE_FORMAT,
         version: LABEL_FILE_VERSION,
-        page: { preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit },
+        page: { preset: store.page.preset, width: store.page.width, height: store.page.height, unit: store.page.unit, orientation: store.page.orientation },
         divisions: store.divisions,
         margin: store.margin,
         gap: store.gap,
-        orientation: store.orientation,
+        rotation: store.rotation,
+        // Legacy mirror: a build from before the media/artwork split reads only
+        // `orientation`, and to it that key meant artwork rotation. Writing it
+        // keeps files opened by an older build rotated the right way.
+        orientation: store.rotation === 90 ? 'landscape' : 'portrait',
         showBorders: store.showBorders,
         labels: store.labels.map((l) => ({
             text: l.text,
@@ -55,11 +61,12 @@ export function openLabelFile(data, { confirmReplace } = {}) {
         if (data.page.width) { store.page.width = data.page.width; }
         if (data.page.height) { store.page.height = data.page.height; }
         if (data.page.unit) { store.page.unit = data.page.unit; }
+        store.page.orientation = clampMediaOrientation(data.page.orientation);
     }
     if (data.divisions) { store.divisions = clampDivisions(data.divisions); }
     if (data.margin != null) { store.margin = clampSpacing(data.margin); }
     if (data.gap != null) { store.gap = clampSpacing(data.gap); }
-    if (data.orientation === 'landscape' || data.orientation === 'portrait') { store.orientation = data.orientation; }
+    store.rotation = readRotation(data);
     if (typeof data.showBorders === 'boolean') { store.showBorders = data.showBorders; }
     return { ok: true, error: null };
 }

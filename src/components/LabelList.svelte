@@ -1,6 +1,6 @@
 <script>
     import { store, insertPreset } from '../lib/store.svelte.js';
-    import { tiling } from '../lib/size.js';
+    import { tiling, insertionIndex } from '../lib/size.js';
     import Label from './Label.svelte';
 
     // The page divides into N labels; that's how many fit per media page
@@ -23,15 +23,10 @@
     const PRESET_TYPE = 'application/x-label-preset';
     const isPresetDrag = (e) => e.dataTransfer && [...e.dataTransfer.types].includes(PRESET_TYPE);
 
-    // Where a drop at clientY should insert: before the first segment whose
-    // vertical midpoint is below the cursor, else at the end.
-    function dropIndex(list, clientY) {
-        const segs = [...list.querySelectorAll('.text-container')];
-        for (let i = 0; i < segs.length; i++) {
-            const r = segs[i].getBoundingClientRect();
-            if (clientY < r.top + r.height / 2) { return i; }
-        }
-        return segs.length;
+    // Where a drop should insert: before the first segment whose midpoint is past
+    // the cursor. The axis is orientation-dependent on screen (insertionIndex).
+    function dropIndex(list, event) {
+        return insertionIndex([...list.querySelectorAll('.text-container')], event);
     }
 
     function onDragOver(event) {
@@ -50,7 +45,7 @@
         const id = event.dataTransfer.getData(PRESET_TYPE);
         if (!id) { return; }
         const list = event.currentTarget.querySelector('#labelList');
-        insertPreset(id, list ? dropIndex(list, event.clientY) : undefined);
+        insertPreset(id, list ? dropIndex(list, event) : undefined);
     }
 </script>
 
@@ -64,11 +59,18 @@
 >
     <div id="labelList" class="printable">
         {#each pages as page, pi (pi)}
-            <ul class="print-page">
-                {#each page as label (label.id)}
-                    <Label {label} />
-                {/each}
-            </ul>
+            <!-- The frame holds the sheet's on-screen footprint. At artwork
+                 rotation 90 the sheet is turned -90° inside it so artwork is
+                 edited upright, and a transform alone would leave the layout at
+                 the unturned size — see .page-frame in app.css. Inert otherwise
+                 and in print. -->
+            <div class="page-frame">
+                <ul class="print-page">
+                    {#each page as label (label.id)}
+                        <Label {label} />
+                    {/each}
+                </ul>
+            </div>
         {/each}
     </div>
 </main>

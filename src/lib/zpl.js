@@ -3,7 +3,7 @@
 // ~300/203 ≈ 1.48× too big on a 203-dpi head). Each media page is rendered to a
 // 1-bit bitmap at the printer's dot grid and wrapped in a ^GFA graphic field;
 // ^PW/^LL lock the physical extents so the output is exact by construction.
-import { resolvePage, tiling, clampSpacing, clampDivisions, clampCopies } from './size.js';
+import { resolvePage, tiling, clampSpacing, clampDivisions, clampCopies, clampRotation } from './size.js';
 import { normalizeAdjust } from './adjust.js';
 import { fieldWeight, labelIsEmpty } from './fields.js';
 import { resolveTemplate } from './tokens.js';
@@ -200,8 +200,8 @@ function canvasToGFA(canvas) {
 export async function buildZpl(store, dpi = 203) {
     // Zebra "203 dpi" is really 203.2 = exactly 8 dots/mm; 300 dpi = 300/25.4.
     const dpmm = dpi === 203 ? 8 : dpi / MM_PER_IN;
-    const media = resolvePage(store.page);                 // native physical stock
-    const landscape = store.orientation === 'landscape';
+    const media = resolvePage(store.page);                 // the stock, media orientation applied
+    const rotated = clampRotation(store.rotation) === 90;  // ARTWORK rotation only (^FW)
     const showBorder = store.showBorders !== false;
     const n = clampDivisions(store.divisions);
     const per = tiling(store.divisions).perPage;
@@ -210,8 +210,8 @@ export async function buildZpl(store, dpi = 203) {
     const m = clampSpacing(store.margin);
     const g = clampSpacing(store.gap);
 
-    // The bitmap is always the native media, so ^PW/^LL match the loaded stock in
-    // BOTH orientations. Labels always stack down the feed; landscape rotates only
+    // The bitmap is the resolved media, so ^PW/^LL match the loaded stock at any
+    // artwork rotation. Labels always stack down the feed; rotation turns only
     // each label's artwork inside its own box (see the group loop below).
     const pageW = Math.round(media.width * dpmm);
     const pageH = Math.round(media.height * dpmm);
@@ -248,13 +248,13 @@ export async function buildZpl(store, dpi = 203) {
         group.forEach((l, idx) => {
             const x = marginD;
             const y = marginD + idx * (labelH + gapD);
-            // Landscape: rotate the frame 90° CW about the label's own box, so the
+            // Rotated: turn the frame 90° CW about the label's own box, so the
             // artwork is laid out on a (labelH × labelW) content box and lands
             // exactly on the label. Content point (cx,cy) -> canvas (ox−cy, oy+cx).
-            const frame = landscape ? { ox: x + labelW, oy: y } : { ox: 0, oy: 0 };
+            const frame = rotated ? { ox: x + labelW, oy: y } : { ox: 0, oy: 0 };
             const from = native.length;
             ctx.save();
-            if (landscape) {
+            if (rotated) {
                 ctx.translate(frame.ox, frame.oy);
                 ctx.rotate(Math.PI / 2);
                 drawLabel(ctx, l, 0, 0, labelH, labelW, imgCache.get(l.image), showBorder, native);
@@ -268,10 +268,10 @@ export async function buildZpl(store, dpi = 203) {
         });
         const { hex, bytesPerRow, total } = canvasToGFA(canvas);
         // The GFA holds text/images/HRI; native barcode fields are appended after
-        // it (they overprint the white bar area) with the landscape transform.
+        // it (they overprint the white bar area) with the rotation transform.
         let body = `^FO0,0^GFA,${total},${total},${bytesPerRow},${hex}^FS\n`;
         for (const d of native) {
-            body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { landscape, ox: d.frame.ox, oy: d.frame.oy, ecLevel: d.ecLevel }) + '\n';
+            body += barcodeZplField(d.enc, d.data, d.layout, d.symbology, { rotated, ox: d.frame.ox, oy: d.frame.oy, ecLevel: d.ecLevel }) + '\n';
         }
         const pq = copies > 1 ? `^PQ${copies},0,0,N\n` : '';
         zpl += `^XA\n^PW${pageW}\n^LL${pageH}\n^LH0,0\n${body}${pq}^XZ\n`;

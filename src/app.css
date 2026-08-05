@@ -114,6 +114,16 @@ body {
         outline: 3px solid var(--color-purple);
         outline-offset: -3px;
     }
+    /* An option that isn't a choice here. Shown rather than hidden, so the
+       control still says what exists; the group's title says why it's off.
+       The selected one stays legible — a disabled control must still report
+       its value, or the user can't see what they'd be printing. */
+    .segmented input:disabled + label {
+        @apply opacity-40 pointer-events-none;
+    }
+    .segmented input:disabled:checked + label {
+        @apply opacity-65;
+    }
 
     /* Modal dialogs (import / export / adjust / presets). The chrome (padding,
        flow) is done with utilities in markup; this owns the shell + backdrop,
@@ -244,17 +254,22 @@ li {
     overflow: hidden;
 }
 
-/* The artwork layer. Portrait: it simply fills the label. Landscape: the content
+/* The artwork layer. At rotation 0 it simply fills the label. At 90 the content
    is laid out on a box with the label's width and height swapped (--content-w/h,
    from resolveContent) and rotated 90° CW about the label centre. The label and
-   the media keep their native shape either way — this is an artwork rotation,
-   the CSS analogue of ZPL's ^FW, not a page-size change. */
+   the media keep their shape either way — this is ARTWORK rotation, the CSS
+   analogue of ZPL's ^FW. Media orientation is a different thing entirely: it is
+   already baked into --page-w/h by resolvePage. On screen the sheet is
+   rotated -90° around this (see .page-frame), so the artwork is edited upright;
+   the two cancel, and the printed result is what this layer describes.
+   The per-label tools live INSIDE this layer so they ride the same net-upright
+   frame as the artwork and sit at the corner of the box the user is editing. */
 .label-rotate {
     position: absolute;
     inset: 0;
 }
 
-:root[data-orientation='landscape'] .label-rotate {
+:root[data-rotation='90'] .label-rotate {
     inset: auto;
     top: 50%;
     left: 50%;
@@ -321,6 +336,47 @@ li.text-container.drag-over {
     outline: 3px dashed var(--color-purple);
     outline-offset: -6px;
     border-radius: 6px;
+}
+
+/* SCREEN ONLY, at artwork rotation 90. The artwork is turned 90° into each label, which on
+   its own leaves every label sideways to read and to type into — the caret, the
+   selection and an image drag all run at right angles to the pointer. So the
+   whole sheet is rotated back by the exact inverse, -90°, and the artwork inside
+   comes out upright while the label and the media keep their true shapes. The
+   two rotations compose to the identity over the artwork, so this is a change of
+   VIEWPOINT only: the document, the @page and the ZPL are untouched, and what is
+   on screen is still the real sheet, seen the way it is worked on rather than
+   the way it feeds. The frame carries the rotated footprint, since a transform
+   alone does not affect layout and the sheet must still occupy its space in the
+   scroll area. Labels then run left to right, which is the feed direction — the
+   ::after says so, because a rotated sheet is only readable if it is labelled. */
+@media screen {
+    :root[data-rotation='90'] .page-frame {
+        position: relative;
+        width: var(--page-h, 297mm);
+        height: var(--page-w, 210mm);
+        margin: 0 auto 30px;
+    }
+
+    :root[data-rotation='90'] .page-frame .print-page {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        margin: 0;
+        transform: translate(-50%, -50%) rotate(-90deg);
+    }
+
+    :root[data-rotation='90'] .page-frame::after {
+        content: 'feed \2192';
+        position: absolute;
+        top: 100%;
+        left: 0;
+        margin-top: 5px;
+        font-size: 0.7rem;
+        font-weight: bold;
+        letter-spacing: 0.04em;
+        color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+    }
 }
 
 .print-page {
@@ -589,11 +645,19 @@ li.text-container:focus-within .label-tools {
     .print-page {
         margin: 0 !important;
         box-shadow: none !important;
+    }
+
+    /* Pagination is anchored on the FRAME, not the sheet: the sheet is now the
+       only child of its frame, so a :last-child rule on it would match every
+       sheet and cancel every break. The frame is the top-level flow item, and
+       it is the one that must break. Its landscape sizing is @media screen, so
+       here it is a plain wrapper — the media prints native either way. */
+    .page-frame {
         break-after: page;
         page-break-after: always;
     }
 
-    .print-page:last-child {
+    .page-frame:last-child {
         break-after: auto;
         page-break-after: auto;
     }

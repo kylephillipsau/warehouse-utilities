@@ -8,7 +8,7 @@
     import { ui, closeInspector } from '../lib/ui.svelte.js';
     import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
     import { queryMedia } from '../lib/browserPrint.js';
-    import { OUTPUT_METHODS, getMethod, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from '../lib/output.js';
+    import { OUTPUT_METHODS, getMethod, isThermalMethod, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from '../lib/output.js';
     import { ZPL_DPIS } from '../lib/zpl.js';
     import Drawer from './Drawer.svelte';
     import Select from './Select.svelte';
@@ -36,6 +36,8 @@
         { value: 'custom', label: 'Custom…' },
     ];
     const unitOptions = [{ value: 'mm', label: 'mm' }, { value: 'in', label: 'in' }];
+    const MEDIA_ORIENTATIONS = [{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }];
+    const ARTWORK_ROTATIONS = [{ value: 0, label: 'None' }, { value: 90, label: '90°' }];
 
     function onCopies(event) { store.output.copies = clampCopies(event.target.value); }
     function onDivisions(event) { store.divisions = clampDivisions(event.target.value); }
@@ -43,8 +45,8 @@
     function onGap(event) { store.gap = clampSpacing(event.target.value); }
 
     // Live readout of the computed geometry (always mm — the canonical unit).
-    // Both are native media dimensions: orientation rotates the artwork inside a
-    // label, so it changes neither the page nor the label shape.
+    // resolvePage has media orientation applied (it IS the page); artwork
+    // rotation is absent from both, since it changes neither page nor label.
     const pageDims = $derived(resolvePage(store.page));
     const labelDims = $derived(resolveLabel(store.page, store.divisions, store.margin, store.gap));
 
@@ -76,9 +78,10 @@
     const methodOptions = OUTPUT_METHODS.map((m) => ({ value: m.id, label: m.label }));
 
     // The printhead width is fixed hardware: media wider than it gets clipped, and
-    // no orientation can fix that (rotating the artwork does not widen the head).
+    // no rotation can fix that (turning the artwork does not widen the head).
     // Only warn for thermal output — an A4 sheet is legitimately 210 mm wide.
-    const thermal = $derived(method.controls === 'zebra' || method.controls === 'zebraDpi');
+    // Also gates the media-orientation control (see isThermalMethod / App.svelte).
+    const thermal = $derived(isThermalMethod(store.output.method));
     const tooWide = $derived(thermal && exceedsPrintWidth(store.page));
     const dpiOptions = ZPL_DPIS.map((d) => ({ value: d.value, label: d.label }));
     const saveFormatOptions = [
@@ -172,7 +175,7 @@
                 <!-- Which number is which is the single most common way to get label
                      media wrong, so name the two axes rather than "width × height". -->
                 <p class="m-0 mt-1 text-[0.75rem] leading-[1.45] text-ink/60">
-                    <strong>Width</strong> across the print head &times; <strong>length</strong> in the feed direction — the way label stock is sized. A 100 &times; 150 mm roll feeds its 100 mm edge first.
+                    <strong>Width</strong> across the print head &times; <strong>length</strong> in the feed direction. A 100 &times; 150 mm roll feeds its 100 mm edge first.
                 </p>
             {/if}
             {#if tooWide}
@@ -182,15 +185,33 @@
             {/if}
         </div>
 
+        <!-- Media and artwork sit on two rows of ONE group, adjacent on purpose:
+             showing the pair is what teaches the difference, and it does the job
+             in less room than the paragraphs it replaces. Turning the MEDIA
+             changes the page; turning the ARTWORK never does. The size readout
+             below already states both results, so neither row explains itself —
+             the disabled media row carries its reason in a title instead, which
+             is where a "why is this greyed out" answer belongs. -->
         <div class="control-group">
             <span class="group-label">Orientation</span>
-            <div class="flex gap-2" role="group" aria-label="Orientation">
-                <button type="button" id="orient-portrait" class="btn flex-1" class:btn-active={store.orientation === 'portrait'} aria-pressed={store.orientation === 'portrait'} onclick={() => (store.orientation = 'portrait')}>Portrait</button>
-                <button type="button" id="orient-landscape" class="btn flex-1" class:btn-active={store.orientation === 'landscape'} aria-pressed={store.orientation === 'landscape'} onclick={() => (store.orientation = 'landscape')}>Landscape</button>
+            <div class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+                <span id="orient-media-label" class="text-[0.8rem] text-ink/70">Media</span>
+                <div class="segmented" role="group" aria-labelledby="orient-media-label"
+                     title={thermal ? 'Label stock feeds one way — the printhead width is fixed. Switch output to Browser / PDF to turn sheet media.' : null}>
+                    {#each MEDIA_ORIENTATIONS as opt}
+                        <input type="radio" id={`media-${opt.value}`} name="media-orientation" value={opt.value} disabled={thermal} bind:group={store.page.orientation} />
+                        <label for={`media-${opt.value}`}>{opt.label}</label>
+                    {/each}
+                </div>
+
+                <span id="orient-art-label" class="text-[0.8rem] text-ink/70">Artwork</span>
+                <div class="segmented" role="group" aria-labelledby="orient-art-label">
+                    {#each ARTWORK_ROTATIONS as opt}
+                        <input type="radio" id={`rotate-${opt.value}`} name="artwork-rotation" value={opt.value} bind:group={store.rotation} />
+                        <label for={`rotate-${opt.value}`}>{opt.label}</label>
+                    {/each}
+                </div>
             </div>
-            <p class="m-0 mt-1 text-[0.75rem] leading-[1.45] text-ink/60">
-                Rotates the artwork within each label. The media size never changes — the printhead is fixed, so the stock has only one way to feed.
-            </p>
         </div>
 
         <div class="flex flex-wrap gap-x-5 gap-y-3">
@@ -224,13 +245,8 @@
 
         <div id="size-readout" class="rounded-md border-2 border-ink bg-highlight px-3 py-2 text-[0.8rem] leading-[1.5] tabular-nums" role="status" aria-live="polite">
             Each label = <strong>{labelDims.width} × {labelDims.height} mm</strong>
-            {#if store.orientation === 'landscape'}<span class="text-ink/70">, artwork rotated</span>{/if}<br />
+            {#if store.rotation === 90}<span class="text-ink/70">, artwork turned 90°</span>{/if}<br />
             Media {pageDims.width} × {pageDims.height} mm · <strong>{store.divisions} up</strong>
-            <!-- Divisions, not orientation, is what makes a label wider than it is
-                 tall; say so where the number that caused it is visible. -->
-            {#if store.divisions > 1}
-                <br /><span class="text-ink/70">Split down the feed into {store.divisions} — set <strong>Divide into 1</strong> for one full-size label.</span>
-            {/if}
         </div>
     </section>
 

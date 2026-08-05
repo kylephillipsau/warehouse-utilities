@@ -36,7 +36,7 @@
     });
 
     // Size the preview to the artwork's real aspect when the dialog opens. That is
-    // the CONTENT box, not the label: in landscape the artwork is laid out on the
+    // the CONTENT box, not the label: when turned, the artwork is laid out on the
     // label's swapped dimensions before being rotated into place, so previewing
     // the label's own aspect would edit the fields at the wrong shape.
     $effect(() => {
@@ -44,7 +44,7 @@
         if (id === lastId) { return; }
         lastId = id;
         if (id == null) { return; }
-        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.orientation);
+        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.rotation);
         const aspect = c.width && c.height ? c.width / c.height : 100 / 40;
         const avail = (window.innerWidth || 360) - 32 - 40;
         const maxW = Math.min(360, avail), maxH = 220;

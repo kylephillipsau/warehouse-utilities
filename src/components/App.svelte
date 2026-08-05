@@ -4,6 +4,7 @@
     import { autoConnectPrinter } from '../lib/printer.svelte.js';
     import { loadAll, persistState } from '../lib/persistence.js';
     import { applySize, resolvePage } from '../lib/size.js';
+    import { isThermalMethod } from '../lib/output.js';
     import Toolbar from './Toolbar.svelte';
     import LabelList from './LabelList.svelte';
     import UndoToast from './UndoToast.svelte';
@@ -27,7 +28,19 @@
 
     // Push the resolved page + label sizes into root CSS vars
     $effect(() => {
-        applySize(store.page, store.divisions, store.margin, store.gap, store.orientation);
+        applySize(store.page, store.divisions, store.margin, store.gap, store.rotation);
+    });
+
+    // The one invariant that keeps media orientation safe. A thermal head's width
+    // is fixed hardware, so thermal stock has exactly one way to feed and media
+    // orientation is not a choice there. Switching output to a label printer
+    // therefore collapses it back to native — otherwise a landscape SHEET design
+    // would silently emit a ^PW wider than the head and get clipped. Sheet output
+    // keeps whatever the user set. The Inspector disables the control to match.
+    $effect(() => {
+        if (isThermalMethod(store.output.method) && store.page.orientation === 'landscape') {
+            store.page.orientation = 'portrait';
+        }
     });
 
     // Toggle the label border / cut guide (screen). ZPL handles it separately.
@@ -35,11 +48,13 @@
         document.documentElement.style.setProperty('--label-border-w', store.showBorders ? '2px' : '0');
     });
 
-    // Make the printed page EXACTLY the physical media (native width × length, no
-    // orientation swap) so a label printer maps it 1:1 with no scale-to-fit and
-    // no browser auto-rotation — kept in a raw <style> element. Orientation is a
-    // rotation of the artwork inside each label, never a page size, so it does
-    // not appear here: a page wider than tall would be auto-rotated by Chrome.
+    // Make the printed page EXACTLY the physical media so a label printer maps it
+    // 1:1 with no scale-to-fit — kept in a raw <style> element. resolvePage
+    // applies MEDIA orientation, which belongs here because it really is the page
+    // (a landscape A4 is 297 × 210 and @page must say so). ARTWORK rotation does
+    // not appear here at all: it turns content inside a label and never the page,
+    // which is what stops thermal stock emitting a page wider than tall for
+    // Chrome to auto-rotate. Thermal media orientation is pinned above.
     let pageStyleEl;
     $effect(() => {
         if (!pageStyleEl) {
@@ -62,8 +77,8 @@
         });
         void store.presets.length;
         store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; void p.fields; });
-        void store.page.preset; void store.page.width; void store.page.height; void store.page.unit;
-        void store.divisions; void store.margin; void store.gap; void store.orientation; void store.showBorders;
+        void store.page.preset; void store.page.width; void store.page.height; void store.page.unit; void store.page.orientation;
+        void store.divisions; void store.margin; void store.gap; void store.rotation; void store.showBorders;
         void store.output.method; void store.output.dpi; void store.output.saveFormat;
         if (!ready) { return; }
         clearTimeout(saveTimer);
@@ -75,7 +90,7 @@
                 divisions: store.divisions,
                 margin: store.margin,
                 gap: store.gap,
-                orientation: store.orientation,
+                rotation: store.rotation,
                 showBorders: store.showBorders,
                 output: $state.snapshot(store.output),
             });

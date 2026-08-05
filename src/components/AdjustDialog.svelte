@@ -27,10 +27,10 @@
         const l = store.labels.find((x) => x.id === id);
         if (!l) { return; }
         working = normalizeAdjust(l.adjust);
-        // The CONTENT box's aspect, not the label's: in landscape the image is
+        // The CONTENT box's aspect, not the label's: when the artwork is turned, the image is
         // fitted to the label's swapped dimensions and then rotated into place, so
         // cropping against the label's own aspect would place it wrongly.
-        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.orientation);
+        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.rotation);
         const aspect = c.width && c.height ? c.width / c.height : 100 / 22;
         // Never exceed the dialog's inner width on small screens: dialog is
         // min(40rem, 100vw - 2rem) with 1.25rem padding each side.

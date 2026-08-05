@@ -3,21 +3,35 @@
 // and writes this one reactive store, so there is no manual cross-surface sync.
 import { normalizeAdjust } from './adjust.js';
 import { newId } from './persistence.js';
-import { DEFAULT_PAGE, DEFAULT_DIVISIONS, clampDivisions, clampCopies } from './size.js';
+import { DEFAULT_PAGE, DEFAULT_DIVISIONS, DEFAULT_ROTATION, clampDivisions, clampCopies, clampRotation, clampMediaOrientation } from './size.js';
 import { normalizeFields, cloneFields, makeField, normalizeField, labelIsEmpty } from './fields.js';
 import { resolveTemplate } from './tokens.js';
 
 export const store = $state({
     labels: [],
     presets: [],
-    page: { preset: DEFAULT_PAGE.preset, width: '', height: '', unit: 'mm' },  // physical media / page size (native orientation)
+    // The physical media. `orientation` is a real page dimension — it swaps the
+    // media's width and length and @page follows. Only meaningful for sheet
+    // stock; pinned to portrait for thermal, whose head width is fixed.
+    page: { preset: DEFAULT_PAGE.preset, width: '', height: '', unit: 'mm', orientation: DEFAULT_PAGE.orientation },
     divisions: DEFAULT_DIVISIONS,
     margin: 0,   // page edge margin (mm) around the tiled labels
     gap: 0,      // gap (mm) between stacked label segments
-    orientation: 'portrait',  // 'portrait' | 'landscape' — rotates the ARTWORK inside each label; media/page size never changes (see size.resolveContent)
+    rotation: DEFAULT_ROTATION,  // 0 | 90 — rotates the ARTWORK inside each label (the ^FW analogue); never changes the media (see size.resolveContent)
     showBorders: true,        // draw the label border / cut guide (screen + ZPL)
     output: { method: 'zebra', dpi: 203, saveFormat: 'json', copies: 1 },  // configurable print/output (see output.js)
 });
+
+// Read artwork rotation from persisted state or an opened file, migrating the
+// single `orientation` flag that used to mean both things. Before the split,
+// orientation:'landscape' could ONLY mean the artwork was rotated — media
+// orientation did not exist — so old work maps to rotation 90 and keeps its
+// native media. Exported because openLabelFile has to read the same old files.
+export function readRotation(data) {
+    if (data && data.rotation != null) { return clampRotation(data.rotation); }
+    if (data && data.orientation === 'landscape') { return 90; }
+    return DEFAULT_ROTATION;
+}
 
 // Populate the store from persisted state (see persistence.loadAll). Applied
 // once after mount; anything absent keeps its default.
@@ -42,11 +56,12 @@ export function hydrateStore(data) {
         store.page.width = data.page.width != null ? data.page.width : '';
         store.page.height = data.page.height != null ? data.page.height : '';
         store.page.unit = data.page.unit || 'mm';
+        store.page.orientation = clampMediaOrientation(data.page.orientation);
     }
     if (data.divisions != null) { store.divisions = clampDivisions(data.divisions); }
     if (typeof data.margin === 'number' && data.margin >= 0) { store.margin = data.margin; }
     if (typeof data.gap === 'number' && data.gap >= 0) { store.gap = data.gap; }
-    if (data.orientation === 'landscape' || data.orientation === 'portrait') { store.orientation = data.orientation; }
+    store.rotation = readRotation(data);
     if (typeof data.showBorders === 'boolean') { store.showBorders = data.showBorders; }
     if (data.output && typeof data.output === 'object') {
         // method validated lazily at render (getMethod falls back if unknown)

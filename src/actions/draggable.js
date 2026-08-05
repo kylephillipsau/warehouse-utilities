@@ -1,4 +1,5 @@
 import { moveLabel } from '../lib/store.svelte.js';
+import { insertionIndex } from '../lib/size.js';
 
 // Reorder a label by dragging its handle (mouse or touch). Ported from the old
 // startLabelDrag, but instead of moving DOM nodes it moves the item in the
@@ -17,11 +18,10 @@ export function draggable(node, params) {
 
         const move = (ev) => {
             const siblings = [...list.querySelectorAll('.text-container')];
-            let target = siblings.length - 1;
-            for (let i = 0; i < siblings.length; i++) {
-                const r = siblings[i].getBoundingClientRect();
-                if (ev.clientY < r.top + r.height / 2) { target = i; break; }
-            }
+            // insertionIndex measures along the axis the labels run on screen,
+            // which is horizontal at artwork rotation 90 (the sheet is turned). It can
+            // return one past the end; a MOVE target is an existing position.
+            const target = Math.min(insertionIndex(siblings, ev), siblings.length - 1);
             moveLabel(id, target);
         };
         const stop = () => {

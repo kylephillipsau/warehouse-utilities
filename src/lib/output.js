@@ -96,3 +96,12 @@ export function getMethod(id) {
 }
 
 export const isMethodId = (id) => OUTPUT_METHODS.some((m) => m.id === id);
+
+// Does this method drive a thermal label printer? The one place that question is
+// answered, because two rules depend on it: the too-wide warning (a fixed head
+// clips; an A4 sheet is legitimately 210 mm) and media orientation (thermal
+// stock has one way to feed, so orientation is not a choice — see App.svelte).
+export function isThermalMethod(id) {
+    const controls = getMethod(id).controls;
+    return controls === 'zebra' || controls === 'zebraDpi';
+}

@@ -153,7 +153,7 @@
     // by the ResizeObserver inside the fitText action)
     const fitKey = $derived(
         `${text}|${store.page.preset}|${store.page.width}|${store.page.height}|` +
-        `${store.divisions}|${store.margin}|${store.gap}|${store.orientation}|${hasImage ? 1 : 0}`
+        `${store.divisions}|${store.margin}|${store.gap}|${store.rotation}|${store.page.orientation}|${hasImage ? 1 : 0}`
     );
 </script>
 

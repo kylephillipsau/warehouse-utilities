@@ -17,7 +17,7 @@
     // this covers content-independent geometry changes).
     const fitKey = $derived(
         `${store.page.preset}|${store.page.width}|${store.page.height}|` +
-        `${store.divisions}|${store.margin}|${store.gap}|${store.orientation}`
+        `${store.divisions}|${store.margin}|${store.gap}|${store.rotation}|${store.page.orientation}`
     );
 </script>
 
