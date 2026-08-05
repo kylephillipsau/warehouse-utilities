@@ -2,10 +2,15 @@
     // A small "⋯" overflow menu of labeled actions (progressive disclosure).
     // items: [{ label, action, danger? }]
     //
-    // The menu is rendered with position:fixed and positioned from the button's
-    // viewport rect, so it is never clipped by the label's overflow:hidden media
-    // page — critical for small labels. It flips above the button when there
+    // The menu is positioned from the button's viewport rect and portalled to
+    // <body>, so it is never clipped by the label's overflow:hidden media page,
+    // which matters for small labels. position:fixed alone is not enough: the
+    // sheet is transformed whenever artwork rotation is on, and a transformed
+    // ancestor becomes the containing block for fixed descendants and clips
+    // them again (see actions/portal.js). It flips above the button when there
     // isn't room below, and supports full keyboard navigation.
+    import { portal } from '../actions/portal.js';
+
     let { items } = $props();
     let open = $state(false);
     let btnEl, menuEl;
@@ -74,6 +79,7 @@
     {#if open}
         <div
             bind:this={menuEl}
+            use:portal
             class="fixed z-[60] flex min-w-[10rem] max-h-[70vh] flex-col overflow-y-auto
                    bg-paper border-2 border-ink rounded-md shadow-popover"
             style="top: {pos.top}px; left: {pos.left}px"

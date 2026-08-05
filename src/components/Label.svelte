@@ -51,9 +51,12 @@
         });
     }
     function onFocusOut(event) {
-        // Don't prune when focus is only moving to this label's own tools (drag
-        // handle, edit, ⋯ menu) — otherwise an empty label would delete itself
-        // out from under the action the user just clicked.
+        // An empty label must not delete itself out from under a tool the user
+        // just clicked, so focus moving to its own drag handle or edit button
+        // never prunes. The ⋯ menu is portalled to <body> and is deliberately
+        // NOT inside `li` any more (see actions/portal.js); it stays safe
+        // because it takes focus from the ⋯ button rather than from the text,
+        // and only a blur out of the text region prunes at all.
         if (li && event.relatedTarget && li.contains(event.relatedTarget)) { return; }
         if (event.target.classList && event.target.classList.contains('text')) {
             if (!label.text || label.text.trim().length === 0) { captionOpen = false; }

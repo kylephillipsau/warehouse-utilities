@@ -604,8 +604,12 @@ li.text-container:focus-within .label-tools {
         visibility: visible;
     }
 
-    /* Screen-only management chrome must never reach paper */
+    /* Screen-only management chrome must never reach paper. [role="menu"] is
+       listed separately because a portalled popup is a child of <body>, not of
+       the .label-tools it belongs to (see actions/portal.js), so hiding the
+       tools no longer hides it. */
     .label-tools,
+    [role="menu"],
     #print-tip,
     #undo-toast,
     .dialog,
@@ -642,22 +646,29 @@ li.text-container:focus-within .label-tools {
         overflow: visible !important;
     }
 
+    /* The frame is screen-only scaffolding: it exists to hold the rotated
+       footprint while the sheet is turned for editing. display:contents takes
+       it out of the box tree altogether, so on paper the sheet is the flow item
+       exactly as it was before the frame existed, and pagination stays on the
+       sheet where it has always worked. Anchoring the break on the frame
+       instead would put an untested wrapper between #labelList and a
+       page-sized box, and print is not the place to find out what that does. */
+    .page-frame {
+        display: contents;
+    }
+
     .print-page {
         margin: 0 !important;
         box-shadow: none !important;
-    }
-
-    /* Pagination is anchored on the FRAME, not the sheet: the sheet is now the
-       only child of its frame, so a :last-child rule on it would match every
-       sheet and cancel every break. The frame is the top-level flow item, and
-       it is the one that must break. Its landscape sizing is @media screen, so
-       here it is a plain wrapper — the media prints native either way. */
-    .page-frame {
         break-after: page;
         page-break-after: always;
     }
 
-    .page-frame:last-child {
+    /* Every sheet is the only child of its frame, so .print-page:last-child
+       would match all of them and cancel every break. Scope it to the last
+       FRAME instead; :last-child reads the DOM, which display:contents does
+       not change. */
+    .page-frame:last-child .print-page {
         break-after: auto;
         page-break-after: auto;
     }
