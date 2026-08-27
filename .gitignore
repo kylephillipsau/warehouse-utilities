@@ -7,3 +7,6 @@ public/
 # Vite / tooling
 .vite/
 *.local
+
+# macOS
+.DS_Store
