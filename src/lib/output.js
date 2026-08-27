@@ -23,7 +23,7 @@ export const DEFAULT_OUTPUT = { method: 'zebra', dpi: 203, saveFormat: 'json', c
 // printable when at least one label has content — classic text/image OR template fields
 const hasPrintable = (store) => store.labels.some((l) => !labelIsEmpty(l));
 
-function downloadBlob(blob, filename) {
+export function downloadBlob(blob, filename) {
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = filename;

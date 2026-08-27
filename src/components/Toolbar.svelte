@@ -1,5 +1,7 @@
 <script>
     import { store, addLabels, addImageLabel, clearAllLabels } from '../lib/store.svelte.js';
+    import { serializeLabels, openLabelFile } from '../lib/serialize.js';
+    import { downloadBlob } from '../lib/output.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { ui, toggleInspector } from '../lib/ui.svelte.js';
 
@@ -43,6 +45,41 @@
     });
     function clearAll() { clearAllLabels(); }
 
+    // Backup / restore of the whole library in one file. Same format the Save
+    // label file output writes and the Import drawer opens (serialize.js), so a
+    // backup is just a label file: labels, presets, and the sheet setup.
+    let backupInput;
+    const nothingToExport = $derived(store.labels.length === 0 && store.presets.length === 0);
+
+    function exportAll() {
+        menuOpen = false;
+        const stamp = new Date().toLocaleDateString('en-CA');   // local YYYY-MM-DD
+        downloadBlob(
+            new Blob([JSON.stringify(serializeLabels(), null, 2)], { type: 'application/json' }),
+            `labels-${stamp}.json`,
+        );
+    }
+
+    function importAll() {
+        menuOpen = false;
+        backupInput.click();
+    }
+
+    function onPickBackup(event) {
+        const file = event.target.files[0];
+        event.target.value = '';   // so the same file can be picked again
+        if (!file) { return; }
+        file.text().then((text) => {
+            let data;
+            try { data = JSON.parse(text); }
+            catch (e) { window.alert("That .json file couldn't be read."); return; }
+            const res = openLabelFile(data, {
+                confirmReplace: () => window.confirm('Opening this file will replace your current labels. Continue?'),
+            });
+            if (!res.ok && res.error) { window.alert(res.error); }
+        }).catch(() => window.alert("That file couldn't be read."));
+    }
+
     let scrolled = $state(false);
     function onScroll() { scrolled = window.scrollY > 0; }
 </script>
@@ -79,6 +116,9 @@
                 </button>
                 {#if menuOpen}
                     <div class="absolute right-0 top-[calc(100%+6px)] z-[25] w-max min-w-[12rem] rounded-lg border-2 border-ink bg-paper p-1 shadow-popover" role="menu">
+                        <button type="button" role="menuitem" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08] w-full text-left disabled:opacity-40" disabled={nothingToExport} onclick={exportAll}>Export labels &amp; presets</button>
+                        <button type="button" role="menuitem" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08] w-full text-left" onclick={importAll}>Import labels &amp; presets&hellip;</button>
+                        <div class="my-1 border-t-2 border-ink/15" role="separator"></div>
                         <a role="menuitem" href="/index.html" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Home</a>
                         <a role="menuitem" href="https://github.com/kylephillipsau/warehouse-utilities" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Source code</a>
                         <a role="menuitem" href="/old/labels.html" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Old version (v1)</a>
@@ -103,4 +143,5 @@
     </div>
 
     <input type="file" bind:this={imageInput} accept="image/*" hidden onchange={onPickNewImage} />
+    <input type="file" bind:this={backupInput} accept=".json,application/json" hidden onchange={onPickBackup} />
 </header>
