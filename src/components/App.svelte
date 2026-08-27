@@ -72,8 +72,8 @@
     $effect(() => {
         void store.labels.length;
         store.labels.forEach((l) => {
-            void l.text; void l.image; void l.adjust; void l.fields;
-            if (l.fields) { l.fields.forEach((f) => { void f.value; void f.size; void f.align; void f.bold; void f.type; void f.symbology; void f.hri; }); }
+            void l.text; void l.image; void l.adjust; void l.fields; void l.rules;
+            if (l.fields) { l.fields.forEach((f) => { void f.value; void f.size; void f.width; void f.inline; void f.align; void f.bold; void f.type; void f.symbology; void f.hri; void f.scale; void f.ecLevel; }); }
         });
         void store.presets.length;
         store.presets.forEach((p) => { void p.name; void p.text; void p.image; void p.adjust; void p.fields; });

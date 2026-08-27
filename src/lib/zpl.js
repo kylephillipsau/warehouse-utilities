@@ -6,6 +6,7 @@
 import { resolvePage, tiling, clampSpacing, clampDivisions, clampCopies, clampRotation } from './size.js';
 import { normalizeAdjust } from './adjust.js';
 import { toRows, cellWeight, labelIsEmpty } from './fields.js';
+import { wrapLines, LINE_HEIGHT, PAD_MM } from './textfit.js';
 import { resolveTemplate } from './tokens.js';
 import { encodeBarcode, barcodeLayout, barcodeZplField } from './barcode.js';
 
@@ -26,41 +27,30 @@ function loadImage(src) {
     });
 }
 
-// Wrap text into lines that fit maxW at the current ctx.font
-function wrapLines(ctx, text, maxW) {
-    const words = String(text).split(/\s+/).filter(Boolean);
-    if (words.length === 0) { return ['']; }
-    const lines = [];
-    let cur = '';
-    for (const w of words) {
-        const test = cur ? cur + ' ' + w : w;
-        if (!cur || ctx.measureText(test).width <= maxW) { cur = test; }
-        else { lines.push(cur); cur = w; }
-    }
-    if (cur) { lines.push(cur); }
-    return lines;
-}
-
-// Largest font (binary search) whose wrapped lines fit the box
+// Largest font (binary search) whose wrapped lines fit the box. Wrapping and
+// line height come from textfit.js — the same rules the screen fitter measures
+// with — so both renderers choose the same breaks and the same size for a field.
 function fitText(ctx, text, maxW, maxH, bold = true) {
     let lo = 4, hi = Math.max(6, Math.floor(maxH)), best = 4, bestLines = [String(text)];
-    const lhFactor = 1.15;
     const weight = bold ? 'bold ' : '';
+    const measure = (t) => ctx.measureText(t).width;
     while (lo <= hi) {
         const mid = (lo + hi) >> 1;
         ctx.font = `${weight}${mid}px ${FONT}`;
-        const lines = wrapLines(ctx, text, maxW);
-        const widest = Math.max(...lines.map((l) => ctx.measureText(l).width));
-        const totalH = lines.length * mid * lhFactor;
+        const lines = wrapLines(measure, text, maxW);
+        const widest = Math.max(...lines.map(measure));
+        const totalH = lines.length * mid * LINE_HEIGHT;
         if (widest <= maxW && totalH <= maxH) { best = mid; bestLines = lines; lo = mid + 1; }
         else { hi = mid - 1; }
     }
-    return { fontSize: best, lines: bestLines, lineH: best * lhFactor };
+    return { fontSize: best, lines: bestLines, lineH: best * LINE_HEIGHT };
 }
 
-function drawText(ctx, text, x, y, w, h, align = 'center', bold = true) {
-    const pad = Math.max(2, Math.round(w * 0.03));
-    const { fontSize, lines, lineH } = fitText(ctx, text, w - 2 * pad, h - 2 * pad, bold);
+// The inset mirrors the stylesheet's band padding (`0 1mm`): the same physical
+// distance horizontally, none vertically.
+function drawText(ctx, text, x, y, w, h, align = 'center', bold = true, dpmm = 8) {
+    const pad = Math.max(2, Math.round(dpmm * PAD_MM));
+    const { fontSize, lines, lineH } = fitText(ctx, text, w - 2 * pad, h, bold);
     ctx.fillStyle = '#000';
     ctx.textBaseline = 'middle';
     ctx.font = `${bold ? 'bold ' : ''}${fontSize}px ${FONT}`;
@@ -87,7 +77,7 @@ function drawText(ctx, text, x, y, w, h, align = 'center', bold = true) {
 //
 // The last row and the last cell take the remainder rather than their computed
 // share, so rounding can never leave an unpainted sliver against the border.
-function drawFields(ctx, fields, x, y, w, h, native, rules) {
+function drawFields(ctx, fields, x, y, w, h, native, rules, dpmm) {
     const rows = toRows(fields);
     const total = rows.reduce((a, r) => a + r.weight, 0) || 1;
     // Thinner than the label's own border (1%), matching a ruled grid's look:
@@ -104,9 +94,9 @@ function drawFields(ctx, fields, x, y, w, h, native, rules) {
             const cw = lastCell ? (x + w) - cx : Math.round(w * cellWeight(f) / cellTotal);
             const resolved = resolveTemplate(f.value);
             if (f.type === 'barcode') {
-                drawBarcodeField(ctx, f, resolved, cx, cy, cw, rh, native);
+                drawBarcodeField(ctx, f, resolved, cx, cy, cw, rh, native, dpmm);
             } else if (resolved && resolved.trim()) {
-                drawText(ctx, resolved, cx, cy, cw, rh, f.align, f.bold);
+                drawText(ctx, resolved, cx, cy, cw, rh, f.align, f.bold, dpmm);
             }
             cx += cw;
         });
@@ -136,14 +126,14 @@ function drawFields(ctx, fields, x, y, w, h, native, rules) {
 // scannable): compute its design-space layout, collect a descriptor for buildZpl
 // to emit after the ^GFA, and leave the bar area white in the bitmap. The
 // human-readable value is still rasterized (in our font) under a 1D symbol.
-function drawBarcodeField(ctx, field, value, x, y, w, h, native) {
+function drawBarcodeField(ctx, field, value, x, y, w, h, native, dpmm) {
     const enc = encodeBarcode(value, field.symbology, { ecLevel: field.ecLevel });
     if (!enc || enc.error) { return; }
     const showHri = enc.kind === '1d' && field.hri !== false;
     const hriH = showHri ? Math.max(12, Math.round(h * 0.22)) : 0;
     const layout = barcodeLayout(enc, x, y, w, h - hriH, { align: field.align, scale: field.scale });
     if (native) { native.push({ enc, data: value, symbology: field.symbology, layout, ecLevel: field.ecLevel }); }
-    if (showHri) { drawText(ctx, enc.text, x, y + h - hriH, w, hriH, 'center', false); }
+    if (showHri) { drawText(ctx, enc.text, x, y + h - hriH, w, hriH, 'center', false, dpmm); }
 }
 
 // Replicate the CSS render EXACTLY so print matches the preview: object-fit
@@ -180,7 +170,7 @@ function drawImage(ctx, img, x, y, w, h, adjust) {
 
 // Draw one label segment into (x,y,w,h), optionally with a cut-guide border.
 // `native` collects native-barcode descriptors (design coords) for buildZpl.
-function drawLabel(ctx, label, x, y, w, h, img, showBorder = true, native) {
+function drawLabel(ctx, label, x, y, w, h, img, showBorder = true, native, dpmm) {
     const border = Math.max(2, Math.round(Math.min(w, h) * 0.01));
     const hasFields = label.fields && label.fields.length && !label.image;
     const hasImage = !!label.image && img;
@@ -188,17 +178,17 @@ function drawLabel(ctx, label, x, y, w, h, img, showBorder = true, native) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(x, y, w, h);
     if (hasFields) {
-        drawFields(ctx, label.fields, x, y, w, h, native, label.rules);
+        drawFields(ctx, label.fields, x, y, w, h, native, label.rules, dpmm);
     } else if (hasImage) {
         drawImage(ctx, img, x, y, w, h, label.adjust);
         if (hasText) {
             const bandH = Math.round(h * 0.3);
             ctx.fillStyle = '#fff';
             ctx.fillRect(x, y + h - bandH, w, bandH);
-            drawText(ctx, label.text, x, y + h - bandH, w, bandH);
+            drawText(ctx, label.text, x, y + h - bandH, w, bandH, 'center', true, dpmm);
         }
     } else if (hasText) {
-        drawText(ctx, label.text, x, y, w, h);
+        drawText(ctx, label.text, x, y, w, h, 'center', true, dpmm);
     }
     if (showBorder) {
         ctx.strokeStyle = '#000';
@@ -295,9 +285,9 @@ export async function buildZpl(store, dpi = 203) {
             if (rotated) {
                 ctx.translate(frame.ox, frame.oy);
                 ctx.rotate(Math.PI / 2);
-                drawLabel(ctx, l, 0, 0, labelH, labelW, imgCache.get(l.image), showBorder, native);
+                drawLabel(ctx, l, 0, 0, labelH, labelW, imgCache.get(l.image), showBorder, native, dpmm);
             } else {
-                drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image), showBorder, native);
+                drawLabel(ctx, l, x, y, labelW, labelH, imgCache.get(l.image), showBorder, native, dpmm);
             }
             ctx.restore();
             // Native barcodes are emitted outside the bitmap, so each carries the

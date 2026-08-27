@@ -401,6 +401,14 @@ li.text-container.drag-over {
     font-weight: bold;
     font-size: 12px;
     display: block;
+    /* font-size and line-height are owned by resizeText (textfit.js): it sets
+       both inline, using the same LINE_HEIGHT the ZPL canvas measures with, so
+       screen and print agree on how tall a fitted line is. */
+    /* The preflight's break-word would split a word mid-run once it can't fit a
+       line alone; the canvas never does that (wrapLines in textfit.js), and on
+       a label the right response is a smaller font, not "AIS / LE". Overflow
+       instead, so the fitter detects it and shrinks. */
+    overflow-wrap: normal;
 }
 
 /* Content rendering. An image always fills the whole label; the crop within
@@ -509,6 +517,9 @@ li.text-container.drag-over {
     overflow: hidden;
     min-height: 0;
     min-width: 0;
+    /* Horizontal inset only, paired with PAD_MM in textfit.js — the ZPL canvas
+       insets text by the same physical distance so both renderers fit text to
+       the same box. */
     padding: 0 1mm;
     box-sizing: border-box;
     /* flex-grow / justify-content / text-align / font-weight come from the
