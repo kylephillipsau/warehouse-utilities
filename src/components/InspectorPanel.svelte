@@ -2,13 +2,13 @@
     import { store } from '../lib/store.svelte.js';
     import {
         MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing, clampCopies,
-        MAX_DIVISIONS, MAX_SPACING, MAX_COPIES, MAX_PRINT_WIDTH_MM,
-        resolvePage, resolveLabel, pageFromMedia, exceedsPrintWidth,
+        MAX_DIVISIONS, MAX_SPACING, MAX_COPIES,
+        resolvePage, resolveLabel, resolveContent, pageFromMedia, exceedsPrintWidth,
     } from '../lib/size.js';
     import { ui, closeInspector } from '../lib/ui.svelte.js';
     import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
     import { queryMedia } from '../lib/browserPrint.js';
-    import { OUTPUT_METHODS, getMethod, isThermalMethod, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from '../lib/output.js';
+    import { OUTPUT_METHODS, getMethod, deviceFor, effectivePage, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from '../lib/output.js';
     import { ZPL_DPIS } from '../lib/zpl.js';
     import Drawer from './Drawer.svelte';
     import Select from './Select.svelte';
@@ -36,19 +36,88 @@
         { value: 'custom', label: 'Custom…' },
     ];
     const unitOptions = [{ value: 'mm', label: 'mm' }, { value: 'in', label: 'in' }];
+    // Named for the result, not the mechanism: "None" answers a question about
+    // rotation, and the row asks about artwork. The glyphs carry the rest.
     const MEDIA_ORIENTATIONS = [{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }];
-    const ARTWORK_ROTATIONS = [{ value: 0, label: 'None' }, { value: 90, label: '90°' }];
+    const ARTWORK_ROTATIONS = [{ value: 0, label: 'Upright' }, { value: 90, label: 'Sideways' }];
 
     function onCopies(event) { store.output.copies = clampCopies(event.target.value); }
     function onDivisions(event) { store.divisions = clampDivisions(event.target.value); }
     function onMargin(event) { store.margin = clampSpacing(event.target.value); }
     function onGap(event) { store.gap = clampSpacing(event.target.value); }
 
+    // Both rules below read a named capability rather than a device category
+    // (see output.js). Every measurement here reads the EFFECTIVE page, and the
+    // media control shows that same value, which is why it can be disabled
+    // without lying about what will print.
+    const device = $derived(deviceFor(store.output.method));
+    const effPage = $derived(effectivePage(store));
+
     // Live readout of the computed geometry (always mm — the canonical unit).
-    // resolvePage has media orientation applied (it IS the page); artwork
-    // rotation is absent from both, since it changes neither page nor label.
-    const pageDims = $derived(resolvePage(store.page));
-    const labelDims = $derived(resolveLabel(store.page, store.divisions, store.margin, store.gap));
+    // Artwork rotation changes neither the page nor the label, only the surface
+    // the design is laid out on, which is what contentDims reports.
+    const pageDims = $derived(resolvePage(effPage));
+    const labelDims = $derived(resolveLabel(effPage, store.divisions, store.margin, store.gap));
+    const contentDims = $derived(resolveContent(effPage, store.divisions, store.margin, store.gap, store.rotation));
+
+    // Resolved for real rather than drawn as a generic icon: a preview has to be
+    // this stock at this orientation.
+    // Why the media row is off, in the panel rather than in a title attribute.
+    // The second wording appears only when the stored and shown values differ.
+    const mediaNote = $derived(
+        device.mediaTurns ? null
+            : store.page.orientation === 'landscape'
+                ? 'Roll stock feeds one way. Landscape returns with sheet output.'
+                : 'Roll stock feeds one way. Only sheet media turns.',
+    );
+
+    const mediaShapes = $derived({
+        portrait: resolvePage({ ...store.page, orientation: 'portrait' }),
+        landscape: resolvePage({ ...store.page, orientation: 'landscape' }),
+    });
+
+    // ---- Option glyphs ----
+    // Every glyph is a box at the option's real proportion plus interior
+    // strokes, so one snippet draws both rows. The aspect is clamped for DRAWING
+    // only, since flat stock (a 5-up 4×6 label is 100 × 30) collapses to a line
+    // at 19px; the exact numbers are in the readout below. Artwork clamps harder
+    // because within that row both options are the same shape, so proportion is
+    // not what distinguishes them and the bars need somewhere to live.
+    const SPAN = 18;   // longest edge, centred in a 24 × 24 viewBox
+    function glyphBox(w, h, max) {
+        const a = Math.min(max, Math.max(1 / max, w / h));
+        const b = a >= 1 ? { w: SPAN, h: SPAN / a } : { w: SPAN * a, h: SPAN };
+        return { ...b, x: (24 - b.w) / 2, y: (24 - b.h) / 2 };
+    }
+
+    // The media's strokes are the cuts between labels, which is what stops a
+    // bare rectangle reading as a single label. Capped at four so a 50-up page
+    // stays a picture rather than a hatch.
+    function pageGlyph(dims, divisions) {
+        const b = glyphBox(dims.width, dims.height, 2.5);
+        const n = Math.min(clampDivisions(divisions), 4);
+        return { b, lines: Array.from({ length: n - 1 }, (_, i) => {
+            const y = b.y + (b.h * (i + 1)) / n;
+            return { x1: b.x, y1: y, x2: b.x + b.w, y2: y, w: 1 };
+        }) };
+    }
+
+    // The artwork's are lines of text, running along the axis it reads on. Bars
+    // rather than a letterform because at 19px a rotated "A" is a smudge. Two in
+    // a shallow box, three where there is room, so they never merge into a block.
+    function artworkGlyph(dims, turned) {
+        const b = glyphBox(dims.width, dims.height, 1.6);
+        const len = turned ? b.h : b.w;     // the axis a bar runs along
+        const span = turned ? b.w : b.h;    // the axis they are spaced along
+        const inset = Math.max(1.2, len * 0.16);
+        const count = span >= 12 ? 3 : 2;
+        return { b, lines: Array.from({ length: count }, (_, i) => {
+            const p = (span * (i + 1)) / (count + 1);
+            return turned
+                ? { x1: b.x + p, y1: b.y + inset, x2: b.x + p, y2: b.y + len - inset, w: 1.6, cap: 'round' }
+                : { x1: b.x + inset, y1: b.y + p, x2: b.x + len - inset, y2: b.y + p, w: 1.6, cap: 'round' };
+        }) };
+    }
 
     // A cleared number input binds to null, not '' — so test for "blank", and do
     // it in two places for two different reasons.
@@ -77,12 +146,10 @@
     const method = $derived(getMethod(store.output.method));
     const methodOptions = OUTPUT_METHODS.map((m) => ({ value: m.id, label: m.label }));
 
-    // The printhead width is fixed hardware: media wider than it gets clipped, and
-    // no rotation can fix that (turning the artwork does not widen the head).
-    // Only warn for thermal output — an A4 sheet is legitimately 210 mm wide.
-    // Also gates the media-orientation control (see isThermalMethod / App.svelte).
-    const thermal = $derived(isThermalMethod(store.output.method));
-    const tooWide = $derived(thermal && exceedsPrintWidth(store.page));
+    // A fixed head clips media wider than itself and no rotation can fix that.
+    // An output with no head has no limit, which is how an A4 sheet stays a
+    // legitimate 210 mm wide.
+    const tooWide = $derived(exceedsPrintWidth(effPage, device.maxWidthMm));
     const dpiOptions = ZPL_DPIS.map((d) => ({ value: d.value, label: d.label }));
     const saveFormatOptions = [
         { value: 'json', label: 'Label file (.json)' },
@@ -140,6 +207,16 @@
     }
 </script>
 
+<!-- Stroke is currentColor, so a selected option's glyph inverts with its label. -->
+{#snippet glyph({ b, lines })}
+    <svg class="size-[1.3em] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+        <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="1.5" stroke-width="1.9" />
+        {#each lines as l}
+            <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke-width={l.w} stroke-linecap={l.cap} />
+        {/each}
+    </svg>
+{/snippet}
+
 <!-- Shown wherever Browser Print fails to connect: where to get it + how to set
      it up. Browser Print is a small Zebra helper app that runs a local service
      this page talks to, so labels print at exact size. -->
@@ -180,38 +257,41 @@
             {/if}
             {#if tooWide}
                 <p class="m-0 mt-1 text-[0.78rem] leading-[1.45] font-bold text-orange" role="alert">
-                    ⚠ {pageDims.width} mm is wider than a 4-inch printhead ({MAX_PRINT_WIDTH_MM} mm). The printer will clip the right edge. Check the width is across the head, not the feed.
+                    ⚠ {pageDims.width} mm is wider than the {device.maxWidthMm} mm printhead. The right edge won't print. Check the width is across the head, not the feed.
                 </p>
             {/if}
         </div>
 
-        <!-- Media and artwork sit on two rows of ONE group, adjacent on purpose:
-             showing the pair is what teaches the difference, and it does the job
-             in less room than the paragraphs it replaces. Turning the MEDIA
-             changes the page; turning the ARTWORK never does. The size readout
-             below already states both results, so neither row explains itself —
-             the disabled media row carries its reason in a title instead, which
-             is where a "why is this greyed out" answer belongs. -->
+        <!-- Two rows of ONE group, each option previewing its own result.
+             Adjacency alone only says the two are related; the glyphs say how
+             they differ, since the media pair changes shape between its options
+             and the artwork pair does not. -->
         <div class="control-group">
             <span class="group-label">Orientation</span>
             <div class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
                 <span id="orient-media-label" class="text-[0.8rem] text-ink/70">Media</span>
-                <div class="segmented" role="group" aria-labelledby="orient-media-label"
-                     title={thermal ? 'Label stock feeds one way because the printhead width is fixed. Switch output to Browser / PDF to turn sheet media.' : null}>
+                <!-- Bound to the EFFECTIVE orientation, not the stored one, so a
+                     disabled row still reports what will print. -->
+                <div class="segmented segmented-glyph" role="group" aria-labelledby="orient-media-label">
                     {#each MEDIA_ORIENTATIONS as opt}
-                        <input type="radio" id={`media-${opt.value}`} name="media-orientation" value={opt.value} disabled={thermal} bind:group={store.page.orientation} />
-                        <label for={`media-${opt.value}`}>{opt.label}</label>
+                        <input type="radio" id={`media-${opt.value}`} name="media-orientation" value={opt.value}
+                               disabled={!device.mediaTurns} checked={effPage.orientation === opt.value}
+                               onchange={() => (store.page.orientation = opt.value)} />
+                        <label for={`media-${opt.value}`}>{@render glyph(pageGlyph(mediaShapes[opt.value], store.divisions))}{opt.label}</label>
                     {/each}
                 </div>
 
                 <span id="orient-art-label" class="text-[0.8rem] text-ink/70">Artwork</span>
-                <div class="segmented" role="group" aria-labelledby="orient-art-label">
+                <div class="segmented segmented-glyph" role="group" aria-labelledby="orient-art-label">
                     {#each ARTWORK_ROTATIONS as opt}
                         <input type="radio" id={`rotate-${opt.value}`} name="artwork-rotation" value={opt.value} bind:group={store.rotation} />
-                        <label for={`rotate-${opt.value}`}>{opt.label}</label>
+                        <label for={`rotate-${opt.value}`}>{@render glyph(artworkGlyph(labelDims, opt.value === 90))}{opt.label}</label>
                     {/each}
                 </div>
             </div>
+            {#if mediaNote}
+                <p class="m-0 text-[0.75rem] leading-[1.45] text-ink/60">{mediaNote}</p>
+            {/if}
         </div>
 
         <div class="flex flex-wrap gap-x-5 gap-y-3">
@@ -244,8 +324,13 @@
         </label>
 
         <div id="size-readout" class="rounded-md border-2 border-ink bg-highlight px-3 py-2 text-[0.8rem] leading-[1.5] tabular-nums" role="status" aria-live="polite">
-            Each label = <strong>{labelDims.width} × {labelDims.height} mm</strong>
-            {#if store.rotation === 90}<span class="text-ink/70">, artwork turned 90°</span>{/if}<br />
+            Each label <strong>{labelDims.width} × {labelDims.height} mm</strong><br />
+            <!-- At rotation 90 the design is laid out on the label with its
+                 sides swapped, which is the number that answers "does my text
+                 fit". It was the one dimension the panel never showed. -->
+            {#if store.rotation === 90}
+                Artwork area <strong>{contentDims.width} × {contentDims.height} mm</strong> <span class="text-ink/70">(turned)</span><br />
+            {/if}
             Media {pageDims.width} × {pageDims.height} mm · <strong>{store.divisions} up</strong>
         </div>
     </section>

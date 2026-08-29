@@ -6,6 +6,7 @@
     import { ui, closeFields } from '../lib/ui.svelte.js';
     import { store, addField, removeField, moveField, patchField, setRules } from '../lib/store.svelte.js';
     import { resolveContent } from '../lib/size.js';
+    import { effectivePage } from '../lib/output.js';
     import { SIZE_OPTIONS, ALIGN_OPTIONS } from '../lib/fields.js';
     import { SYMBOLOGY_OPTIONS, QR_EC_OPTIONS, SYMBOLOGY_META, validate } from '../lib/barcode.js';
     import { TOKEN_PRESETS, resolveTemplate } from '../lib/tokens.js';
@@ -55,7 +56,7 @@
         if (id === lastId) { return; }
         lastId = id;
         if (id == null) { return; }
-        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.rotation);
+        const c = resolveContent(effectivePage(store), store.divisions, store.margin, store.gap, store.rotation);
         const aspect = c.width && c.height ? c.width / c.height : 100 / 40;
         const avail = (window.innerWidth || 360) - 32 - 40;
         const maxW = Math.min(360, avail), maxH = 220;

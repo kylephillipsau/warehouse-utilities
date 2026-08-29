@@ -4,6 +4,7 @@
     import { DEFAULT_ADJUST, normalizeAdjust, adjustStyle, zoomAtPoint, FIT_OPTIONS, ALIGN_CELLS, ZOOM_MIN, ZOOM_MAX } from '../lib/adjust.js';
     import { fileToLabelImage } from '../lib/image.js';
     import { resolveContent } from '../lib/size.js';
+    import { effectivePage } from '../lib/output.js';
     import { dialogSync } from '../actions/dialogSync.js';
     import LabelCanvas from './LabelCanvas.svelte';
 
@@ -30,7 +31,7 @@
         // The CONTENT box's aspect, not the label's: when the artwork is turned, the image is
         // fitted to the label's swapped dimensions and then rotated into place, so
         // cropping against the label's own aspect would place it wrongly.
-        const c = resolveContent(store.page, store.divisions, store.margin, store.gap, store.rotation);
+        const c = resolveContent(effectivePage(store), store.divisions, store.margin, store.gap, store.rotation);
         const aspect = c.width && c.height ? c.width / c.height : 100 / 22;
         // Never exceed the dialog's inner width on small screens: dialog is
         // min(40rem, 100vw - 2rem) with 1.25rem padding each side.

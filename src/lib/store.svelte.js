@@ -12,7 +12,8 @@ export const store = $state({
     presets: [],
     // The physical media. `orientation` is a real page dimension — it swaps the
     // media's width and length and @page follows. Only meaningful for sheet
-    // stock; pinned to portrait for thermal, whose head width is fixed.
+    // stock: an output whose device cannot turn its media resolves this back to
+    // native when it draws, without editing what is stored here.
     page: { preset: DEFAULT_PAGE.preset, width: '', height: '', unit: 'mm', orientation: DEFAULT_PAGE.orientation },
     divisions: DEFAULT_DIVISIONS,
     margin: 0,   // page edge margin (mm) around the tiled labels

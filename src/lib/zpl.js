@@ -228,7 +228,10 @@ function canvasToGFA(canvas) {
 export async function buildZpl(store, dpi = 203) {
     // Zebra "203 dpi" is really 203.2 = exactly 8 dots/mm; 300 dpi = 300/25.4.
     const dpmm = dpi === 203 ? 8 : dpi / MM_PER_IN;
-    const media = resolvePage(store.page);                 // the stock, media orientation applied
+    // ZPL only ever drives a fixed head, so the stock resolves at its native
+    // orientation whatever a sheet design said. Stated locally rather than via
+    // output.effectivePage, which imports this module.
+    const media = resolvePage({ ...store.page, orientation: 'portrait' });
     const rotated = clampRotation(store.rotation) === 90;  // ARTWORK rotation only (^FW)
     const showBorder = store.showBorders !== false;
     const n = clampDivisions(store.divisions);

@@ -10,9 +10,9 @@
 //   MEDIA ORIENTATION (page.orientation) is a real page dimension: it swaps the
 //   media's width and length, and @page and ^PW/^LL follow. It is only ever a
 //   choice for SHEET stock (A4/Letter on a normal printer), where feeding a
-//   sheet the long way round is ordinary. A label printer's head width is fixed
-//   hardware, so thermal stock has exactly ONE way to feed and callers pin this
-//   to portrait for thermal output — see the invariant in App.svelte.
+//   sheet the long way round is ordinary. A roll has one feed direction, so an
+//   output whose device cannot turn its media resolves this back to native at
+//   read time — see output.effectivePage.
 //
 //   ARTWORK ROTATION (store.rotation, 0 or 90) is a property of the ARTWORK,
 //   exactly as ^FW/field rotation is in ZPL. 0 lays the content out on the label
@@ -50,19 +50,16 @@ export const DEFAULT_ROTATION = 0;
 export const clampRotation = (v) => (parseInt(v, 10) === 90 ? 90 : 0);
 
 // Media orientation is a real choice only for sheet stock; whether the current
-// output is thermal is output.isThermalMethod's job, not this module's.
+// output can turn its media is the device's business (output.deviceFor), not
+// this module's.
 export const clampMediaOrientation = (v) => (v === 'landscape' ? 'landscape' : 'portrait');
 
-// Max printable width across a 4-inch/203-dpi thermal head (~832 dots). Media
-// wider than this is clipped by the printer — there is no way to fit it, since
-// the head width is fixed hardware. Only meaningful for thermal output (an A4
-// sheet is legitimately 210 mm), so callers gate the warning on the method.
-export const MAX_PRINT_WIDTH_MM = 104;
-
-// True when the media is too wide for a 4-inch thermal head. Length is NOT
-// checked: the feed direction is unbounded in the same way ^LL is.
-export function exceedsPrintWidth(page) {
-    return resolvePage(page).width > MAX_PRINT_WIDTH_MM;
+// True when the media is wider than the device's print head, which clips it.
+// `maxWidthMm` is null for anything without a head, where no width is too wide
+// (an A4 sheet is legitimately 210 mm). Length is NOT checked: the feed is
+// unbounded, as ^LL is. The limit is passed in because it belongs to the printer.
+export function exceedsPrintWidth(page, maxWidthMm) {
+    return maxWidthMm != null && resolvePage(page).width > maxWidthMm;
 }
 
 const round = (n) => Math.round(n * 1000) / 1000;
@@ -104,9 +101,9 @@ export function clampSpacing(v) {
 //
 // MEDIA orientation is applied here, because it genuinely is a page dimension:
 // a landscape A4 sheet is 297 × 210, and @page must say so. ARTWORK rotation is
-// deliberately absent — it never changes the media (see resolveContent). For
-// thermal output the caller pins orientation to portrait, so a fixed-width head
-// can never be handed a page wider than itself.
+// deliberately absent — it never changes the media (see resolveContent). The
+// caller passes the EFFECTIVE page (output.effectivePage), so a device that
+// cannot turn its media is never handed a page turned the long way round.
 export function resolvePage(page) {
     let native;
     if (page.preset === 'custom') {

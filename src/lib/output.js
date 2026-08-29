@@ -7,9 +7,10 @@
 //
 // To add a backend, e.g. a Brother/Dymo:
 //   1. write its client lib (like browserPrint.js) and a runBrother(ctx) here,
-//   2. push { id:'brother', label:'…', exact:…, needsPrinter:…, controls:'brother',
+//   2. push { id:'brother', label:'…', device:…, controls:'brother',
 //      actionLabel:'…', run: runBrother } to OUTPUT_METHODS,
 //   3. if controls:'brother', add that cluster in InspectorPanel's Output section.
+// `device` is the load-bearing part of step 2: every physical rule reads it.
 import { buildZpl } from './zpl.js';
 import { serializeLabels, exportTextLines } from './serialize.js';
 import { printTo, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from './browserPrint.js';
@@ -78,16 +79,29 @@ function runSaveFile({ store, saveFormat }) {
     return { ok: true, tone: 'ok', message: 'Saved labels.json.' };
 }
 
-// The registry. `controls` names which control cluster the Inspector renders;
-// `note`/`noteTone` drive the contextual line under the controls.
+// What the DEVICE physically cannot do: `maxWidthMm` is the fixed print head
+// (null = no head, so no width is too wide), `mediaTurns` is whether the stock
+// can be fed the other way round (false for a roll). Declared rather than
+// inferred, because a category test like "is this thermal" has to be kept in
+// step by hand with every backend added — and reading it off `controls`, a field
+// about which widgets to draw, is how a new fixed-head printer stops being one.
+//
+// Columns are deliberately NOT a capability: a column is (width − gaps) / cols
+// and the width is already bounded, so tiling cannot exceed the head however it
+// divides, and 2-across die-cut roll stock exists.
+const HEAD_4IN = { maxWidthMm: 104, mediaTurns: false };    // 4-inch thermal head, roll stock
+const NO_LIMIT = { maxWidthMm: null, mediaTurns: true };    // ordinary stock on a sheet printer
+
+// The registry. `controls` names which control cluster the Inspector renders,
+// `note`/`noteTone` the contextual line under them, `device` the hardware.
 export const OUTPUT_METHODS = [
-    { id: 'zebra',   label: 'Zebra Browser Print', exact: true,  needsPrinter: true,  controls: 'zebra',      actionLabel: 'Print to Zebra', busyLabel: 'Printing…',    run: runZebra,
+    { id: 'zebra',   label: 'Zebra Browser Print', device: HEAD_4IN, controls: 'zebra',       actionLabel: 'Print to Zebra', busyLabel: 'Printing…',   run: runZebra,
       note: 'Prints at exact physical size straight to the Zebra.', noteTone: 'ok' },
-    { id: 'zpl',     label: 'Download ZPL file',   exact: true,  needsPrinter: false, controls: 'zebraDpi',   actionLabel: 'Download ZPL',   busyLabel: 'Generating…',  run: runZpl,
+    { id: 'zpl',     label: 'Download ZPL file',   device: HEAD_4IN, controls: 'zebraDpi',    actionLabel: 'Download ZPL',   busyLabel: 'Generating…', run: runZpl,
       note: 'Exact-size .zpl. Send it raw to the printer, either a "Generic / Text Only" queue or the printer share.', noteTone: 'ok' },
-    { id: 'browser', label: 'Browser / PDF print', exact: false, needsPrinter: false, controls: 'browserNote', actionLabel: 'Print',         busyLabel: null,           run: runBrowser,
+    { id: 'browser', label: 'Browser / PDF print', device: NO_LIMIT, controls: 'browserNote', actionLabel: 'Print',          busyLabel: null,          run: runBrowser,
       note: 'Browser print can mis-scale on thermal printers (Chrome renders at ~300 dpi). Set Scale 100% and Margins None. For guaranteed exact size, use Zebra or ZPL.', noteTone: 'warn' },
-    { id: 'file',    label: 'Save label file',     exact: true,  needsPrinter: false, controls: 'saveFormat', actionLabel: 'Save file',      busyLabel: null,           run: runSaveFile,
+    { id: 'file',    label: 'Save label file',     device: NO_LIMIT, controls: 'saveFormat',  actionLabel: 'Save file',      busyLabel: null,          run: runSaveFile,
       note: 'Saves your labels (with images) so you can re-open or share them later.', noteTone: 'muted' },
 ];
 
@@ -97,11 +111,16 @@ export function getMethod(id) {
 
 export const isMethodId = (id) => OUTPUT_METHODS.some((m) => m.id === id);
 
-// Does this method drive a thermal label printer? The one place that question is
-// answered, because two rules depend on it: the too-wide warning (a fixed head
-// clips; an A4 sheet is legitimately 210 mm) and media orientation (thermal
-// stock has one way to feed, so orientation is not a choice — see App.svelte).
-export function isThermalMethod(id) {
-    const controls = getMethod(id).controls;
-    return controls === 'zebra' || controls === 'zebraDpi';
+export const deviceFor = (id) => getMethod(id).device;
+
+// The page as the current output will actually render it. A roll has one feed
+// direction, so a landscape SHEET design must not follow the user onto a label
+// printer and emit a ^PW wider than the head. Resolved at read time rather than
+// written back, so the setting is still there when they switch away; every
+// surface reads this, so screen, @page and ZPL cannot disagree.
+export function effectivePage(store) {
+    if (!deviceFor(store.output.method).mediaTurns && store.page.orientation === 'landscape') {
+        return { ...store.page, orientation: 'portrait' };
+    }
+    return store.page;
 }
