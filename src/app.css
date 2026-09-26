@@ -107,6 +107,14 @@ body {
     .segmented-glyph label {
         @apply gap-[0.4rem] px-[0.55rem] text-[0.85rem];
     }
+    /* Options that preview themselves with a picture of the result: equal
+       columns across the panel, the picture above its word. */
+    .segmented-shape {
+        @apply grid w-full grid-cols-2;
+    }
+    .segmented-shape label {
+        @apply flex-col justify-center gap-1 px-2 py-2 text-[0.85rem];
+    }
     .segmented label:not(:last-child) {
         @apply border-r-2 border-ink;
     }
@@ -631,6 +639,52 @@ li.text-container.drag-over {
     background: rgba(255, 255, 255, 0.82);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+}
+
+/* A folded group in the setup panel. The summary is a flex row, which drops
+   the native marker, so it draws its own chevron that turns when open. */
+.spacing-group summary::-webkit-details-marker {
+    display: none;
+}
+
+.spacing-group summary::before {
+    content: '\25B8';
+    font-size: 0.8rem;
+    transition: transform 0.12s ease;
+}
+
+.spacing-group[open] summary::before {
+    transform: rotate(90deg);
+}
+
+/* A label in miniature (LabelThumb). The paper is the scaled footprint; the
+   art inside is the label at true size, scaled from its top-left corner. Label
+   ink is black on white whatever the option around it is coloured, and the edge
+   is drawn in the option's own colour, unscaled, so it reads at any size. */
+.label-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.label-thumb-paper {
+    position: relative;
+    overflow: hidden;
+    background: white;
+    color: black;
+    text-align: center;
+    box-shadow: 0 0 0 1.5px currentColor;
+}
+
+.segmented input:checked + label .label-thumb-paper {
+    box-shadow: 0 0 0 2px var(--color-paper);
+}
+
+.label-thumb-art {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
 }
 
 /* Empty-label placeholder shown by the always-present editable text region */

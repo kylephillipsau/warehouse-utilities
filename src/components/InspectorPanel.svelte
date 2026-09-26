@@ -3,15 +3,17 @@
     import {
         MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing, clampCopies,
         MAX_DIVISIONS, MAX_SPACING, MAX_COPIES,
-        resolvePage, resolveLabel, resolveContent, pageFromMedia, exceedsPrintWidth,
+        resolvePage, resolveContent, pageFromMedia, exceedsPrintWidth,
     } from '../lib/size.js';
     import { ui, closeInspector } from '../lib/ui.svelte.js';
     import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
     import { queryMedia } from '../lib/browserPrint.js';
     import { OUTPUT_METHODS, getMethod, deviceFor, effectivePage, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from '../lib/output.js';
     import { ZPL_DPIS } from '../lib/zpl.js';
+    import { resolveTemplate } from '../lib/tokens.js';
     import Drawer from './Drawer.svelte';
     import Select from './Select.svelte';
+    import LabelThumb from './LabelThumb.svelte';
 
     // The inspector is a persistent right column on desktop and a slide-in sheet
     // on mobile. matchMedia decides which; Drawer's `persistent` handles the rest.
@@ -36,10 +38,7 @@
         { value: 'custom', label: 'Custom…' },
     ];
     const unitOptions = [{ value: 'mm', label: 'mm' }, { value: 'in', label: 'in' }];
-    // Named for the result, not the mechanism: "None" answers a question about
-    // rotation, and the row asks about artwork. The glyphs carry the rest.
-    const MEDIA_ORIENTATIONS = [{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }];
-    const ARTWORK_ROTATIONS = [{ value: 0, label: 'Upright' }, { value: 90, label: 'Sideways' }];
+    const PAGE_ORIENTATIONS = [{ value: 'portrait', label: 'Portrait' }, { value: 'landscape', label: 'Landscape' }];
 
     function onCopies(event) { store.output.copies = clampCopies(event.target.value); }
     function onDivisions(event) { store.divisions = clampDivisions(event.target.value); }
@@ -47,75 +46,71 @@
     function onGap(event) { store.gap = clampSpacing(event.target.value); }
 
     // Both rules below read a named capability rather than a device category
-    // (see output.js). Every measurement here reads the EFFECTIVE page, and the
-    // media control shows that same value, which is why it can be disabled
-    // without lying about what will print.
+    // (see output.js). Every measurement here reads the EFFECTIVE page, so a
+    // landscape sheet stored while a roll printer is selected is measured as
+    // the portrait roll that will actually print, and page orientation is only
+    // offered at all where the device can turn its media.
     const device = $derived(deviceFor(store.output.method));
     const effPage = $derived(effectivePage(store));
 
-    // Live readout of the computed geometry (always mm — the canonical unit).
-    // Artwork rotation changes neither the page nor the label, only the surface
-    // the design is laid out on, which is what contentDims reports.
+    // Live readout of the computed geometry (always mm, the canonical unit).
     const pageDims = $derived(resolvePage(effPage));
-    const labelDims = $derived(resolveLabel(effPage, store.divisions, store.margin, store.gap));
-    const contentDims = $derived(resolveContent(effPage, store.divisions, store.margin, store.gap, store.rotation));
 
-    // Resolved for real rather than drawn as a generic icon: a preview has to be
-    // this stock at this orientation.
-    // Why the media row is off, in the panel rather than in a title attribute.
-    // The second wording appears only when the stored and shown values differ.
-    const mediaNote = $derived(
-        device.mediaTurns ? null
-            : store.page.orientation === 'landscape'
-                ? 'Roll stock feeds one way. Landscape returns with sheet output.'
-                : 'Roll stock feeds one way. Only sheet media turns.',
-    );
+    // Sizes for people, not for the printer: whole millimetres, with one decimal
+    // kept only where a millimetre is a large share of the size.
+    const mm = (n) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
 
-    const mediaShapes = $derived({
+    // ---- Label shape ----
+    // One question: which way does the label read? Each option is the label as
+    // it will be held, so the two differ in SHAPE and the text in both runs
+    // left to right. Underneath it is still artwork rotation (0 or 90, the ^FW
+    // analogue); the media never changes. The options stay in rotation order
+    // rather than sorting by shape, because which rotation reads wide flips with
+    // the number of labels per page and a selected option must not jump sides.
+    const shapeWord = (d) => (d.width > d.height * 1.05 ? 'Wide' : d.height > d.width * 1.05 ? 'Tall' : 'Square');
+    const shapes = $derived.by(() => {
+        const opts = [0, 90].map((rotation) => {
+            const d = resolveContent(effPage, store.divisions, store.margin, store.gap, rotation);
+            return { rotation, dims: d, word: shapeWord(d) };
+        });
+        // Square stock reads the same shape both ways; name the second by what it does.
+        if (opts[0].word === opts[1].word) { opts[1].word = 'Turned'; }
+        return opts;
+    });
+    const currentShape = $derived(shapes.find((o) => o.rotation === store.rotation) || shapes[0]);
+
+    // What the previews show: the first real text on the sheet, so the choice
+    // is between two pictures of the user's own label. A template contributes
+    // its first text field; a sheet with no text yet gets a location code.
+    const sampleText = $derived.by(() => {
+        for (const l of store.labels) {
+            if (l.fields && l.fields.length) {
+                const f = l.fields.find((x) => x.type !== 'barcode' && resolveTemplate(x.value).trim());
+                if (f) { return resolveTemplate(f.value); }
+            } else if (l.text && l.text.trim()) {
+                return l.text;
+            }
+        }
+        return 'A-01-03';
+    });
+
+    // ---- Page orientation glyphs ----
+    // Only offered where the output can turn its media (sheet printing). Each
+    // option draws the page at its real proportion with the cuts between
+    // labels, which is what stops a bare rectangle reading as a single label.
+    const pageShapes = $derived({
         portrait: resolvePage({ ...store.page, orientation: 'portrait' }),
         landscape: resolvePage({ ...store.page, orientation: 'landscape' }),
     });
-
-    // ---- Option glyphs ----
-    // Every glyph is a box at the option's real proportion plus interior
-    // strokes, so one snippet draws both rows. The aspect is clamped for DRAWING
-    // only, since flat stock (a 5-up 4×6 label is 100 × 30) collapses to a line
-    // at 19px; the exact numbers are in the readout below. Artwork clamps harder
-    // because within that row both options are the same shape, so proportion is
-    // not what distinguishes them and the bars need somewhere to live.
     const SPAN = 18;   // longest edge, centred in a 24 × 24 viewBox
-    function glyphBox(w, h, max) {
-        const a = Math.min(max, Math.max(1 / max, w / h));
-        const b = a >= 1 ? { w: SPAN, h: SPAN / a } : { w: SPAN * a, h: SPAN };
-        return { ...b, x: (24 - b.w) / 2, y: (24 - b.h) / 2 };
-    }
-
-    // The media's strokes are the cuts between labels, which is what stops a
-    // bare rectangle reading as a single label. Capped at four so a 50-up page
-    // stays a picture rather than a hatch.
     function pageGlyph(dims, divisions) {
-        const b = glyphBox(dims.width, dims.height, 2.5);
-        const n = Math.min(clampDivisions(divisions), 4);
+        const a = Math.min(2.5, Math.max(1 / 2.5, dims.width / dims.height));
+        const b0 = a >= 1 ? { w: SPAN, h: SPAN / a } : { w: SPAN * a, h: SPAN };
+        const b = { ...b0, x: (24 - b0.w) / 2, y: (24 - b0.h) / 2 };
+        const n = Math.min(clampDivisions(divisions), 4);   // a picture, not a hatch
         return { b, lines: Array.from({ length: n - 1 }, (_, i) => {
             const y = b.y + (b.h * (i + 1)) / n;
-            return { x1: b.x, y1: y, x2: b.x + b.w, y2: y, w: 1 };
-        }) };
-    }
-
-    // The artwork's are lines of text, running along the axis it reads on. Bars
-    // rather than a letterform because at 19px a rotated "A" is a smudge. Two in
-    // a shallow box, three where there is room, so they never merge into a block.
-    function artworkGlyph(dims, turned) {
-        const b = glyphBox(dims.width, dims.height, 1.6);
-        const len = turned ? b.h : b.w;     // the axis a bar runs along
-        const span = turned ? b.w : b.h;    // the axis they are spaced along
-        const inset = Math.max(1.2, len * 0.16);
-        const count = span >= 12 ? 3 : 2;
-        return { b, lines: Array.from({ length: count }, (_, i) => {
-            const p = (span * (i + 1)) / (count + 1);
-            return turned
-                ? { x1: b.x + p, y1: b.y + inset, x2: b.x + p, y2: b.y + len - inset, w: 1.6, cap: 'round' }
-                : { x1: b.x + inset, y1: b.y + p, x2: b.x + len - inset, y2: b.y + p, w: 1.6, cap: 'round' };
+            return { x1: b.x, y1: y, x2: b.x + b.w, y2: y };
         }) };
     }
 
@@ -212,7 +207,7 @@
     <svg class="size-[1.3em] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
         <rect x={b.x} y={b.y} width={b.w} height={b.h} rx="1.5" stroke-width="1.9" />
         {#each lines as l}
-            <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke-width={l.w} stroke-linecap={l.cap} />
+            <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2} stroke-width="1" />
         {/each}
     </svg>
 {/snippet}
@@ -255,6 +250,19 @@
                     <strong>Width</strong> across the print head &times; <strong>length</strong> in the feed direction. A 100 &times; 150 mm roll feeds its 100 mm edge first.
                 </p>
             {/if}
+            <!-- Part of choosing the paper, and only where it is a choice: a roll
+                 feeds one way, so for a label printer there is nothing to show. The
+                 stored value survives there (see output.effectivePage). -->
+            {#if device.mediaTurns}
+                <div class="segmented segmented-glyph mt-1" role="group" aria-label="Page orientation">
+                    {#each PAGE_ORIENTATIONS as opt}
+                        <input type="radio" id={`media-${opt.value}`} name="media-orientation" value={opt.value}
+                               checked={store.page.orientation === opt.value}
+                               onchange={() => (store.page.orientation = opt.value)} />
+                        <label for={`media-${opt.value}`}>{@render glyph(pageGlyph(pageShapes[opt.value], store.divisions))}{opt.label}</label>
+                    {/each}
+                </div>
+            {/if}
             {#if tooWide}
                 <p class="m-0 mt-1 text-[0.78rem] leading-[1.45] font-bold text-orange" role="alert">
                     ⚠ {pageDims.width} mm is wider than the {device.maxWidthMm} mm printhead. The right edge won't print. Check the width is across the head, not the feed.
@@ -262,59 +270,24 @@
             {/if}
         </div>
 
-        <!-- Two rows of ONE group, each option previewing its own result.
-             Adjacency alone only says the two are related; the glyphs say how
-             they differ, since the media pair changes shape between its options
-             and the artwork pair does not. -->
         <div class="control-group">
-            <span class="group-label">Orientation</span>
-            <div class="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
-                <span id="orient-media-label" class="text-[0.8rem] text-ink/70">Media</span>
-                <!-- Bound to the EFFECTIVE orientation, not the stored one, so a
-                     disabled row still reports what will print. -->
-                <div class="segmented segmented-glyph" role="group" aria-labelledby="orient-media-label">
-                    {#each MEDIA_ORIENTATIONS as opt}
-                        <input type="radio" id={`media-${opt.value}`} name="media-orientation" value={opt.value}
-                               disabled={!device.mediaTurns} checked={effPage.orientation === opt.value}
-                               onchange={() => (store.page.orientation = opt.value)} />
-                        <label for={`media-${opt.value}`}>{@render glyph(pageGlyph(mediaShapes[opt.value], store.divisions))}{opt.label}</label>
-                    {/each}
-                </div>
-
-                <span id="orient-art-label" class="text-[0.8rem] text-ink/70">Artwork</span>
-                <div class="segmented segmented-glyph" role="group" aria-labelledby="orient-art-label">
-                    {#each ARTWORK_ROTATIONS as opt}
-                        <input type="radio" id={`rotate-${opt.value}`} name="artwork-rotation" value={opt.value} bind:group={store.rotation} />
-                        <label for={`rotate-${opt.value}`}>{@render glyph(artworkGlyph(labelDims, opt.value === 90))}{opt.label}</label>
-                    {/each}
-                </div>
-            </div>
-            {#if mediaNote}
-                <p class="m-0 text-[0.75rem] leading-[1.45] text-ink/60">{mediaNote}</p>
-            {/if}
+            <label class="group-label" for="divisions">Labels per page</label>
+            <input type="number" id="divisions" class="w-[7ch]" min="1" max={MAX_DIVISIONS} step="1" value={store.divisions} oninput={onDivisions} />
         </div>
 
-        <div class="flex flex-wrap gap-x-5 gap-y-3">
-            <div class="control-group">
-                <span class="group-label">Divide into</span>
-                <div class="group-row">
-                    <input type="number" id="divisions" class="w-[7ch]" min="1" max={MAX_DIVISIONS} step="1" aria-label="Number of labels per page" value={store.divisions} oninput={onDivisions} />
-                    <span class="text-[0.8rem] text-ink/70">up</span>
-                </div>
-            </div>
-            <div class="control-group">
-                <span class="group-label">Margin</span>
-                <div class="group-row">
-                    <input type="number" id="page-margin" class="w-[9ch]" min="0" max={MAX_SPACING} step="0.5" aria-label="Page margin in millimetres" value={store.margin} oninput={onMargin} />
-                    <span class="text-[0.8rem] text-ink/70">mm</span>
-                </div>
-            </div>
-            <div class="control-group">
-                <span class="group-label">Gap</span>
-                <div class="group-row">
-                    <input type="number" id="label-gap" class="w-[9ch]" min="0" max={MAX_SPACING} step="0.5" aria-label="Gap between labels in millimetres" value={store.gap} oninput={onGap} />
-                    <span class="text-[0.8rem] text-ink/70">mm</span>
-                </div>
+        <!-- Each option is a picture of the label as it will be held, drawn from
+             the user's own text, so the choice is "which one looks right". -->
+        <div class="control-group">
+            <span id="label-shape-label" class="group-label">Label shape</span>
+            <div class="segmented segmented-shape" role="radiogroup" aria-labelledby="label-shape-label">
+                {#each shapes as opt (opt.rotation)}
+                    <input type="radio" id={`rotate-${opt.rotation}`} name="artwork-rotation" value={opt.rotation} bind:group={store.rotation}
+                           aria-label={`${opt.word}, ${mm(opt.dims.width)} by ${mm(opt.dims.height)} millimetres`} />
+                    <label for={`rotate-${opt.rotation}`}>
+                        <LabelThumb width={opt.dims.width} height={opt.dims.height} text={sampleText} />
+                        {opt.word}
+                    </label>
+                {/each}
             </div>
         </div>
 
@@ -323,15 +296,35 @@
             <span>Show label borders <span class="text-ink/60">(cut guides)</span></span>
         </label>
 
+        <!-- Rarely changed, so folded away; the summary still says what they are. -->
+        <details class="spacing-group">
+            <summary class="flex cursor-pointer items-center gap-2 text-[0.85rem]">
+                <span class="group-label">Spacing</span>
+                <span class="text-ink/60">{store.margin} mm margin · {store.gap} mm gap</span>
+            </summary>
+            <div class="mt-2 flex flex-wrap gap-x-5 gap-y-3">
+                <div class="control-group">
+                    <label class="text-[0.8rem] text-ink/70" for="page-margin">Margin, page edge</label>
+                    <div class="group-row">
+                        <input type="number" id="page-margin" class="w-[9ch]" min="0" max={MAX_SPACING} step="0.5" value={store.margin} oninput={onMargin} />
+                        <span class="text-[0.8rem] text-ink/70">mm</span>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label class="text-[0.8rem] text-ink/70" for="label-gap">Gap, between labels</label>
+                    <div class="group-row">
+                        <input type="number" id="label-gap" class="w-[9ch]" min="0" max={MAX_SPACING} step="0.5" value={store.gap} oninput={onGap} />
+                        <span class="text-[0.8rem] text-ink/70">mm</span>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <!-- Leads with the label as it will be held (turned when the shape is),
+             then the stock it comes off. -->
         <div id="size-readout" class="rounded-md border-2 border-ink bg-highlight px-3 py-2 text-[0.8rem] leading-[1.5] tabular-nums" role="status" aria-live="polite">
-            Each label <strong>{labelDims.width} × {labelDims.height} mm</strong><br />
-            <!-- At rotation 90 the design is laid out on the label with its
-                 sides swapped, which is the number that answers "does my text
-                 fit". It was the one dimension the panel never showed. -->
-            {#if store.rotation === 90}
-                Artwork area <strong>{contentDims.width} × {contentDims.height} mm</strong> <span class="text-ink/70">(turned)</span><br />
-            {/if}
-            Media {pageDims.width} × {pageDims.height} mm · <strong>{store.divisions} up</strong>
+            Each label <strong>{mm(currentShape.dims.width)} × {mm(currentShape.dims.height)} mm</strong>, {currentShape.word.toLowerCase()}<br />
+            <span class="text-ink/70">{store.divisions} per {mm(pageDims.width)} × {mm(pageDims.height)} mm page</span>
         </div>
     </section>
 
