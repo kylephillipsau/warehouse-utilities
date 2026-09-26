@@ -21,7 +21,7 @@
 
 <div
     id="undo-toast"
-    class="fixed left-1/2 bottom-5 -translate-x-1/2 z-30 flex items-center gap-3
+    class="fixed left-1/2 bottom-5 max-md:bottom-20 -translate-x-1/2 z-30 flex items-center gap-3
            bg-ink text-paper pl-4 pr-3 py-[0.6rem] rounded-lg
            transition-[opacity,transform] duration-150"
     class:opacity-0={!visible}

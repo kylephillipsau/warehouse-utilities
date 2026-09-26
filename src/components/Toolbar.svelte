@@ -91,7 +91,7 @@
     class="sticky top-0 z-10 flex flex-col gap-[0.55rem] bg-paper text-ink border-b-[3px] border-ink px-4 py-[0.55rem] transition-shadow"
     style:box-shadow={scrolled ? 'var(--shadow-popover)' : 'none'}
 >
-    <!-- Row 1: brand + drawer toggles + overflow + mobile inspector toggle -->
+    <!-- Row 1: brand + drawer toggles + overflow -->
     <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-[0.5rem]">
         <h1 id="heading" class="m-0 whitespace-nowrap rounded bg-ink px-[0.8rem] pt-[0.4rem] pb-[0.3rem] text-[0.9rem] font-bold uppercase tracking-[0.12em] text-paper">Label Maker</h1>
 
@@ -105,9 +105,11 @@
                 <span class="btn-label max-md:hidden">Import</span>
             </button>
 
-            <button type="button" id="clear-all" class="btn text-orange" disabled={store.labels.length === 0} onclick={clearAll} title="Clear all labels">
+            <!-- On a phone Clear lives in the ⋯ menu instead: an icon-only bin in
+                 the everyday row is one mistaken tap from wiping the sheet. -->
+            <button type="button" id="clear-all" class="btn text-orange max-md:hidden" disabled={store.labels.length === 0} onclick={clearAll} title="Clear all labels">
                 <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512" aria-hidden="true"><path d="M135.2 17.7L128 32H32C14.3 32 0 46.3 0 64S14.3 96 32 96H416c17.7 0 32-14.3 32-32s-14.3-32-32-32H320l-7.2-14.3C307.4 6.8 296.3 0 284.2 0H163.8c-12.1 0-23.2 6.8-28.6 17.7zM416 128H32L53.2 467c1.6 25.3 22.6 45 47.9 45H346.9c25.3 0 46.3-19.7 47.9-45L416 128z" /></svg>
-                <span class="btn-label max-md:hidden">Clear</span>
+                <span class="btn-label">Clear</span>
             </button>
 
             <div class="relative" bind:this={menuEl}>
@@ -119,6 +121,8 @@
                         <button type="button" role="menuitem" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08] w-full text-left disabled:opacity-40" disabled={nothingToExport} onclick={exportAll}>Export labels &amp; presets</button>
                         <button type="button" role="menuitem" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08] w-full text-left" onclick={importAll}>Import labels &amp; presets&hellip;</button>
                         <div class="my-1 border-t-2 border-ink/15" role="separator"></div>
+                        <button type="button" role="menuitem" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] font-bold text-orange no-underline hover:bg-ink/[0.08] w-full text-left disabled:opacity-40 md:hidden" disabled={store.labels.length === 0} onclick={() => { menuOpen = false; clearAll(); }}>Clear all labels</button>
+                        <div class="my-1 border-t-2 border-ink/15 md:hidden" role="separator"></div>
                         <a role="menuitem" href="/index.html" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Home</a>
                         <a role="menuitem" href="https://github.com/kylephillipsau/warehouse-utilities" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Source code</a>
                         <a role="menuitem" href="/old/labels.html" class="block whitespace-nowrap rounded px-3 py-2 text-[0.9rem] text-ink no-underline hover:bg-ink/[0.08]">Old version (v1)</a>
@@ -126,21 +130,29 @@
                 {/if}
             </div>
 
-            <button type="button" id="inspector-toggle" class="btn btn-primary md:hidden" aria-expanded={ui.inspectorOpen} aria-controls="inspector-panel" onclick={toggleInspector} title="Setup & print">
-                <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M448 192H64C28.65 192 0 220.7 0 256v96c0 17.67 14.33 32 32 32h32v96c0 17.67 14.33 32 32 32h320c17.67 0 32-14.33 32-32v-96h32c17.67 0 32-14.33 32-32V256C512 220.7 483.3 192 448 192zM384 448H128v-96h256V448zM432 296c-13.25 0-24-10.75-24-24c0-13.27 10.75-24 24-24s24 10.73 24 24C456 285.3 445.3 296 432 296zM128 64h229.5L384 90.51V160h64V77.25c0-8.484-3.375-16.62-9.375-22.62l-45.25-45.25C387.4 3.375 379.2 0 370.8 0H96C78.34 0 64 14.33 64 32v128h64V64z" /></svg>
-                <span class="btn-label">Setup &amp; print</span>
-            </button>
         </div>
     </div>
 
-    <!-- Row 2: create bar — a wrapping row: the text input grows to fill the line,
-         the qty + buttons wrap beneath it on narrow screens. -->
-    <div class="flex min-w-0 flex-wrap items-center gap-2">
-        <input type="text" id="labelText" class="min-w-0 flex-[1_1_14rem]" placeholder="New label text" aria-label="Label text" bind:value={text} onkeypress={onEnter} />
-        <input type="number" id="labelQuantity" class="w-[4.5rem] shrink-0" placeholder="Qty" aria-label="Quantity" min="1" max="100" bind:value={quantity} onkeypress={onEnter} />
+    <!-- Row 2: create bar. One line down to phone width: the text input takes
+         whatever the qty and buttons leave, and Add image is icon-only there. -->
+    <div class="flex min-w-0 items-center gap-2">
+        <input type="text" id="labelText" class="min-w-0 flex-1" placeholder="New label text" aria-label="Label text" bind:value={text} onkeypress={onEnter} />
+        <input type="number" id="labelQuantity" class="w-[3.75rem] shrink-0 md:w-[4.5rem]" placeholder="Qty" aria-label="Quantity" min="1" max="100" bind:value={quantity} onkeypress={onEnter} />
         <input type="button" class="btn shrink-0 btn-primary" value="Add" onclick={add} />
-        <input type="button" class="btn shrink-0" id="addImage" value="Add image" onclick={() => imageInput.click()} />
+        <button type="button" class="btn shrink-0" id="addImage" aria-label="Add image" title="Add image" onclick={() => imageInput.click()}>
+            <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M448 80c8.8 0 16 7.2 16 16V415.8l-5-6.5-136-176c-4.5-5.9-11.6-9.3-19-9.3s-14.4 3.4-19 9.3L202 340.7l-30.5-42.7C167 291.7 159.8 288 152 288s-15 3.7-19.5 10.1l-80 112L48 416.3l0-.3V96c0-8.8 7.2-16 16-16H448zM64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H64zm80 192a48 48 0 1 0 0-96 48 48 0 1 0 0 96z" /></svg>
+            <span class="btn-label max-md:hidden">Add image</span>
+        </button>
     </div>
+
+    <!-- Phone only: Setup & print floats at the bottom, within thumb reach and
+         out of the header, which it used to push onto a third row. Hidden, not
+         unmounted, while the panel it opens is showing: the panel returns focus
+         to this same element when it closes. -->
+    <button type="button" id="inspector-toggle" class="btn btn-primary fixed right-4 bottom-4 z-20 px-4 py-[0.7rem] shadow-popover md:hidden" class:hidden={ui.inspectorOpen} aria-expanded={ui.inspectorOpen} aria-controls="inspector-panel" onclick={toggleInspector}>
+        <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M448 192H64C28.65 192 0 220.7 0 256v96c0 17.67 14.33 32 32 32h32v96c0 17.67 14.33 32 32 32h320c17.67 0 32-14.33 32-32v-96h32c17.67 0 32-14.33 32-32V256C512 220.7 483.3 192 448 192zM384 448H128v-96h256V448zM432 296c-13.25 0-24-10.75-24-24c0-13.27 10.75-24 24-24s24 10.73 24 24C456 285.3 445.3 296 432 296zM128 64h229.5L384 90.51V160h64V77.25c0-8.484-3.375-16.62-9.375-22.62l-45.25-45.25C387.4 3.375 379.2 0 370.8 0H96C78.34 0 64 14.33 64 32v128h64V64z" /></svg>
+        <span class="btn-label">Setup &amp; print</span>
+    </button>
 
     <input type="file" bind:this={imageInput} accept="image/*" hidden onchange={onPickNewImage} />
     <input type="file" bind:this={backupInput} accept=".json,application/json" hidden onchange={onPickBackup} />

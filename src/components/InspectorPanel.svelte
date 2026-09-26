@@ -405,6 +405,16 @@
             </div>
         {/if}
 
+    </section>
+
+    <!-- The action and its result, pinned to the bottom of the panel so printing
+         never needs a scroll, however tall the setup above it gets. A direct
+         child of the scroll container, because sticky cannot leave its parent:
+         inside the Output section it would hide whenever that section is below
+         the fold, which is exactly when it is needed. The negative margins take
+         it edge to edge over the panel's padding, and the negative bottom does
+         the same for the sticky edge, which is measured inside that padding. -->
+    <div class="sticky -bottom-4 z-[1] -mx-4 -mb-4 mt-auto flex flex-col gap-2 border-t-2 border-ink/15 bg-paper px-4 py-3">
         <button type="button" id="output-run" class="btn btn-primary w-full" disabled={runState === 'running'} onclick={runOutput}>
             {runState === 'running' ? (method.busyLabel || method.actionLabel) : method.actionLabel}
         </button>
@@ -416,5 +426,5 @@
         {:else if runState === 'error' && runMsg}
             <p class="m-0 text-[0.8rem] font-bold text-orange" role="alert">{runMsg}</p>
         {/if}
-    </section>
+    </div>
 </Drawer>

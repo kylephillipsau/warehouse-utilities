@@ -337,6 +337,13 @@ li.text-container.drag-over {
     overflow: auto;
 }
 
+/* Phone: room under the last sheet for the floating Setup & print button. */
+@media (max-width: 767px) {
+    #labels-section {
+        padding-bottom: 80px;
+    }
+}
+
 /* Sheet highlighted while a preset is dragged over it */
 #labels-section.preset-drop-active {
     outline: 3px dashed var(--color-purple);
@@ -344,32 +351,47 @@ li.text-container.drag-over {
     border-radius: 6px;
 }
 
-/* SCREEN ONLY, at artwork rotation 90. The artwork is turned 90° into each label, which on
+/* SCREEN ONLY. The sheet is laid out at its true size and shown SCALED, by
+   --view-scale (set on #labelList by LabelList, fitted to the work area). A
+   transform does not change layout, so the text fitter still measures the real
+   label box, and the frame carries the scaled footprint so the sheet occupies
+   its space in the scroll area.
+
+   At artwork rotation 90 the artwork is turned 90° into each label, which on
    its own leaves every label sideways to read and to type into — the caret, the
    selection and an image drag all run at right angles to the pointer. So the
-   whole sheet is rotated back by the exact inverse, -90°, and the artwork inside
-   comes out upright while the label and the media keep their true shapes. The
-   two rotations compose to the identity over the artwork, so this is a change of
-   VIEWPOINT only: the document, the @page and the ZPL are untouched, and what is
-   on screen is still the real sheet, seen the way it is worked on rather than
-   the way it feeds. The frame carries the rotated footprint, since a transform
-   alone does not affect layout and the sheet must still occupy its space in the
-   scroll area. Labels then run left to right, which is the feed direction — the
+   whole sheet is also rotated back by the exact inverse, -90°, and the artwork
+   inside comes out upright while the label and the media keep their true
+   shapes. The two rotations compose to the identity over the artwork, so this
+   is a change of VIEWPOINT only: the document, the @page and the ZPL are
+   untouched. Labels then run left to right, which is the feed direction — the
    ::after says so, because a rotated sheet is only readable if it is labelled. */
 @media screen {
-    :root[data-rotation='90'] .page-frame {
+    .page-frame {
+        --frame-w: var(--page-w, 210mm);
+        --frame-h: var(--page-h, 297mm);
         position: relative;
-        width: var(--page-h, 297mm);
-        height: var(--page-w, 210mm);
-        margin: 0 auto 30px;
+        width: calc(var(--frame-w) * var(--view-scale, 1));
+        height: calc(var(--frame-h) * var(--view-scale, 1));
+        margin: 0 auto 16px;
     }
 
-    :root[data-rotation='90'] .page-frame .print-page {
+    .page-frame .print-page {
         position: absolute;
         top: 50%;
         left: 50%;
         margin: 0;
-        transform: translate(-50%, -50%) rotate(-90deg);
+        transform: translate(-50%, -50%) scale(var(--view-scale, 1));
+    }
+
+    :root[data-rotation='90'] .page-frame {
+        --frame-w: var(--page-h, 297mm);
+        --frame-h: var(--page-w, 210mm);
+        margin-bottom: 30px;
+    }
+
+    :root[data-rotation='90'] .page-frame .print-page {
+        transform: translate(-50%, -50%) scale(var(--view-scale, 1)) rotate(-90deg);
     }
 
     :root[data-rotation='90'] .page-frame::after {
@@ -382,6 +404,13 @@ li.text-container.drag-over {
         font-weight: bold;
         letter-spacing: 0.04em;
         color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+    }
+
+    /* The per-label tools are chrome, not artwork: undo the view scale so they
+       stay the same size whatever the sheet is scaled to. */
+    .label-tools {
+        transform: scale(calc(1 / var(--view-scale, 1)));
+        transform-origin: top right;
     }
 }
 
