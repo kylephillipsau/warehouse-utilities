@@ -11,6 +11,7 @@
     import { resolveTemplate } from '../lib/tokens.js';
     import { editableField } from '../actions/editableField.js';
     import { fitText } from '../actions/fitText.js';
+    import { glueHyphens } from '../lib/textfit.js';
     import BarcodeView from './BarcodeView.svelte';
 
     let { label, editable = false } = $props();
@@ -49,7 +50,7 @@
                     }}
                 ></span>
             {:else}
-                <span class="text" use:fitText={`${resolveTemplate(field.value)}|${fitKey}`}>{resolveTemplate(field.value)}</span>
+                <span class="text" use:fitText={`${resolveTemplate(field.value)}|${fitKey}`}>{glueHyphens(resolveTemplate(field.value))}</span>
             {/if}
         </div>
         {/each}

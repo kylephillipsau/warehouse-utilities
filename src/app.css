@@ -477,11 +477,21 @@ li.text-container.drag-over {
     .resize-handle { opacity: 1; }
 }
 
-/* Text-only label: text fills the whole box and auto-fits */
+/* Text-only label: text auto-fits the whole box and sits centred in it, as
+   the ZPL canvas draws it (drawText) and as field bands and captions already
+   sit. Auto margins rather than justify-content: when the text is too big they
+   collapse and the overflow runs off the bottom, where scrollHeight sees it,
+   which is how the fitter knows to shrink. Centring would split it both ways. */
 .label-text-area {
     position: absolute;
     inset: 0;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.label-text-area > .text {
+    margin-block: auto;
 }
 
 /* Multi-field template label: a vertical stack of bands filling the segment.

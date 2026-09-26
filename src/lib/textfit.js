@@ -18,27 +18,33 @@ export const PAD_MM = 1;
 
 // Wrap text into lines no wider than maxW, measured by `measure` (string →
 // width, e.g. bound ctx.measureText). Runs of whitespace collapse to a single
-// space, and a line may break at whitespace or after a hyphen that follows a
-// letter or digit — the break opportunities CSS uses for this app's text, so
-// the canvas breaks exactly where the screen does. A single segment wider than
-// maxW gets its own overflowing line; callers shrink the font instead.
+// space, and a line breaks ONLY at whitespace. A hyphen is not a break: on a
+// warehouse label it sits inside a code (A-01-03, SKU-12345), and a code split
+// across lines reads as two codes. A single word wider than maxW gets its own
+// overflowing line; callers shrink the font instead. The screen is held to the
+// same rule by glueHyphens, since CSS would otherwise break after the hyphen.
 export function wrapLines(measure, text, maxW) {
-    const segments = String(text)
-        .split(/\s+/)
-        .filter(Boolean)
-        .flatMap((word, w) =>
-            word.split(/(?<=\w-)(?=.)/).map((part, p) => ({ part, space: p === 0 && w > 0 })));
-    if (segments.length === 0) { return ['']; }
+    const words = String(text).split(/\s+/).filter(Boolean);
+    if (words.length === 0) { return ['']; }
     const lines = [];
     let cur = '';
-    for (const { part, space } of segments) {
-        const test = cur ? cur + (space ? ' ' : '') + part : part;
+    for (const word of words) {
+        const test = cur ? cur + ' ' + word : word;
         if (!cur || measure(test) <= maxW) { cur = test; }
-        else { lines.push(cur); cur = part; }
+        else { lines.push(cur); cur = word; }
     }
     if (cur) { lines.push(cur); }
     return lines;
 }
+
+// CSS has no property that stops a line breaking after a hyphen, so the screen
+// renders text with a WORD JOINER (U+2060, zero width, prohibits a break on
+// either side) after every hyphen that has a character after it. This is a DISPLAY
+// form only: it is written into the DOM, never into the store, and anything
+// read back out of an edited element goes through unglue first.
+const WORD_JOINER = '⁠';
+export const glueHyphens = (text) => String(text ?? '').replace(/-(?=\S)/g, '-' + WORD_JOINER);
+export const unglue = (text) => String(text ?? '').replaceAll(WORD_JOINER, '');
 
 // Grow an element's font size to the largest that still fits its parent box.
 // Uses a binary search over the size range (O(log n) reflows) — the fit is

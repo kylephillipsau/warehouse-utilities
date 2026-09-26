@@ -5,7 +5,7 @@
 // paths ctx.measureText does.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { wrapLines, LINE_HEIGHT, PAD_MM } from './textfit.js';
+import { wrapLines, glueHyphens, unglue, LINE_HEIGHT, PAD_MM } from './textfit.js';
 
 // One character = one unit of width.
 const measure = (s) => s.length;
@@ -25,15 +25,18 @@ test('breaks at whitespace, greedily filling each line', () => {
     assert.deepEqual(wrapLines(measure, 'PALLET 12 OF 30', 9), ['PALLET 12', 'OF 30']);
 });
 
-test('breaks after an interior hyphen, where CSS breaks too', () => {
-    assert.deepEqual(wrapLines(measure, 'SKU-12345', 8), ['SKU-', '12345']);
-    assert.deepEqual(wrapLines(measure, 'GS1-128', 4), ['GS1-', '128']);
-    assert.deepEqual(wrapLines(measure, 'A-B-C', 2), ['A-', 'B-', 'C']);
+test('never breaks at a hyphen: a code stays whole and overflows instead', () => {
+    // "A-01-" over "03" reads as two codes; the fitter shrinks the font instead.
+    assert.deepEqual(wrapLines(measure, 'SKU-12345', 8), ['SKU-12345']);
+    assert.deepEqual(wrapLines(measure, 'PALLET A-01-03', 7), ['PALLET', 'A-01-03']);
+    assert.deepEqual(wrapLines(measure, 'A-B-C', 2), ['A-B-C']);
 });
 
-test('a leading or trailing hyphen is not a break opportunity', () => {
-    assert.deepEqual(wrapLines(measure, '-5', 1), ['-5']);
-    assert.deepEqual(wrapLines(measure, 'ABC-', 2), ['ABC-']);
+test('the display form glues every hyphen to what follows, and unglues exactly', () => {
+    assert.equal(glueHyphens('A-01-03'), 'A-⁠01-⁠03');
+    assert.equal(glueHyphens('ABC- X -5'), 'ABC- X -⁠5');   // nothing to join before a space or the end
+    assert.equal(glueHyphens(''), '');
+    for (const s of ['A-01-03', 'SKU-12345 OF 3', '--', '- x']) { assert.equal(unglue(glueHyphens(s)), s); }
 });
 
 test('a segment wider than the box gets its own overflowing line', () => {

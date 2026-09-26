@@ -11,6 +11,8 @@
     import { store } from '../lib/store.svelte.js';
     import { normalizeAdjust, zoomAtPoint, ZOOM_MIN, ZOOM_MAX } from '../lib/adjust.js';
     import { fitText } from '../actions/fitText.js';
+    import { editableField } from '../actions/editableField.js';
+    import { glueHyphens } from '../lib/textfit.js';
 
     let {
         image = null,
@@ -155,6 +157,30 @@
         `${text}|${store.page.preset}|${store.page.width}|${store.page.height}|` +
         `${store.divisions}|${store.margin}|${store.gap}|${store.rotation}|${store.page.orientation}|${hasImage ? 1 : 0}`
     );
+
+    // Plain text has no tokens, so its display form is just the text; the
+    // action adds the hyphen joiners and strips them from what is typed. A
+    // fresh object whenever fitKey (which includes the text) changes is what
+    // tells the action to refresh.
+    const identity = (t) => t;
+    const editParams = (key) => ({ value: text, resolve: identity, onInput: (t) => { text = t; }, fitKey: key, caretToEnd: false });
+
+    // A press on the empty area above or below the centred text: edit it, with
+    // the caret at the end, instead of doing nothing.
+    function focusText(event) {
+        if (event.target !== event.currentTarget) { return; }
+        const el = event.currentTarget.querySelector('.text');
+        if (!el) { return; }
+        event.preventDefault();
+        el.focus();
+        const sel = window.getSelection();
+        if (!sel) { return; }
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
 </script>
 
 <div class="label-content">
@@ -178,20 +204,23 @@
         {#if showCaptionBand}
             <div class="label-caption">
                 {#if editable}
-                    <span class="text" role="textbox" aria-label="Caption" aria-multiline="false" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Add caption"></span>
+                    <span class="text" role="textbox" aria-label="Caption" aria-multiline="false" contenteditable="true" use:editableField={editParams(fitKey)} data-placeholder="Add caption"></span>
                 {:else}
-                    <span class="text">{text}</span>
+                    <span class="text" use:fitText={fitKey}>{glueHyphens(text)}</span>
                 {/if}
             </div>
         {/if}
     {:else}
         <!-- One editable region for the whole life of a text label: empty shows
              the placeholder, typing fills it in place. -->
-        <div class="label-text-area">
+        <!-- The text is centred in the box (as the ZPL canvas centres it), so it
+             no longer fills it; a press on the space around it still edits. -->
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div class="label-text-area" onpointerdown={editable ? focusText : null}>
             {#if editable}
-                <span class="text" role="textbox" aria-label="Label text" aria-multiline="false" contenteditable="true" bind:textContent={text} use:fitText={fitKey} data-placeholder="Type a label"></span>
+                <span class="text" role="textbox" aria-label="Label text" aria-multiline="false" contenteditable="true" use:editableField={editParams(fitKey)} data-placeholder="Type a label"></span>
             {:else}
-                <span class="text">{text}</span>
+                <span class="text" use:fitText={fitKey}>{glueHyphens(text)}</span>
             {/if}
         </div>
     {/if}
