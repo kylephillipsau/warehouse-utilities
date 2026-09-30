@@ -13,19 +13,28 @@
     // ---- The shelf ----
     // Every preset is drawn by the real renderer at the size a label has on
     // the current sheet, so a preview is exactly what adding it produces.
-    // The grid follows that shape: a wide label gets the drawer's full width
-    // (where its text is still legible), a squarish one shares a row with one
-    // other, and a tall one with two. Thumbnails never grow taller than
-    // MAX_THUMB_H, so a tall label narrows instead of pushing the list away.
+    // The name goes wherever the label leaves room:
+    //   wide     under it, one per row at the drawer's full width, where the
+    //            label's text is still legible;
+    //   squarish under it, two per row;
+    //   tall     BESIDE it, one per row: a tall label leaves the width free
+    //            and would strand its name under a sliver of paper.
     const content = $derived(resolveContent(effectivePage(store), store.divisions, store.margin, store.gap, store.rotation));
     const aspect = $derived(content.width / content.height);
-    const cols = $derived(aspect >= 1.6 ? 1 : aspect > 0.62 ? 2 : 3);
-    const MAX_THUMB_H = 160;
+    const layout = $derived(aspect <= 0.62 ? 'row' : 'stack');
+    const cols = $derived(layout === 'row' || aspect >= 1.6 ? 1 : 2);
+    const MAX_THUMB_H = 200;   // stacked; a squarish label fills its column
+    const MAX_ROW_THUMB_H = 160;
+    const ROW_THUMB_H = 96;    // a tall label's height in a row
+    const ROW_THUMB_MIN_W = 26;
     const GAP = 14;   // px, matches .preset-shelf's column gap
     let shelfW = $state(0);
     const colW = $derived(Math.max(0, (shelfW - GAP * (cols - 1)) / cols));
-    // The thumbnail box is the label's own footprint within the column.
-    const thumbH = $derived(Math.min(colW / aspect, MAX_THUMB_H));
+    // The thumbnail box is the label's own footprint. In a row it is a fixed
+    // height, grown only as far as keeps a very thin label wide enough to see.
+    const thumbH = $derived(layout === 'row'
+        ? Math.min(MAX_ROW_THUMB_H, Math.max(ROW_THUMB_H, ROW_THUMB_MIN_W / aspect))
+        : Math.min(colW / aspect, MAX_THUMB_H));
     const thumbW = $derived(thumbH * aspect);
 
     // ---- Finding one ----
@@ -114,7 +123,7 @@
             <p class="m-0 text-[0.85rem] text-ink/70">No preset matches “{query.trim()}”.</p>
         {/if}
 
-        <ul id="presets-list" class="preset-shelf" style:--shelf-cols={cols} style:--shelf-gap="{GAP}px" style:--thumb-h="{thumbH}px" bind:clientWidth={shelfW}>
+        <ul id="presets-list" class="preset-shelf" data-layout={layout} style:--shelf-cols={cols} style:--shelf-gap="{GAP}px" style:--thumb-h="{thumbH}px" style:--thumb-w="{thumbW}px" bind:clientWidth={shelfW}>
             {#each shown as preset (preset.id)}
                 <li class="preset" class:preset-added={addedId === preset.id}>
                     {#if editingId === preset.id}
@@ -142,9 +151,13 @@
                         >
                             <span class="preset-face">
                                 <LabelThumb width={content.width} height={content.height} label={preset} boxW={thumbW} boxH={thumbH} />
-                                <span class="preset-added-note" aria-hidden="true">Added to sheet</span>
                             </span>
-                            <span class="preset-name">{preset.name}</span>
+                            <!-- The confirmation takes the name's place for a moment,
+                                 so it fits any shape and nothing moves. -->
+                            <span class="preset-caption">
+                                <span class="preset-name">{preset.name}</span>
+                                <span class="preset-added-note" aria-hidden="true">&#10003; Added to sheet</span>
+                            </span>
                         </button>
                         <span class="preset-menu">
                             <LabelMenu items={menuFor(preset)} />
