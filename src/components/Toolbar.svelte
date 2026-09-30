@@ -92,17 +92,19 @@
     style:box-shadow={scrolled ? 'var(--shadow-popover)' : 'none'}
 >
     <!-- Row 1: brand + drawer toggles + overflow -->
-    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-[0.5rem]">
-        <h1 id="heading" class="m-0 whitespace-nowrap rounded bg-ink px-[0.8rem] pt-[0.4rem] pb-[0.3rem] text-[0.9rem] font-bold uppercase tracking-[0.12em] text-paper">Label Maker</h1>
+    <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-[0.5rem] max-md:gap-x-3">
+        <h1 id="heading" class="m-0 whitespace-nowrap rounded bg-ink px-[0.8rem] pt-[0.4rem] pb-[0.3rem] text-[0.9rem] font-bold uppercase tracking-[0.12em] text-paper max-md:px-[0.6rem] max-md:text-[0.78rem] max-md:tracking-[0.08em]">Label Maker</h1>
 
+        <!-- Words, not icons, on a phone: a bare star and an arrow had to be
+             guessed at, and the arrow read as upload as easily as import. -->
         <div class="flex flex-wrap items-center gap-2">
-            <button id="presets-button" class="btn" class:btn-active={ui.presetsOpen} aria-pressed={ui.presetsOpen} onclick={togglePresets} title="Preset labels">
-                <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" aria-hidden="true"><path d="M316.9 18C311.6 7 300.4 0 288.1 0s-23.6 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L470.2 329 574.3 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L413 150.3 316.9 18z" /></svg>
-                <span class="btn-label max-md:hidden">Presets</span>
+            <button id="presets-button" class="btn max-md:px-[0.7rem]" class:btn-active={ui.presetsOpen} aria-pressed={ui.presetsOpen} onclick={togglePresets} title="Preset labels">
+                <svg class="size-[1.05em] shrink-0 fill-current max-md:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512" aria-hidden="true"><path d="M316.9 18C311.6 7 300.4 0 288.1 0s-23.6 7-28.8 18L195 150.3 51.4 171.5c-12 1.8-22 10.2-25.7 21.7s-.7 24.2 7.9 32.7L137.8 329 113.2 474.7c-2 12 3 24.2 12.9 31.3s23 8 33.8 2.3l128.3-68.5 128.3 68.5c10.8 5.7 23.9 4.9 33.8-2.3s14.9-19.3 12.9-31.3L470.2 329 574.3 225.9c8.6-8.5 11.7-21.2 7.9-32.7s-13.7-19.9-25.7-21.7L413 150.3 316.9 18z" /></svg>
+                <span class="btn-label">Presets</span>
             </button>
-            <button id="import-button" class="btn" class:btn-active={ui.importOpen} aria-pressed={ui.importOpen} onclick={toggleImport} title="Import a list or label file">
-                <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V274.7l-73.4-73.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l128 128c12.5 12.5 32.8 12.5 45.3 0l128-128c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L288 274.7V32zM64 352c-35.3 0-64 28.7-64 64v32c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V416c0-35.3-28.7-64-64-64H346.5l-45.3 45.3c-25 25-65.5 25-90.5 0L165.5 352H64zm368 56a24 24 0 1 1 0 48 24 24 0 1 1 0-48z" transform="rotate(180 256 256)" /></svg>
-                <span class="btn-label max-md:hidden">Import</span>
+            <button id="import-button" class="btn max-md:px-[0.7rem]" class:btn-active={ui.importOpen} aria-pressed={ui.importOpen} onclick={toggleImport} title="Import a list or label file">
+                <svg class="size-[1.05em] shrink-0 fill-current max-md:hidden" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M288 32c0-17.7-14.3-32-32-32s-32 14.3-32 32V274.7l-73.4-73.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3l128 128c12.5 12.5 32.8 12.5 45.3 0l128-128c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L288 274.7V32zM64 352c-35.3 0-64 28.7-64 64v32c0 35.3 28.7 64 64 64H448c35.3 0 64-28.7 64-64V416c0-35.3-28.7-64-64-64H346.5l-45.3 45.3c-25 25-65.5 25-90.5 0L165.5 352H64zm368 56a24 24 0 1 1 0 48 24 24 0 1 1 0-48z" transform="rotate(180 256 256)" /></svg>
+                <span class="btn-label">Import</span>
             </button>
 
             <!-- On a phone Clear lives in the ⋯ menu instead: an icon-only bin in
@@ -113,7 +115,7 @@
             </button>
 
             <div class="relative" bind:this={menuEl}>
-                <button type="button" class="btn" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="More options" title="More" onclick={() => (menuOpen = !menuOpen)}>
+                <button type="button" class="btn max-md:px-[0.7rem]" aria-haspopup="menu" aria-expanded={menuOpen} aria-label="More options" title="More" onclick={() => (menuOpen = !menuOpen)}>
                     <span aria-hidden="true" class="text-[1.1em] leading-none">⋯</span>
                 </button>
                 {#if menuOpen}

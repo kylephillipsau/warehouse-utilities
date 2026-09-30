@@ -167,6 +167,15 @@ body {
     .label-tool:hover {
         @apply bg-amber;
     }
+    /* Touch: every button and text box is at least 44px tall, the size a
+       gloved finger can hit. Width comes from the content and padding. */
+    @media (pointer: coarse) {
+        .btn,
+        input[type="text"],
+        input[type="number"] {
+            min-height: 44px;
+        }
+    }
     /* Give secondary icon buttons a finger-friendly hit area on touch devices
        without changing their visual size (a centred expanded overlay). */
     @media (pointer: coarse) {
@@ -264,7 +273,9 @@ li {
     border: var(--label-border-w, 2px) solid;
     margin: 0;
     position: relative;
-    /* Artwork never bleeds past the cut guide (matters once it is rotated). */
+    /* Artwork never bleeds past the cut guide (matters once it is rotated). On
+       screen this lets go and the artwork layer clips instead (see
+       .page-frame), so the label's tools can sit outside it. */
     overflow: hidden;
 }
 
@@ -276,8 +287,11 @@ li {
    already baked into --page-w/h by resolvePage. On screen the sheet is
    rotated -90° around this (see .page-frame), so the artwork is edited upright;
    the two cancel, and the printed result is what this layer describes.
-   The per-label tools live INSIDE this layer so they ride the same net-upright
-   frame as the artwork and sit at the corner of the box the user is editing. */
+   On screen the layer also clips its own content, because the label there no
+   longer does (its tools sit outside it; see .page-frame). Its box is the
+   label's padding box at either rotation, so it is the same clip. Print keeps
+   the label's clip and not this one: a turned layer's edge can land on a
+   fractional pixel, and paper must not move by an anti-aliased pixel. */
 .label-rotate {
     position: absolute;
     inset: 0;
@@ -375,50 +389,99 @@ li.text-container.drag-over {
    untouched. Labels then run left to right, which is the feed direction — the
    ::after says so, because a rotated sheet is only readable if it is labelled. */
 @media screen {
+    /* The frame also reserves a gutter (--tool-gutter, set with the scale) on
+       the side where each label's tools appear: the right of the sheet, which
+       is the top once the sheet is turned. The sheet is centred in the rest. */
     .page-frame {
         --frame-w: var(--page-w, 210mm);
         --frame-h: var(--page-h, 297mm);
         position: relative;
         width: calc(var(--frame-w) * var(--view-scale, 1));
         height: calc(var(--frame-h) * var(--view-scale, 1));
+        padding-right: var(--tool-gutter, 0px);
+        /* The gutter ADDS to the sheet's footprint; the positioning below
+           relies on 100% being sheet plus gutter. */
+        box-sizing: content-box;
         margin: 0 auto 16px;
     }
 
     .page-frame .print-page {
         position: absolute;
         top: 50%;
-        left: 50%;
+        left: calc((100% - var(--tool-gutter, 0px)) / 2);
         margin: 0;
+        /* Labels may extend past the sheet here: their tools do. */
+        overflow: visible;
         transform: translate(-50%, -50%) scale(var(--view-scale, 1));
+    }
+
+    .page-frame .text-container {
+        overflow: visible;
+    }
+
+    .label-rotate {
+        overflow: hidden;
     }
 
     :root[data-rotation='90'] .page-frame {
         --frame-w: var(--page-h, 297mm);
         --frame-h: var(--page-w, 210mm);
+        padding-right: 0;
+        padding-top: var(--tool-gutter, 0px);
         margin-bottom: 30px;
     }
 
     :root[data-rotation='90'] .page-frame .print-page {
+        top: calc((100% + var(--tool-gutter, 0px)) / 2);
+        left: 50%;
         transform: translate(-50%, -50%) scale(var(--view-scale, 1)) rotate(-90deg);
     }
 
+    /* A turned sheet looks wrong unless it says why it is turned. */
     :root[data-rotation='90'] .page-frame::after {
-        content: 'feed \2192';
+        content: 'Shown turned so labels read upright \00B7  feeds this way \2192';
         position: absolute;
         top: 100%;
         left: 0;
-        margin-top: 5px;
-        font-size: 0.7rem;
+        margin-top: 6px;
+        white-space: nowrap;
+        font-size: 0.78rem;
         font-weight: bold;
-        letter-spacing: 0.04em;
-        color: color-mix(in srgb, var(--color-ink) 55%, transparent);
+        color: color-mix(in srgb, var(--color-ink) 75%, transparent);
+    }
+
+    /* The blank-sheet hint, centred over the sheet (not the gutter). */
+    .empty-hint {
+        position: absolute;
+        top: 50%;
+        left: calc((100% - var(--tool-gutter, 0px)) / 2);
+        transform: translate(-50%, -50%);
+        width: min(18rem, calc(100% - var(--tool-gutter, 0px) - 24px));
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        text-align: center;
+        color: var(--color-ink);
+    }
+
+    :root[data-rotation='90'] .empty-hint {
+        top: calc((100% + var(--tool-gutter, 0px)) / 2);
+        left: 50%;
+        width: min(18rem, calc(100% - 24px));
     }
 
     /* The per-label tools are chrome, not artwork: undo the view scale so they
-       stay the same size whatever the sheet is scaled to. */
+       stay the same size whatever the sheet is scaled to. They hang off the
+       label's right edge, which the turned sheet carries to the top, so there
+       each button is turned back upright. */
     .label-tools {
         transform: scale(calc(1 / var(--view-scale, 1)));
-        transform-origin: top right;
+        transform-origin: top left;
+    }
+
+    :root[data-rotation='90'] .label-tools .label-tool {
+        transform: rotate(90deg);
     }
 }
 
@@ -694,18 +757,31 @@ li.text-container.drag-over {
     font-weight: normal;
 }
 
-/* Hover/focus strip for per-label actions; absolutely positioned inside the
-   label box so it never affects layout or text-fitting. */
+/* Hover/focus strip for per-label actions, stacked in the gutter just past
+   the label's right edge so it never covers the label or affects its fitting.
+   The space between label and buttons is the strip's own padding rather than
+   a margin, so the pointer crossing it never leaves the label and the strip
+   stays shown. On touch the buttons' 44px hit areas (.label-tool::after) are
+   spaced so they do not overlap. */
 .label-tools {
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: -2px;
+    left: 100%;
+    padding-left: 6px;
     display: flex;
+    flex-direction: column;
     gap: 4px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.12s ease;
     z-index: 6;
+}
+
+@media (pointer: coarse) {
+    .label-tools {
+        gap: 18px;
+        padding-top: 9px;
+    }
 }
 
 li.text-container:hover .label-tools,

@@ -115,7 +115,7 @@
          label without touching the label's (or the media's) shape — see
          .label-rotate in app.css and resolveContent in size.js. On screen the
          sheet is counter-rotated, so this layer is what the user actually reads
-         and types into; the tools belong in it for the same reason. -->
+         and types into. It also clips the artwork to the label. -->
     <div class="label-rotate">
         {#if isTemplate}
             <FieldsLabel {label} editable />
@@ -130,14 +130,17 @@
                 onAdjust={(partial) => patchAdjust(label.id, partial)}
             />
         {/if}
+    </div>
 
-        <div class="label-tools">
-            <button type="button" class="label-tool tool-drag" title="Drag to reorder" aria-label="Drag to reorder" use:draggable={{ id: label.id }} onkeydown={onDragKey}>&#10495;</button>
-            {#if label.image}
-                <button type="button" class="label-tool tool-edit" title="Edit image" aria-label="Edit image" onclick={() => openAdjust(label.id)}>&#9998;</button>
-            {/if}
-            <LabelMenu items={menuItems} />
-        </div>
+    <!-- Outside the artwork, in a gutter beside the sheet, so the tools never
+         sit on top of the text they act on. They are the label's descendants,
+         so hovering or focusing them keeps them shown. See .label-tools. -->
+    <div class="label-tools">
+        <button type="button" class="label-tool tool-drag" title="Drag to reorder" aria-label="Drag to reorder" use:draggable={{ id: label.id }} onkeydown={onDragKey}>&#10495;</button>
+        {#if label.image}
+            <button type="button" class="label-tool tool-edit" title="Edit image" aria-label="Edit image" onclick={() => openAdjust(label.id)}>&#9998;</button>
+        {/if}
+        <LabelMenu items={menuItems} />
     </div>
 
     <input type="file" bind:this={fileInput} accept="image/*" hidden onchange={onPickImage} />

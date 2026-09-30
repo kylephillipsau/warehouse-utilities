@@ -2,6 +2,7 @@
     import { store, insertPreset } from '../lib/store.svelte.js';
     import { tiling, insertionIndex, resolvePage, clampRotation } from '../lib/size.js';
     import { effectivePage } from '../lib/output.js';
+    import { openImport, openPresets } from '../lib/ui.svelte.js';
     import Label from './Label.svelte';
 
     // The page divides into N labels; that's how many fit per media page
@@ -34,6 +35,20 @@
     const MAX_UP = 3;
     let sectionEl;
     let avail = $state({ w: 0, h: 0 });
+
+    // Each label's tools hang in a gutter beside the sheet (right, or top when
+    // the sheet is turned) rather than over the label. Wide enough for a touch
+    // target where the pointer is coarse. The frame reserves it; the scale
+    // leaves room for it.
+    let coarse = $state(false);
+    $effect(() => {
+        const mq = window.matchMedia('(pointer: coarse)');
+        coarse = mq.matches;
+        const on = () => { coarse = mq.matches; };
+        mq.addEventListener('change', on);
+        return () => mq.removeEventListener('change', on);
+    });
+    const gutter = $derived(coarse ? 52 : 40);
     $effect(() => {
         if (!sectionEl) { return; }
         const measure = () => { avail = { w: sectionEl.clientWidth - 2 * PAD, h: sectionEl.clientHeight - 2 * PAD - 24 }; };
@@ -48,8 +63,10 @@
         const turned = clampRotation(store.rotation) === 90;   // footprint turns with the sheet
         const w = (turned ? page.height : page.width) * PX_PER_MM;
         const h = (turned ? page.width : page.height) * PX_PER_MM;
-        const up = Math.max(1, Math.min(COMFORT_W / w, avail.h / h, MAX_UP));
-        return Math.max(0.2, Math.min(avail.w / w, up));
+        const availW = avail.w - (turned ? 0 : gutter);
+        const availH = avail.h - (turned ? gutter : 0);
+        const up = Math.max(1, Math.min(COMFORT_W / w, availH / h, MAX_UP));
+        return Math.max(0.2, Math.min(availW / w, up));
     });
 
     // --- accept presets dragged from the Presets drawer ---
@@ -92,7 +109,7 @@
     ondragleave={onDragLeave}
     ondrop={onDrop}
 >
-    <div id="labelList" class="printable" style:--view-scale={viewScale}>
+    <div id="labelList" class="printable" style:--view-scale={viewScale} style:--tool-gutter="{gutter}px">
         {#each pages as page, pi (pi)}
             <!-- The frame holds the sheet's on-screen footprint: its true size
                  times the view scale, turned when the artwork is (so artwork is
@@ -104,6 +121,19 @@
                         <Label {label} />
                     {/each}
                 </ul>
+                <!-- A blank sheet says what to do next. Outside the sheet's
+                     transform so it is never scaled or turned, and never printed
+                     (there is nothing to print while it shows). -->
+                {#if store.labels.length === 0}
+                    <div class="empty-hint print:hidden">
+                        <p class="m-0 text-[1rem] font-bold">No labels yet</p>
+                        <p class="m-0 text-[0.85rem] leading-[1.45] text-ink/70">Type in the box above and press Enter. Put a number in Qty to make several at once.</p>
+                        <div class="mt-1 flex flex-wrap justify-center gap-2">
+                            <button type="button" class="btn" onclick={openImport}>Import a list</button>
+                            <button type="button" class="btn" onclick={() => openPresets()}>Use a preset</button>
+                        </div>
+                    </div>
+                {/if}
             </div>
         {/each}
     </div>
