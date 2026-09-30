@@ -5,7 +5,7 @@
 // page turned the long way round is the case that limit exists to catch.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolvePage, resolveLabel, resolveContent, exceedsPrintWidth } from './size.js';
+import { resolvePage, resolveLabel, resolveContent, exceedsPrintWidth, labelShape } from './size.js';
 
 const page = (preset, orientation = 'portrait') => ({ preset, width: '', height: '', unit: 'mm', orientation });
 
@@ -51,4 +51,15 @@ test('artwork rotation swaps the design surface and nothing else', () => {
     const label = resolveLabel(...spec);
     assert.deepEqual(resolveContent(...spec, 0), label);
     assert.deepEqual(resolveContent(...spec, 90), { width: label.height, height: label.width });
+});
+
+test('a label reads wide or tall by its content box, square within 5%', () => {
+    // 4x6 at 5-up: wide as laid out, tall once the artwork turns.
+    assert.equal(labelShape(resolveContent(page('zebra-4x6'), 5, 0, 0, 0)), 'wide');
+    assert.equal(labelShape(resolveContent(page('zebra-4x6'), 5, 0, 0, 90)), 'tall');
+    // 1-up the same stock is the other way round.
+    assert.equal(labelShape(resolveContent(page('zebra-4x6'), 1, 0, 0, 0)), 'tall');
+    assert.equal(labelShape({ width: 50, height: 50 }), 'square');
+    assert.equal(labelShape({ width: 52, height: 50 }), 'square');
+    assert.equal(labelShape({ width: 53, height: 50 }), 'wide');
 });

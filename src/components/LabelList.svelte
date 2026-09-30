@@ -1,6 +1,6 @@
 <script>
     import { store, insertPreset } from '../lib/store.svelte.js';
-    import { tiling, insertionIndex, resolvePage, clampRotation } from '../lib/size.js';
+    import { tiling, insertionIndex, resolvePage, resolveContent, labelShape, clampRotation } from '../lib/size.js';
     import { effectivePage } from '../lib/output.js';
     import { openImport, openPresets } from '../lib/ui.svelte.js';
     import Label from './Label.svelte';
@@ -51,7 +51,7 @@
     const gutter = $derived(coarse ? 52 : 40);
     $effect(() => {
         if (!sectionEl) { return; }
-        const measure = () => { avail = { w: sectionEl.clientWidth - 2 * PAD, h: sectionEl.clientHeight - 2 * PAD - 24 }; };
+        const measure = () => { avail = { w: sectionEl.clientWidth - 2 * PAD, h: sectionEl.clientHeight - 2 * PAD - 24 - barH }; };
         measure();
         const ro = new ResizeObserver(measure);
         ro.observe(sectionEl);
@@ -68,6 +68,19 @@
         const up = Math.max(1, Math.min(COMFORT_W / w, availH / h, MAX_UP));
         return Math.max(0.2, Math.min(availW / w, up));
     });
+
+    // --- turn button ---
+    // The same choice as the panel's Label shape, where the eye already is. It
+    // is named for its result ("Make labels tall"), which is the shape the
+    // labels would become, so it can never be misread as rotating the paper.
+    const turnTo = $derived.by(() => {
+        const next = clampRotation(store.rotation) === 90 ? 0 : 90;
+        const page = effectivePage(store);
+        const now = labelShape(resolveContent(page, store.divisions, store.margin, store.gap, store.rotation));
+        const then = labelShape(resolveContent(page, store.divisions, store.margin, store.gap, next));
+        return { rotation: next, label: then === now ? 'Turn labels' : `Make labels ${then}` };
+    });
+    let barH = $state(0);
 
     // --- accept presets dragged from the Presets drawer ---
     let dropActive = $state(false);
@@ -109,6 +122,15 @@
     ondragleave={onDragLeave}
     ondrop={onDrop}
 >
+    <!-- Sticky, so it stays in reach through a long run of pages. Hidden in
+         print by app.css's print list. -->
+    <div class="sheet-bar" bind:offsetHeight={barH}>
+        <button type="button" id="turn-labels" class="btn" onclick={() => (store.rotation = turnTo.rotation)}>
+            <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M463.5 224H472c13.3 0 24-10.7 24-24V72c0-9.7-5.8-18.5-14.8-22.2s-19.3-1.7-26.2 5.2L413.4 96.6c-87.6-86.5-228.7-86.2-315.8 1c-87.5 87.5-87.5 229.3 0 316.8s229.3 87.5 316.8 0c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0c-62.5 62.5-163.8 62.5-226.3 0s-62.5-163.8 0-226.3c62.2-62.2 162.7-62.5 225.3-1L327 183c-6.9 6.9-8.9 17.2-5.2 26.2s12.5 14.8 22.2 14.8H463.5z" /></svg>
+            {turnTo.label}
+        </button>
+    </div>
+
     <div id="labelList" class="printable" style:--view-scale={viewScale} style:--tool-gutter="{gutter}px">
         {#each pages as page, pi (pi)}
             <!-- The frame holds the sheet's on-screen footprint: its true size
@@ -122,10 +144,11 @@
                     {/each}
                 </ul>
                 <!-- A blank sheet says what to do next. Outside the sheet's
-                     transform so it is never scaled or turned, and never printed
-                     (there is nothing to print while it shows). -->
+                     transform so it is never scaled or turned. Hidden in print
+                     by app.css's print list, not a print: utility, which the
+                     unlayered .empty-hint rule would outrank. -->
                 {#if store.labels.length === 0}
-                    <div class="empty-hint print:hidden">
+                    <div class="empty-hint">
                         <p class="m-0 text-[1rem] font-bold">No labels yet</p>
                         <p class="m-0 text-[0.85rem] leading-[1.45] text-ink/70">Type in the box above and press Enter. Put a number in Qty to make several at once.</p>
                         <div class="mt-1 flex flex-wrap justify-center gap-2">

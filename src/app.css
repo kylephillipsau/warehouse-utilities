@@ -359,6 +359,22 @@ li.text-container.drag-over {
     overflow: auto;
 }
 
+/* The bar above the sheets (the turn button). Sticky inside the scrolling
+   work area, pulled up over its top padding so it sits flush when stuck. */
+.sheet-bar {
+    position: sticky;
+    top: -16px;
+    z-index: 7;
+    display: flex;
+    justify-content: center;
+    margin: -16px -16px 12px;
+    padding: 10px 16px;
+    /* Opaque: labels scroll beneath it, and text showing through a bar
+       reads as text on the button. */
+    background: var(--color-paper);
+    border-bottom: 2px solid color-mix(in srgb, var(--color-ink) 15%, transparent);
+}
+
 /* Phone: room under the last sheet for the floating Setup & print button. */
 @media (max-width: 767px) {
     #labels-section {
@@ -819,6 +835,8 @@ li.text-container:focus-within .label-tools {
        the .label-tools it belongs to (see actions/portal.js), so hiding the
        tools no longer hides it. */
     .label-tools,
+    .sheet-bar,
+    .empty-hint,
     [role="menu"],
     #print-tip,
     #undo-toast,

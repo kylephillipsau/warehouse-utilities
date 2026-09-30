@@ -128,6 +128,17 @@ export function resolveContent(page, divisions, margin = 0, gap = 0, rotation = 
     return clampRotation(rotation) === 90 ? { width: l.height, height: l.width } : l;
 }
 
+// How a label reads when held: 'wide', 'tall', or 'square' within 5%, where
+// the difference is too small to be the point of a choice. Takes content
+// dimensions (resolveContent), which are the label as read. Shared by the
+// Label shape options and the sheet's turn button, so both name a shape the
+// same way.
+export function labelShape(dims) {
+    if (dims.width > dims.height * 1.05) { return 'wide'; }
+    if (dims.height > dims.width * 1.05) { return 'tall'; }
+    return 'square';
+}
+
 // Build a store.page spec from a device media query (browserPrint.queryMedia).
 // The printer senses LENGTH reliably (→ page height) but never senses WIDTH, so
 // width comes back as a suggestion: use it if present, else keep the current

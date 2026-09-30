@@ -3,7 +3,7 @@
     import {
         MEDIA_PRESETS, isCustom, clampDivisions, clampSpacing, clampCopies,
         MAX_DIVISIONS, MAX_SPACING, MAX_COPIES,
-        resolvePage, resolveContent, pageFromMedia, exceedsPrintWidth,
+        resolvePage, resolveContent, labelShape, pageFromMedia, exceedsPrintWidth,
     } from '../lib/size.js';
     import { ui, closeInspector } from '../lib/ui.svelte.js';
     import { printer, printerOptions, selectedDevice, ensurePrinters, loadPrinters, rememberPrinter } from '../lib/printer.svelte.js';
@@ -67,7 +67,7 @@
     // analogue); the media never changes. The options stay in rotation order
     // rather than sorting by shape, because which rotation reads wide flips with
     // the number of labels per page and a selected option must not jump sides.
-    const shapeWord = (d) => (d.width > d.height * 1.05 ? 'Wide' : d.height > d.width * 1.05 ? 'Tall' : 'Square');
+    const shapeWord = (d) => { const w = labelShape(d); return w[0].toUpperCase() + w.slice(1); };
     const shapes = $derived.by(() => {
         const opts = [0, 90].map((rotation) => {
             const d = resolveContent(effPage, store.divisions, store.margin, store.gap, rotation);
