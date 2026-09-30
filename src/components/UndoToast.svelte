@@ -4,9 +4,11 @@
     const visible = $derived(undo.items.length > 0);
     const last = $derived(undo.items[undo.items.length - 1]);
     const message = $derived(
-        last && last.batch
-            ? `${last.batch.length} label${last.batch.length === 1 ? '' : 's'} cleared`
-            : 'Label deleted'
+        last && last.preset
+            ? 'Preset deleted'
+            : last && last.batch
+                ? `${last.batch.length} label${last.batch.length === 1 ? '' : 's'} cleared`
+                : 'Label deleted'
     );
 
     let timer;

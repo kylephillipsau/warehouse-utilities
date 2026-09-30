@@ -2,12 +2,68 @@
     import { ui } from '../lib/ui.svelte.js';
     import { store, insertPreset, renamePreset, deletePreset } from '../lib/store.svelte.js';
     import { resolveTemplate } from '../lib/tokens.js';
+    import { resolveContent } from '../lib/size.js';
+    import { effectivePage } from '../lib/output.js';
     import Drawer from './Drawer.svelte';
+    import LabelMenu from './LabelMenu.svelte';
+    import LabelThumb from './LabelThumb.svelte';
 
     function close() { ui.presetsOpen = false; }
 
-    // Inline rename — no browser prompt. The name becomes a text field that
-    // commits on Enter/blur and cancels on Escape.
+    // ---- The shelf ----
+    // Every preset is drawn by the real renderer at the size a label has on
+    // the current sheet, so a preview is exactly what adding it produces.
+    // The grid follows that shape: a wide label gets the drawer's full width
+    // (where its text is still legible), a squarish one shares a row with one
+    // other, and a tall one with two. Thumbnails never grow taller than
+    // MAX_THUMB_H, so a tall label narrows instead of pushing the list away.
+    const content = $derived(resolveContent(effectivePage(store), store.divisions, store.margin, store.gap, store.rotation));
+    const aspect = $derived(content.width / content.height);
+    const cols = $derived(aspect >= 1.6 ? 1 : aspect > 0.62 ? 2 : 3);
+    const MAX_THUMB_H = 160;
+    const GAP = 14;   // px, matches .preset-shelf's column gap
+    let shelfW = $state(0);
+    const colW = $derived(Math.max(0, (shelfW - GAP * (cols - 1)) / cols));
+    // The thumbnail box is the label's own footprint within the column.
+    const thumbH = $derived(Math.min(colW / aspect, MAX_THUMB_H));
+    const thumbW = $derived(thumbH * aspect);
+
+    // ---- Finding one ----
+    // Only once the shelf is long enough to need it. Matches the name and the
+    // text on the label, since people remember either.
+    const FILTER_FROM = 7;
+    let query = $state('');
+    const presetText = (p) => (p.fields && p.fields.length
+        ? p.fields.map((f) => resolveTemplate(f.value)).join(' ')
+        : (p.text || ''));
+    const shown = $derived.by(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) { return store.presets; }
+        return store.presets.filter((p) => (p.name + ' ' + presetText(p)).toLowerCase().includes(q));
+    });
+
+    // ---- Adding ----
+    // The whole preview is the button. On a phone the drawer covers the
+    // sheet, so the preset itself confirms the add for a moment.
+    let addedId = $state(null);
+    let addedTimer;
+    function add(preset) {
+        insertPreset(preset.id);
+        addedId = preset.id;
+        clearTimeout(addedTimer);
+        addedTimer = setTimeout(() => { addedId = null; }, 1400);
+    }
+
+    // Start a drag that the label sheet accepts (see LabelList). A custom type
+    // keeps it distinct from file drags so the import handler ignores it.
+    function onDragStart(event, preset) {
+        event.dataTransfer.setData('application/x-label-preset', String(preset.id));
+        event.dataTransfer.effectAllowed = 'copy';
+    }
+
+    // ---- Renaming ----
+    // Inline, no browser prompt: the name becomes a text field that commits on
+    // Enter or blur and cancels on Escape.
     let editingId = $state(null);
     let editValue = $state('');
     function startRename(preset) { editingId = preset.id; editValue = preset.name; }
@@ -17,77 +73,86 @@
         editingId = null;
     }
     function cancelRename() { editingId = null; }
-
-    // A just-saved preset asks to be renamed immediately (see openPresets)
-    $effect(() => {
-        if (ui.presetsEditId == null) { return; }
-        const preset = store.presets.find((x) => x.id === ui.presetsEditId);
-        if (preset) { editingId = preset.id; editValue = preset.name; }
-        ui.presetsEditId = null;
-    });
-
     function onRenameKey(event) {
         if (event.key === 'Enter') { event.preventDefault(); commitRename(); }
         else if (event.key === 'Escape') { event.preventDefault(); cancelRename(); }
     }
-    // Focus + select the field as soon as it appears
     function focusField(node) { node.focus(); node.select(); }
 
-    // Start a drag that the label sheet accepts (see LabelList). A custom type
-    // keeps it distinct from file drags so the import handler ignores it.
-    function onDragStart(event, preset) {
-        event.dataTransfer.setData('application/x-label-preset', String(preset.id));
-        event.dataTransfer.effectAllowed = 'copy';
-    }
+    // A just-saved preset asks to be renamed immediately (see openPresets).
+    $effect(() => {
+        if (ui.presetsEditId == null) { return; }
+        const preset = store.presets.find((x) => x.id === ui.presetsEditId);
+        if (preset) { query = ''; editingId = preset.id; editValue = preset.name; }
+        ui.presetsEditId = null;
+    });
+
+    const menuFor = (preset) => [
+        { label: 'Add to sheet', action: () => add(preset) },
+        { label: 'Rename', action: () => startRename(preset) },
+        { label: 'Delete', action: () => deletePreset(preset.id), danger: true },
+    ];
 </script>
 
-<Drawer open={ui.presetsOpen} title="Preset labels" onClose={close}>
+<Drawer open={ui.presetsOpen} title="Presets" onClose={close} widthClass="w-[min(24rem,calc(100vw-2.5rem))]">
     {#if store.presets.length === 0}
-        <p id="presets-empty" class="m-0 text-[0.9rem] leading-[1.4]">No saved presets yet. Use a label's &#9733; button, or Save as preset in the image editor, to build your library.</p>
+        <div id="presets-empty" class="flex flex-col gap-2 text-[0.9rem] leading-[1.45]">
+            <p class="m-0 font-bold">No presets yet</p>
+            <p class="m-0 text-ink/75">A preset is a label you use often, saved so it is one tap away. To save one, open any label's <strong>⋯</strong> menu and choose <strong>Save as preset</strong>.</p>
+        </div>
     {:else}
-        <p class="m-0 text-[0.85rem] leading-[1.4] text-ink/70">Drag a preset onto the sheet to place it, or use Insert.</p>
-    {/if}
-    <div id="presets-list" class="flex flex-col gap-2">
-        {#each store.presets as preset (preset.id)}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-                class="preset-row group flex items-center gap-3 p-2 border-2 border-ink rounded-lg bg-white {editingId === preset.id ? '' : 'cursor-grab active:cursor-grabbing'}"
-                draggable={editingId !== preset.id}
-                ondragstart={(e) => onDragStart(e, preset)}
-                title={editingId === preset.id ? '' : 'Drag onto the sheet to place'}
-            >
-                <span class="shrink-0 text-ink/40 select-none" aria-hidden="true">&#10495;</span>
-                <div class="preset-thumb flex-none w-14 h-10 flex flex-col items-stretch justify-center overflow-hidden border border-ink/35 rounded font-bold text-ink leading-none">
-                    {#if preset.fields && preset.fields.length}
-                        {#each preset.fields.slice(0, 3) as f}
-                            <span class="block truncate px-[2px] text-center text-[6px]">{resolveTemplate(f.value) || '—'}</span>
-                        {/each}
-                    {:else if preset.image}
-                        <img src={preset.image} alt="" class="w-full h-full object-contain pointer-events-none" />
+        <p class="m-0 text-[0.85rem] leading-[1.45] text-ink/70">
+            <span class="pointer-coarse:hidden">Click a preset to add it to the end of the sheet, or drag it to a spot.</span>
+            <span class="hidden pointer-coarse:inline">Tap a preset to add it to the end of the sheet.</span>
+        </p>
+
+        {#if store.presets.length >= FILTER_FROM}
+            <input type="search" class="preset-search w-full" placeholder="Find a preset" aria-label="Find a preset" bind:value={query} />
+        {/if}
+
+        {#if shown.length === 0}
+            <p class="m-0 text-[0.85rem] text-ink/70">No preset matches “{query.trim()}”.</p>
+        {/if}
+
+        <ul id="presets-list" class="preset-shelf" style:--shelf-cols={cols} style:--shelf-gap="{GAP}px" style:--thumb-h="{thumbH}px" bind:clientWidth={shelfW}>
+            {#each shown as preset (preset.id)}
+                <li class="preset" class:preset-added={addedId === preset.id}>
+                    {#if editingId === preset.id}
+                        <!-- Renaming: the preview stays put, the name becomes a field. -->
+                        <span class="preset-face">
+                            <LabelThumb width={content.width} height={content.height} label={preset} boxW={thumbW} boxH={thumbH} />
+                        </span>
+                        <input
+                            type="text"
+                            class="preset-rename w-full"
+                            bind:value={editValue}
+                            onkeydown={onRenameKey}
+                            onblur={commitRename}
+                            aria-label="Preset name"
+                            use:focusField
+                        />
                     {:else}
-                        <span class="text-center">Aa</span>
+                        <button
+                            type="button"
+                            class="preset-add"
+                            draggable="true"
+                            ondragstart={(e) => onDragStart(e, preset)}
+                            onclick={() => add(preset)}
+                            aria-label={`Add ${preset.name} to the sheet`}
+                        >
+                            <span class="preset-face">
+                                <LabelThumb width={content.width} height={content.height} label={preset} boxW={thumbW} boxH={thumbH} />
+                                <span class="preset-added-note" aria-hidden="true">Added to sheet</span>
+                            </span>
+                            <span class="preset-name">{preset.name}</span>
+                        </button>
+                        <span class="preset-menu">
+                            <LabelMenu items={menuFor(preset)} />
+                        </span>
                     {/if}
-                </div>
-                {#if editingId === preset.id}
-                    <input
-                        type="text"
-                        class="min-w-0 flex-1 !py-1 text-[0.9rem] font-bold"
-                        bind:value={editValue}
-                        onkeydown={onRenameKey}
-                        onblur={commitRename}
-                        aria-label="Preset name"
-                        use:focusField
-                    />
-                    <button type="button" class="label-tool !bg-purple !text-paper !border-purple" title="Save name" aria-label="Save name" onmousedown={(e) => e.preventDefault()} onclick={commitRename}>&#10003;</button>
-                {:else}
-                    <button type="button" class="flex-1 min-w-0 text-left font-bold overflow-hidden text-ellipsis whitespace-nowrap cursor-text" title="Click to rename" onclick={() => startRename(preset)}>{preset.name}</button>
-                    <div class="flex gap-[0.35rem] flex-none">
-                        <button type="button" class="btn btn-primary preset-insert px-[0.6rem] py-[0.3rem] text-[0.85rem]" onclick={() => insertPreset(preset.id)}>Insert</button>
-                        <button type="button" class="label-tool preset-rename" title="Rename" aria-label="Rename preset" onclick={() => startRename(preset)}>&#9998;</button>
-                        <button type="button" class="label-tool preset-delete !text-orange" title="Delete" aria-label="Delete preset" onclick={() => deletePreset(preset.id)}>&times;</button>
-                    </div>
-                {/if}
-            </div>
-        {/each}
-    </div>
+                </li>
+            {/each}
+        </ul>
+        <p class="sr-only" role="status">{addedId ? 'Added to the sheet' : ''}</p>
+    {/if}
 </Drawer>

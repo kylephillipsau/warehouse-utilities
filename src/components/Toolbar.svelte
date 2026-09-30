@@ -150,8 +150,9 @@
     <!-- Phone only: Setup & print floats at the bottom, within thumb reach and
          out of the header, which it used to push onto a third row. Hidden, not
          unmounted, while the panel it opens is showing: the panel returns focus
-         to this same element when it closes. -->
-    <button type="button" id="inspector-toggle" class="btn btn-primary fixed right-4 bottom-4 z-20 px-4 py-[0.7rem] shadow-popover md:hidden" class:hidden={ui.inspectorOpen} aria-expanded={ui.inspectorOpen} aria-controls="inspector-panel" onclick={toggleInspector}>
+         to this same element when it closes. Also hidden while a left drawer
+         is open, where it would sit over the drawer's content. -->
+    <button type="button" id="inspector-toggle" class="btn btn-primary fixed right-4 bottom-4 z-20 px-4 py-[0.7rem] shadow-popover md:hidden" class:hidden={ui.inspectorOpen || ui.presetsOpen || ui.importOpen} aria-expanded={ui.inspectorOpen} aria-controls="inspector-panel" onclick={toggleInspector}>
         <svg class="size-[1.05em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M448 192H64C28.65 192 0 220.7 0 256v96c0 17.67 14.33 32 32 32h32v96c0 17.67 14.33 32 32 32h320c17.67 0 32-14.33 32-32v-96h32c17.67 0 32-14.33 32-32V256C512 220.7 483.3 192 448 192zM384 448H128v-96h256V448zM432 296c-13.25 0-24-10.75-24-24c0-13.27 10.75-24 24-24s24 10.73 24 24C456 285.3 445.3 296 432 296zM128 64h229.5L384 90.51V160h64V77.25c0-8.484-3.375-16.62-9.375-22.62l-45.25-45.25C387.4 3.375 379.2 0 370.8 0H96C78.34 0 64 14.33 64 32v128h64V64z" /></svg>
         <span class="btn-label">Setup &amp; print</span>
     </button>

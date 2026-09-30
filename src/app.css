@@ -72,6 +72,7 @@ body {
     }
 
     input[type="text"],
+    input[type="search"],
     input[type="number"],
     select {
         @apply font-sans text-[0.95rem] text-ink bg-white border-2 border-ink rounded-md px-[0.6rem] py-[0.4rem];
@@ -217,11 +218,6 @@ body {
         cursor: inherit;
     }
 
-    /* Preset thumbnail checkerboard backing */
-    .preset-thumb {
-        background:
-            repeating-conic-gradient(color-mix(in srgb, var(--color-ink) 10%, transparent) 0% 25%, transparent 0% 50%) 50% / 12px 12px;
-    }
 }
 
 /* Match the app's original focus ring using the brand colour */
@@ -362,6 +358,9 @@ li.text-container.drag-over {
 /* The bar above the sheets (the turn button). Sticky inside the scrolling
    work area, pulled up over its top padding so it sits flush when stuck. */
 .sheet-bar {
+    /* Never wraps into a column when a drawer squeezes the work area. */
+    overflow: hidden;
+    white-space: nowrap;
     position: sticky;
     top: -16px;
     z-index: 7;
@@ -718,6 +717,137 @@ li.text-container.drag-over {
     background: rgba(255, 255, 255, 0.82);
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+}
+
+/* The presets shelf (PresetsDrawer). No card around a preset: the label
+   itself, white with an ink edge, sits on the drawer's paper with its name
+   under it like a shelf tag. The label and the name are one button that adds
+   it; the ⋯ beside the name holds the rest. Columns follow the label's shape. */
+.preset-shelf {
+    display: grid;
+    grid-template-columns: repeat(var(--shelf-cols, 2), minmax(0, 1fr));
+    gap: 18px var(--shelf-gap, 14px);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* Reset the global li rule, which is written for the labels on the sheet. */
+.preset-shelf > .preset {
+    position: relative;
+    min-width: 0;
+    border: 0;
+    background: none;
+    text-align: left;
+}
+
+.preset-add {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.preset-add:active {
+    cursor: grabbing;
+}
+
+/* The focus ring goes on the label, which is what the button is. */
+.preset-add:focus-visible {
+    outline: none;
+}
+
+/* Exactly the label's footprint, so the added note covers the label and
+   nothing beside it. */
+.preset-face {
+    position: relative;
+    align-self: flex-start;
+    display: flex;
+}
+
+.preset .label-thumb-paper {
+    box-shadow: 0 0 0 2px var(--color-ink);
+    border-radius: 2px;
+    transition: box-shadow 0.12s ease;
+}
+
+.preset-add:hover .label-thumb-paper {
+    box-shadow: 0 0 0 3px var(--color-purple);
+}
+
+.preset-add:focus-visible .label-thumb-paper {
+    box-shadow: 0 0 0 3px var(--color-purple), 0 0 0 6px color-mix(in srgb, var(--color-purple) 30%, transparent);
+}
+
+/* Room on the right for the ⋯, which is not part of the add button. */
+.preset-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    padding-right: 34px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+}
+
+/* Level with the first line of the name, just under the label. */
+.preset-menu {
+    position: absolute;
+    right: 0;
+    top: calc(var(--thumb-h, 60px) + 3px);
+}
+
+/* On touch the ⋯ has a 44px hit area (.label-tool::after) that would stick
+   out past the column and scroll the drawer sideways; keep it inside. */
+@media (pointer: coarse) {
+    .preset-menu {
+        right: 9px;
+    }
+    .preset-name {
+        padding-right: 44px;
+    }
+}
+
+.preset-rename {
+    margin-top: 6px;
+}
+
+/* The answer to a tap: the preset says it went on the sheet, briefly, since
+   on a phone the drawer covers the sheet it went on. */
+.preset-added-note {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-highlight);
+    border: 2px solid var(--color-ink);
+    font-size: 0.85rem;
+    font-weight: bold;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.preset-added .preset-added-note {
+    opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .preset .label-thumb-paper,
+    .preset-added-note {
+        transition: none;
+    }
 }
 
 /* A folded group in the setup panel. The summary is a flex row, which drops

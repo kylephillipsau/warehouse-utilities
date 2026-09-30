@@ -124,6 +124,10 @@ export function deleteLabel(id) {
 export function undoDelete() {
     const last = undo.items.pop();
     if (!last) { return; }
+    if (last.preset) {
+        store.presets.splice(Math.min(last.index, store.presets.length), 0, last.preset);
+        return;
+    }
     if (last.batch) { store.labels = [...last.batch, ...store.labels]; return; }
     const at = Math.min(last.index, store.labels.length);
     store.labels.splice(at, 0, last.label);
@@ -287,8 +291,13 @@ export function renamePreset(presetId, name) {
     p.name = (name || '').trim() || p.name;
 }
 
+// Recoverable from the undo toast, like deleting a label: a preset can hold
+// an image and a template that took real effort to set up.
 export function deletePreset(presetId) {
-    store.presets = store.presets.filter((x) => String(x.id) !== String(presetId));
+    const i = store.presets.findIndex((x) => String(x.id) === String(presetId));
+    if (i === -1) { return; }
+    const [removed] = store.presets.splice(i, 1);
+    undo.items.push({ preset: removed, index: i });
 }
 
 export function mergePresets(incoming) {
