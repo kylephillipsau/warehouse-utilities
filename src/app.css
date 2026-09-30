@@ -108,6 +108,14 @@ body {
     .segmented-glyph label {
         @apply gap-[0.4rem] px-[0.55rem] text-[0.85rem];
     }
+    /* Options that preview themselves with a picture of the result: equal
+       columns across the panel, the picture above its word. */
+    .segmented-shape {
+        @apply grid w-full grid-cols-2;
+    }
+    .segmented-shape label {
+        @apply flex-col justify-center gap-1 px-2 py-2 text-[0.85rem];
+    }
     .segmented label:not(:last-child) {
         @apply border-r-2 border-ink;
     }
@@ -383,8 +391,7 @@ li.text-container.drag-over {
     .page-frame {
         --frame-w: var(--page-w, 210mm);
         --frame-h: var(--page-h, 297mm);
-        /* Space above the sheet: the turn button's row on the first sheet,
-           plus the tools gutter when the sheet is turned (below). */
+        /* Space above the sheet: the tools gutter, when the sheet is turned. */
         --frame-pt: 0px;
         position: relative;
         width: calc(var(--frame-w) * var(--view-scale, 1));
@@ -395,10 +402,6 @@ li.text-container.drag-over {
            relies on 100% being sheet plus gutter. */
         box-sizing: content-box;
         margin: 0 auto 16px;
-    }
-
-    .page-frame-first {
-        --frame-pt: var(--turn-row, 0px);
     }
 
     .page-frame .print-page {
@@ -427,10 +430,6 @@ li.text-container.drag-over {
         margin-bottom: 30px;
     }
 
-    :root[data-rotation='90'] .page-frame-first {
-        --frame-pt: calc(var(--tool-gutter, 0px) + var(--turn-row, 0px));
-    }
-
     :root[data-rotation='90'] .page-frame .print-page {
         left: 50%;
         transform: translate(-50%, -50%) scale(var(--view-scale, 1)) rotate(-90deg);
@@ -447,22 +446,6 @@ li.text-container.drag-over {
         font-size: 0.78rem;
         font-weight: bold;
         color: color-mix(in srgb, var(--color-ink) 75%, transparent);
-    }
-
-    /* The turn button: on the sheet it turns, above its top-right corner,
-       level with the sheet's right edge (not the gutter's). */
-    .turn-tab {
-        position: absolute;
-        top: 0;
-        right: var(--tool-gutter, 0px);
-        z-index: 7;
-        padding: 0.3rem 0.7rem;
-        font-size: 0.85rem;
-        white-space: nowrap;
-    }
-
-    :root[data-rotation='90'] .turn-tab {
-        right: 0;
     }
 
     /* The blank-sheet hint, centred over the sheet (not the gutter). */
@@ -930,6 +913,10 @@ li.text-container.drag-over {
     box-shadow: 0 0 0 1.5px currentColor;
 }
 
+.segmented input:checked + label .label-thumb-paper {
+    box-shadow: 0 0 0 2px var(--color-paper);
+}
+
 .label-thumb-art {
     position: absolute;
     top: 0;
@@ -1006,7 +993,6 @@ li.text-container:focus-within .label-tools {
        the .label-tools it belongs to (see actions/portal.js), so hiding the
        tools no longer hides it. */
     .label-tools,
-    .turn-tab,
     .empty-hint,
     [role="menu"],
     #print-tip,

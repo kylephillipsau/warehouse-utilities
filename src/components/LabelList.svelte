@@ -1,6 +1,6 @@
 <script>
     import { store, insertPreset } from '../lib/store.svelte.js';
-    import { tiling, insertionIndex, resolvePage, resolveContent, labelShape, clampRotation } from '../lib/size.js';
+    import { tiling, insertionIndex, resolvePage, clampRotation } from '../lib/size.js';
     import { effectivePage } from '../lib/output.js';
     import { openImport, openPresets } from '../lib/ui.svelte.js';
     import Label from './Label.svelte';
@@ -49,8 +49,6 @@
         return () => mq.removeEventListener('change', on);
     });
     const gutter = $derived(coarse ? 52 : 40);
-    // The first sheet also carries the turn button in a row above it.
-    const turnRow = $derived(coarse ? 54 : 42);
     $effect(() => {
         if (!sectionEl) { return; }
         const measure = () => { avail = { w: sectionEl.clientWidth - 2 * PAD, h: sectionEl.clientHeight - 2 * PAD - 24 }; };
@@ -66,24 +64,9 @@
         const w = (turned ? page.height : page.width) * PX_PER_MM;
         const h = (turned ? page.width : page.height) * PX_PER_MM;
         const availW = avail.w - (turned ? 0 : gutter);
-        const availH = avail.h - (turned ? gutter : 0) - turnRow;
+        const availH = avail.h - (turned ? gutter : 0);
         const up = Math.max(1, Math.min(COMFORT_W / w, availH / h, MAX_UP));
         return Math.max(0.2, Math.min(availW / w, up));
-    });
-
-    // --- turn button ---
-    // Turning is a property of the whole sheet (every label turns together),
-    // so its one control sits on the sheet: just above its top-right corner,
-    // on the first sheet. It is named for its result, the shape the labels
-    // would become, so it cannot be read as rotating the paper.
-    const turnTo = $derived.by(() => {
-        const next = clampRotation(store.rotation) === 90 ? 0 : 90;
-        const page = effectivePage(store);
-        const now = labelShape(resolveContent(page, store.divisions, store.margin, store.gap, store.rotation));
-        const then = labelShape(resolveContent(page, store.divisions, store.margin, store.gap, next));
-        return then === now
-            ? { rotation: next, short: 'Turn', label: 'Turn labels' }
-            : { rotation: next, short: `Make ${then}`, label: `Make labels ${then}` };
     });
 
     // --- accept presets dragged from the Presets drawer ---
@@ -126,19 +109,13 @@
     ondragleave={onDragLeave}
     ondrop={onDrop}
 >
-    <div id="labelList" class="printable" style:--view-scale={viewScale} style:--tool-gutter="{gutter}px" style:--turn-row="{turnRow}px">
+    <div id="labelList" class="printable" style:--view-scale={viewScale} style:--tool-gutter="{gutter}px">
         {#each pages as page, pi (pi)}
             <!-- The frame holds the sheet's on-screen footprint: its true size
                  times the view scale, turned when the artwork is (so artwork is
                  edited upright). A transform alone would leave the layout at the
                  untransformed size — see .page-frame in app.css. Inert in print. -->
-            <div class="page-frame" class:page-frame-first={pi === 0}>
-                {#if pi === 0}
-                    <button type="button" id="turn-labels" class="btn turn-tab" onclick={() => (store.rotation = turnTo.rotation)} aria-label={turnTo.label} title={turnTo.label}>
-                        <svg class="size-[1em] shrink-0 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><path d="M463.5 224H472c13.3 0 24-10.7 24-24V72c0-9.7-5.8-18.5-14.8-22.2s-19.3-1.7-26.2 5.2L413.4 96.6c-87.6-86.5-228.7-86.2-315.8 1c-87.5 87.5-87.5 229.3 0 316.8s229.3 87.5 316.8 0c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0c-62.5 62.5-163.8 62.5-226.3 0s-62.5-163.8 0-226.3c62.2-62.2 162.7-62.5 225.3-1L327 183c-6.9 6.9-8.9 17.2-5.2 26.2s12.5 14.8 22.2 14.8H463.5z" /></svg>
-                        {turnTo.short}
-                    </button>
-                {/if}
+            <div class="page-frame">
                 <ul class="print-page">
                     {#each page as label (label.id)}
                         <Label {label} />
