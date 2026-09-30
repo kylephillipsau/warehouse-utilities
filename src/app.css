@@ -108,14 +108,6 @@ body {
     .segmented-glyph label {
         @apply gap-[0.4rem] px-[0.55rem] text-[0.85rem];
     }
-    /* Options that preview themselves with a picture of the result: equal
-       columns across the panel, the picture above its word. */
-    .segmented-shape {
-        @apply grid w-full grid-cols-2;
-    }
-    .segmented-shape label {
-        @apply flex-col justify-center gap-1 px-2 py-2 text-[0.85rem];
-    }
     .segmented label:not(:last-child) {
         @apply border-r-2 border-ink;
     }
@@ -355,25 +347,6 @@ li.text-container.drag-over {
     overflow: auto;
 }
 
-/* The bar above the sheets (the turn button). Sticky inside the scrolling
-   work area, pulled up over its top padding so it sits flush when stuck. */
-.sheet-bar {
-    /* Never wraps into a column when a drawer squeezes the work area. */
-    overflow: hidden;
-    white-space: nowrap;
-    position: sticky;
-    top: -16px;
-    z-index: 7;
-    display: flex;
-    justify-content: center;
-    margin: -16px -16px 12px;
-    padding: 10px 16px;
-    /* Opaque: labels scroll beneath it, and text showing through a bar
-       reads as text on the button. */
-    background: var(--color-paper);
-    border-bottom: 2px solid color-mix(in srgb, var(--color-ink) 15%, transparent);
-}
-
 /* Phone: room under the last sheet for the floating Setup & print button. */
 @media (max-width: 767px) {
     #labels-section {
@@ -410,9 +383,13 @@ li.text-container.drag-over {
     .page-frame {
         --frame-w: var(--page-w, 210mm);
         --frame-h: var(--page-h, 297mm);
+        /* Space above the sheet: the turn button's row on the first sheet,
+           plus the tools gutter when the sheet is turned (below). */
+        --frame-pt: 0px;
         position: relative;
         width: calc(var(--frame-w) * var(--view-scale, 1));
         height: calc(var(--frame-h) * var(--view-scale, 1));
+        padding-top: var(--frame-pt);
         padding-right: var(--tool-gutter, 0px);
         /* The gutter ADDS to the sheet's footprint; the positioning below
            relies on 100% being sheet plus gutter. */
@@ -420,9 +397,13 @@ li.text-container.drag-over {
         margin: 0 auto 16px;
     }
 
+    .page-frame-first {
+        --frame-pt: var(--turn-row, 0px);
+    }
+
     .page-frame .print-page {
         position: absolute;
-        top: 50%;
+        top: calc((100% + var(--frame-pt)) / 2);
         left: calc((100% - var(--tool-gutter, 0px)) / 2);
         margin: 0;
         /* Labels may extend past the sheet here: their tools do. */
@@ -441,13 +422,16 @@ li.text-container.drag-over {
     :root[data-rotation='90'] .page-frame {
         --frame-w: var(--page-h, 297mm);
         --frame-h: var(--page-w, 210mm);
+        --frame-pt: var(--tool-gutter, 0px);
         padding-right: 0;
-        padding-top: var(--tool-gutter, 0px);
         margin-bottom: 30px;
     }
 
+    :root[data-rotation='90'] .page-frame-first {
+        --frame-pt: calc(var(--tool-gutter, 0px) + var(--turn-row, 0px));
+    }
+
     :root[data-rotation='90'] .page-frame .print-page {
-        top: calc((100% + var(--tool-gutter, 0px)) / 2);
         left: 50%;
         transform: translate(-50%, -50%) scale(var(--view-scale, 1)) rotate(-90deg);
     }
@@ -465,10 +449,26 @@ li.text-container.drag-over {
         color: color-mix(in srgb, var(--color-ink) 75%, transparent);
     }
 
+    /* The turn button: on the sheet it turns, above its top-right corner,
+       level with the sheet's right edge (not the gutter's). */
+    .turn-tab {
+        position: absolute;
+        top: 0;
+        right: var(--tool-gutter, 0px);
+        z-index: 7;
+        padding: 0.3rem 0.7rem;
+        font-size: 0.85rem;
+        white-space: nowrap;
+    }
+
+    :root[data-rotation='90'] .turn-tab {
+        right: 0;
+    }
+
     /* The blank-sheet hint, centred over the sheet (not the gutter). */
     .empty-hint {
         position: absolute;
-        top: 50%;
+        top: calc((100% + var(--frame-pt)) / 2);
         left: calc((100% - var(--tool-gutter, 0px)) / 2);
         transform: translate(-50%, -50%);
         width: min(18rem, calc(100% - var(--tool-gutter, 0px) - 24px));
@@ -481,7 +481,6 @@ li.text-container.drag-over {
     }
 
     :root[data-rotation='90'] .empty-hint {
-        top: calc((100% + var(--tool-gutter, 0px)) / 2);
         left: 50%;
         width: min(18rem, calc(100% - 24px));
     }
@@ -868,8 +867,8 @@ li.text-container.drag-over {
 
 /* A label in miniature (LabelThumb). The paper is the scaled footprint; the
    art inside is the label at true size, scaled from its top-left corner. Label
-   ink is black on white whatever the option around it is coloured, and the edge
-   is drawn in the option's own colour, unscaled, so it reads at any size. */
+   ink is black on white whatever surrounds it, and the edge is drawn unscaled,
+   so it reads at any size. */
 .label-thumb {
     display: flex;
     align-items: center;
@@ -883,10 +882,6 @@ li.text-container.drag-over {
     color: black;
     text-align: center;
     box-shadow: 0 0 0 1.5px currentColor;
-}
-
-.segmented input:checked + label .label-thumb-paper {
-    box-shadow: 0 0 0 2px var(--color-paper);
 }
 
 .label-thumb-art {
@@ -965,7 +960,7 @@ li.text-container:focus-within .label-tools {
        the .label-tools it belongs to (see actions/portal.js), so hiding the
        tools no longer hides it. */
     .label-tools,
-    .sheet-bar,
+    .turn-tab,
     .empty-hint,
     [role="menu"],
     #print-tip,

@@ -10,10 +10,8 @@
     import { queryMedia } from '../lib/browserPrint.js';
     import { OUTPUT_METHODS, getMethod, deviceFor, effectivePage, BROWSER_PRINT_INSTALL_URL, BROWSER_PRINT_SSL_URL } from '../lib/output.js';
     import { ZPL_DPIS } from '../lib/zpl.js';
-    import { resolveTemplate } from '../lib/tokens.js';
     import Drawer from './Drawer.svelte';
     import Select from './Select.svelte';
-    import LabelThumb from './LabelThumb.svelte';
 
     // The inspector is a persistent right column on desktop and a slide-in sheet
     // on mobile. matchMedia decides which; Drawer's `persistent` handles the rest.
@@ -60,38 +58,11 @@
     // kept only where a millimetre is a large share of the size.
     const mm = (n) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
 
-    // ---- Label shape ----
-    // One question: which way does the label read? Each option is the label as
-    // it will be held, so the two differ in SHAPE and the text in both runs
-    // left to right. Underneath it is still artwork rotation (0 or 90, the ^FW
-    // analogue); the media never changes. The options stay in rotation order
-    // rather than sorting by shape, because which rotation reads wide flips with
-    // the number of labels per page and a selected option must not jump sides.
-    const shapeWord = (d) => { const w = labelShape(d); return w[0].toUpperCase() + w.slice(1); };
-    const shapes = $derived.by(() => {
-        const opts = [0, 90].map((rotation) => {
-            const d = resolveContent(effPage, store.divisions, store.margin, store.gap, rotation);
-            return { rotation, dims: d, word: shapeWord(d) };
-        });
-        // Square stock reads the same shape both ways; name the second by what it does.
-        if (opts[0].word === opts[1].word) { opts[1].word = 'Turned'; }
-        return opts;
-    });
-    const currentShape = $derived(shapes.find((o) => o.rotation === store.rotation) || shapes[0]);
-
-    // What the previews show: the first real text on the sheet, so the choice
-    // is between two pictures of the user's own label. A template contributes
-    // its first text field; a sheet with no text yet gets a location code.
-    const sampleText = $derived.by(() => {
-        for (const l of store.labels) {
-            if (l.fields && l.fields.length) {
-                const f = l.fields.find((x) => x.type !== 'barcode' && resolveTemplate(x.value).trim());
-                if (f) { return resolveTemplate(f.value); }
-            } else if (l.text && l.text.trim()) {
-                return l.text;
-            }
-        }
-        return 'A-01-03';
+    // How the label reads when held, for the readout. Turning it is the
+    // sheet's own control (the button on its corner, see LabelList).
+    const currentShape = $derived.by(() => {
+        const dims = resolveContent(effPage, store.divisions, store.margin, store.gap, store.rotation);
+        return { dims, word: labelShape(dims) };
     });
 
     // ---- Page orientation glyphs ----
@@ -275,22 +246,6 @@
             <input type="number" id="divisions" class="w-[7ch]" min="1" max={MAX_DIVISIONS} step="1" value={store.divisions} oninput={onDivisions} />
         </div>
 
-        <!-- Each option is a picture of the label as it will be held, drawn from
-             the user's own text, so the choice is "which one looks right". -->
-        <div class="control-group">
-            <span id="label-shape-label" class="group-label">Label shape</span>
-            <div class="segmented segmented-shape" role="radiogroup" aria-labelledby="label-shape-label">
-                {#each shapes as opt (opt.rotation)}
-                    <input type="radio" id={`rotate-${opt.rotation}`} name="artwork-rotation" value={opt.rotation} bind:group={store.rotation}
-                           aria-label={`${opt.word}, ${mm(opt.dims.width)} by ${mm(opt.dims.height)} millimetres`} />
-                    <label for={`rotate-${opt.rotation}`}>
-                        <LabelThumb width={opt.dims.width} height={opt.dims.height} text={sampleText} />
-                        {opt.word}
-                    </label>
-                {/each}
-            </div>
-        </div>
-
         <label class="flex items-center gap-2 text-[0.85rem]">
             <input type="checkbox" id="show-borders" class="size-4 accent-purple" bind:checked={store.showBorders} />
             <span>Show label borders <span class="text-ink/60">(cut guides)</span></span>
@@ -323,7 +278,7 @@
         <!-- Leads with the label as it will be held (turned when the shape is),
              then the stock it comes off. -->
         <div id="size-readout" class="rounded-md border-2 border-ink bg-highlight px-3 py-2 text-[0.8rem] leading-[1.5] tabular-nums" role="status" aria-live="polite">
-            Each label <strong>{mm(currentShape.dims.width)} × {mm(currentShape.dims.height)} mm</strong>, {currentShape.word.toLowerCase()}<br />
+            Each label <strong>{mm(currentShape.dims.width)} × {mm(currentShape.dims.height)} mm</strong>, {currentShape.word}<br />
             <span class="text-ink/70">{store.divisions} per {mm(pageDims.width)} × {mm(pageDims.height)} mm page</span>
         </div>
     </section>
