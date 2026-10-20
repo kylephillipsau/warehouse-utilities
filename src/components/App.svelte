@@ -36,8 +36,11 @@
     });
 
     // Toggle the label border / cut guide (screen). ZPL handles it separately.
+    // '0px', never a bare '0': the turned artwork layer subtracts this from a
+    // length in calc() (see .label-rotate), where a unitless 0 is a number and
+    // invalidates the whole width/height — the artwork collapses to nothing.
     $effect(() => {
-        document.documentElement.style.setProperty('--label-border-w', store.showBorders ? '2px' : '0');
+        document.documentElement.style.setProperty('--label-border-w', store.showBorders ? '2px' : '0px');
     });
 
     // Make the printed page EXACTLY the physical media so a label printer maps it
