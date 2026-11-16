@@ -199,10 +199,11 @@ export function convertToTemplate(id) {
 }
 
 // Turn a classic label into a single barcode, seeding the value from its text.
-export function convertToBarcode(id) {
+// `symbology` lets the menu go straight to a QR code without the type picker.
+export function convertToBarcode(id, symbology = 'code128') {
     const l = store.labels[indexOf(id)];
     if (!l || (l.fields && l.fields.length)) { return; }
-    l.fields = [makeField({ value: l.text || '', size: 'l', type: 'barcode', symbology: 'code128' })];
+    l.fields = [makeField({ value: l.text || '', size: 'l', type: 'barcode', symbology })];
     l.text = '';
 }
 

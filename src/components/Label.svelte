@@ -81,6 +81,13 @@
                 : { label: 'Add image', action: pickImage }),
         !isTemplate && !label.image ? { label: 'Make it a template', action: () => { convertToTemplate(label.id); openFields(label.id); } } : null,
         !isTemplate && !label.image ? { label: 'Make it a barcode', action: () => { convertToBarcode(label.id); openFields(label.id); } } : null,
+        // QR encodes any text, so a label with text turns in place; an empty one
+        // opens the editor, since a QR code of nothing is an error to fix.
+        !isTemplate && !label.image ? { label: 'Make it a QR code', action: () => {
+            const empty = !(label.text && label.text.trim());
+            convertToBarcode(label.id, 'qr');
+            if (empty) { openFields(label.id); }
+        } } : null,
         { label: 'Duplicate', action: () => duplicateLabel(label.id) },
         { label: 'Save as preset…', action: savePreset },
         label.image && !isTemplate ? { label: 'Remove image', action: () => removeImage(label.id) } : null,
