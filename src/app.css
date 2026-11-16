@@ -514,10 +514,10 @@ li.text-container.drag-over {
     overflow-wrap: normal;
 }
 
-/* Content rendering. An image always fills the whole label; the crop within
-   that frame comes from CSS custom properties (--fit/--posx/--posy/--zoom) the
-   Edit-image editor writes. A text-only label fills with auto-fitted text; an
-   image label may carry a caption in a readable band. */
+/* Content rendering. An image fills the whole label, or the space above its
+   caption when it has one; the crop within that frame comes from CSS custom
+   properties (--fit/--posx/--posy/--zoom) the Edit-image editor writes. A
+   text-only label fills with auto-fitted text. */
 .label-content {
     position: relative;
     width: 100%;
@@ -530,6 +530,13 @@ li.text-container.drag-over {
     inset: 0;
     overflow: hidden;
     background: transparent;
+}
+
+/* A caption has its own band (.label-caption), so the image is fitted above
+   it instead of running underneath it. 30% is the band's height; the ZPL
+   canvas splits the label the same way (drawLabel in zpl.js). */
+.label-content.has-caption .label-image-frame {
+    bottom: 30%;
 }
 
 .label-image {
@@ -696,9 +703,6 @@ li.text-container.drag-over {
     justify-content: center;
     padding: 0 1mm;
     box-sizing: border-box;
-    background: rgba(255, 255, 255, 0.82);
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
 }
 
 /* The presets shelf (PresetsDrawer). No card around a preset: the label

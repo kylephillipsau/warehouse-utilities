@@ -1,6 +1,7 @@
 <script>
     // The single renderer for a label's visual body. Two structural cases only:
-    //   has image  -> the image fills the label; an optional caption band on top
+    //   has image  -> the image fills the label; an optional caption takes a
+    //                 band below it, and the image fits the space above
     //   no image   -> ONE stable editable text region for the whole life of the
     //                 label. Empty shows a "Type a label" placeholder and typing
     //                 fills it in the SAME element, so the first keystroke never
@@ -183,7 +184,7 @@
     }
 </script>
 
-<div class="label-content">
+<div class="label-content" class:has-caption={showCaptionBand}>
     {#if hasImage}
         <div class="label-image-frame">
             {#if editable && onImageClick}

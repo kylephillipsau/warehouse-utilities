@@ -60,11 +60,18 @@
     function fit() { working.zoom = 1; working.posX = 50; working.posY = 50; }
     function reset() { working = normalizeAdjust(DEFAULT_ADJUST); }
 
-    // Zoom by `factor`, keeping the image point under (mx,my) in the preview box
+    // The box the image is fitted in: the whole preview, or the part above the
+    // caption when the label has one. Pan and zoom are relative to this.
+    function frameRect() {
+        const frame = previewEl.querySelector('.label-image-frame');
+        return (frame || previewEl).getBoundingClientRect();
+    }
+
+    // Zoom by `factor`, keeping the image point under (mx,my) in the image frame
     // fixed — the standard "zoom to cursor" (shared math in adjust.js).
     function zoomAt(factor, mx, my) {
-        const box = previewEl && previewEl.getBoundingClientRect();
-        if (!box) { return; }
+        if (!previewEl) { return; }
+        const box = frameRect();
         const imgEl = previewEl.querySelector('img.label-image');
         const iw = imgEl ? imgEl.naturalWidth : 0, ih = imgEl ? imgEl.naturalHeight : 0;
         const next = zoomAtPoint(working, box.width, box.height, iw, ih, factor, mx, my);
@@ -72,12 +79,12 @@
     }
     function onWheel(event) {
         event.preventDefault();
-        const box = previewEl.getBoundingClientRect();
+        const box = frameRect();
         zoomAt(Math.exp(-event.deltaY * 0.0015), event.clientX - box.left, event.clientY - box.top);
     }
     function onKey(event) {
         const step = event.shiftKey ? 10 : 1;
-        const box = previewEl.getBoundingClientRect();
+        const box = frameRect();
         switch (event.key) {
             case 'ArrowLeft': working.posX = clampPct(working.posX - step); break;
             case 'ArrowRight': working.posX = clampPct(working.posX + step); break;
@@ -93,7 +100,7 @@
 
     function onPreviewPointerDown(event) {
         event.preventDefault();
-        const rect = previewEl.getBoundingClientRect();
+        const rect = frameRect();
         const startX = event.clientX, startY = event.clientY;
         const baseX = working.posX, baseY = working.posY;
         previewEl.setPointerCapture(event.pointerId);

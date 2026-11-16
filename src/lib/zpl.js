@@ -180,13 +180,11 @@ function drawLabel(ctx, label, x, y, w, h, img, showBorder = true, native, dpmm)
     if (hasFields) {
         drawFields(ctx, label.fields, x, y, w, h, native, label.rules, dpmm);
     } else if (hasImage) {
-        drawImage(ctx, img, x, y, w, h, label.adjust);
-        if (hasText) {
-            const bandH = Math.round(h * 0.3);
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(x, y + h - bandH, w, bandH);
-            drawText(ctx, label.text, x, y + h - bandH, w, bandH, 'center', true, dpmm);
-        }
+        // A caption takes the bottom 30% as its own band and the image fits
+        // above it, as .label-content.has-caption lays it out on screen.
+        const bandH = hasText ? Math.round(h * 0.3) : 0;
+        drawImage(ctx, img, x, y, w, h - bandH, label.adjust);
+        if (hasText) { drawText(ctx, label.text, x, y + h - bandH, w, bandH, 'center', true, dpmm); }
     } else if (hasText) {
         drawText(ctx, label.text, x, y, w, h, 'center', true, dpmm);
     }
